@@ -1,0 +1,55 @@
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM golang:1.25-alpine AS builder
+
+ARG VERSION=dev
+ARG BUILD_TIME=unknown
+ARG TMDB_API_KEY
+ARG TRAKT_CLIENT_ID
+
+WORKDIR /app
+
+# Download dependencies first (cached unless go.mod/go.sum change)
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# modernc/sqlite is pure Go - CGO_ENABLED=0 produces a fully static binary.
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags "-X github.com/screenarr/screenarr/internal/version.Version=${VERSION} \
+                -X github.com/screenarr/screenarr/internal/version.BuildTime=${BUILD_TIME} \
+                -X github.com/screenarr/screenarr/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
+                -X github.com/screenarr/screenarr/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
+                -s -w" \
+      -o /screenarr ./cmd/screenarr
+
+# Create a minimal /etc/passwd so the scratch image has a non-root user.
+# UID/GID 65532 matches the distroless "nonroot" convention.
+RUN echo "nonroot:x:65532:65532:nonroot:/:/sbin/nologin" > /etc/passwd.screenarr && \
+    echo "nonroot:x:65532:" > /etc/group.screenarr
+
+# ── Final stage ───────────────────────────────────────────────────────────────
+# scratch: zero OS footprint. No ffprobe - media scanning requires host-side
+# ffprobe. Use the default image (docker/Dockerfile) if you need ffprobe.
+FROM scratch
+
+# TLS root certificates (needed for outbound HTTPS: TMDB, indexers, etc.)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Minimal passwd/group so the process can run as a named non-root user.
+COPY --from=builder /etc/passwd.screenarr /etc/passwd
+COPY --from=builder /etc/group.screenarr /etc/group
+
+# The binary
+COPY --from=builder /screenarr /screenarr
+
+# Default data directory (mount a volume here in production)
+VOLUME ["/config"]
+
+EXPOSE 8383
+
+# Run as non-root. The /config volume must be owned by UID 65532 on the host,
+# or mounted with appropriate permissions, for the process to write to it.
+USER nonroot:nonroot
+
+ENTRYPOINT ["/screenarr"]
