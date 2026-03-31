@@ -1,0 +1,25 @@
+# Screenarr configuration
+# Copy to ~/.config/screenarr/config.yaml or /config/config.yaml (Docker).
+# All values can also be set via SCREENARR_* environment variables.
+
+server:
+  host: "0.0.0.0"
+  port: 8383
+
+database:
+  driver: sqlite
+  # path: "/path/to/screenarr.db"   # default: ~/.config/screenarr/screenarr.db
+  # dsn: ""                        # Postgres only
+
+log:
+  level: info    # debug, info, warn, error
+  format: json   # json or text
+
+auth:
+  # api_key: ""  # auto-generated on first run if empty
+
+tvdb:
+  # api_key: ""  # TheTVDB API key (not yet wired up)
+
+trakt:
+  # client_id: ""  # Trakt API key for import lists (trakt.tv/oauth/applications)

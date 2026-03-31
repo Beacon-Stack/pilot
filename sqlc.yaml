@@ -1,0 +1,13 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "internal/db/queries/sqlite"
+    schema: "internal/db/migrations"
+    gen:
+      go:
+        package: "dbsqlite"
+        out: "internal/db/generated/sqlite"
+        emit_interface: true
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
+        json_tags_case_style: "camel"

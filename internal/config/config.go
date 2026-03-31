@@ -1,0 +1,64 @@
+package config
+
+// Config holds all application configuration.
+// Values are loaded from config.yaml and can be overridden by
+// SCREENARR_* environment variables (e.g. SCREENARR_SERVER_PORT=8383).
+type Config struct {
+	Server   ServerConfig   `mapstructure:"server"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Log      LogConfig      `mapstructure:"log"`
+	Auth     AuthConfig     `mapstructure:"auth"`
+	TVDB     TVDBConfig     `mapstructure:"tvdb"`
+	Trakt    TraktConfig    `mapstructure:"trakt"`
+
+	// ConfigFile is the path of the config file that was loaded, if any.
+	// Empty when running on defaults/env vars only.
+	ConfigFile string `mapstructure:"-"`
+}
+
+// ServerConfig controls the HTTP server.
+type ServerConfig struct {
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
+}
+
+// DatabaseConfig selects and configures the database driver.
+type DatabaseConfig struct {
+	// Driver is "sqlite" (default) or "postgres".
+	Driver string `mapstructure:"driver"`
+	// Path is the SQLite database file path. Ignored for Postgres.
+	Path string `mapstructure:"path"`
+	// DSN is the Postgres connection string. Ignored for SQLite.
+	DSN Secret `mapstructure:"dsn"`
+}
+
+// LogConfig controls log output format and verbosity.
+type LogConfig struct {
+	// Level is one of: debug, info, warn, error. Default: info.
+	Level string `mapstructure:"level"`
+	// Format is one of: json, text. Default: json.
+	Format string `mapstructure:"format"`
+}
+
+// AuthConfig holds the Screenarr API key used to authenticate requests.
+type AuthConfig struct {
+	APIKey Secret `mapstructure:"api_key"`
+}
+
+// TVDBConfig holds TheTVDB API credentials (placeholder — not wired up yet).
+type TVDBConfig struct {
+	APIKey Secret `mapstructure:"api_key"`
+}
+
+// TraktConfig holds the Trakt API key used for import list plugins.
+type TraktConfig struct {
+	ClientID Secret `mapstructure:"client_id"`
+}
+
+// DefaultTMDBKey is set at build time via ldflags. Users can override
+// it with the SCREENARR_TVDB_API_KEY env var or tvdb.api_key in config.yaml.
+var DefaultTMDBKey string
+
+// DefaultTraktClientID is set at build time via ldflags. Users can override
+// it with the SCREENARR_TRAKT_CLIENT_ID env var or trakt.client_id in config.yaml.
+var DefaultTraktClientID string

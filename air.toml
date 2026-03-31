@@ -1,0 +1,21 @@
+# Air hot-reload configuration for Screenarr development.
+# Install: go install github.com/air-verse/air@latest
+# Run: air
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  bin = "./tmp/screenarr"
+  cmd = "go build -o ./tmp/screenarr ./cmd/screenarr"
+  delay = 1000
+  exclude_dir = ["bin", "tmp", "web/ui/node_modules", "web/ui/dist", "vendor"]
+  exclude_regex = ["_test\\.go$"]
+  include_ext = ["go", "sql", "yaml"]
+  kill_delay = "1s"
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

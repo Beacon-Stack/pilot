@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@theme {
+  /* Backgrounds */
+  --color-bg-base:     #0d0d12;
+  --color-bg-surface:  #13131a;
+  --color-bg-elevated: #1c1c27;
+  --color-bg-subtle:   #252535;
+
+  /* Borders */
+  --color-border-subtle:  #ffffff14;
+  --color-border-default: #ffffff22;
+  --color-border-strong:  #ffffff44;
+
+  /* Accent — violet */
+  --color-accent:         #7c6af7;
+  --color-accent-hover:   #9283f9;
+  --color-accent-muted:   color-mix(in srgb, #7c6af7 12%, transparent);
+  --color-accent-fg:      #ffffff;
+
+  /* Text */
+  --color-text-primary:   #f0f0f5;
+  --color-text-secondary: #9898b0;
+  --color-text-muted:     #5a5a72;
+
+  /* Status */
+  --color-status-downloading: #3b9eff;
+  --color-status-completed:   #34d399;
+  --color-status-failed:      #f87171;
+  --color-status-queued:      #a78bfa;
+  --color-status-paused:      #fb923c;
+  --color-status-missing:     #5a5a72;
+
+  /* Semantic */
+  --color-danger:  #f87171;
+  --color-warning: #fbbf24;
+  --color-success: #34d399;
+  --color-info:    #3b9eff;
+
+  /* Typography */
+  --font-family-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Shadows */
+  --shadow-card:  0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+
+@layer base {
+  html {
+    background-color: var(--color-bg-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-family-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--color-bg-base); }
+  ::-webkit-scrollbar-thumb { background: var(--color-border-default); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.pulse-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-elevated) 25%,
+    var(--color-bg-subtle)   50%,
+    var(--color-bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
