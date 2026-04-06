@@ -158,6 +158,7 @@ function StatCard({
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { data, isLoading, isError } = useSeriesList();
   const { data: collStats } = useCollectionStats();
   const { data: storStats } = useStorageStats();
