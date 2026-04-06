@@ -901,3 +901,9 @@ func (s *Service) RenameFiles(ctx context.Context, seriesID string, dryRun bool)
 	// For now return an empty list so the API endpoint is functional.
 	return nil, nil
 }
+
+// ListAllTMDBIDs returns all TMDB IDs of series in the library.
+// Used for "already added" detection in the Discover UI.
+func (s *Service) ListAllTMDBIDs(ctx context.Context) ([]int64, error) {
+	return s.q.ListAllTMDBIDs(ctx)
+}

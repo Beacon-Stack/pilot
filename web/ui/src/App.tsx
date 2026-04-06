@@ -29,6 +29,7 @@ import WantedPage from "@/pages/wanted/WantedPage";
 import HistoryPage from "@/pages/history/HistoryPage";
 import ActivityPage from "@/pages/activity/ActivityPage";
 import StatsPage from "@/pages/stats/StatsPage";
+import DiscoverPage from "@/pages/discover/DiscoverPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -43,6 +44,7 @@ export default function App() {
           <Route element={<Shell />}>
             {/* Main */}
             <Route index element={<Dashboard />} />
+            <Route path="discover" element={<DiscoverPage />} />
             <Route path="series/:id" element={<SeriesDetail />} />
 
             {/* Nav */}

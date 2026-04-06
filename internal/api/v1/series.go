@@ -323,6 +323,24 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 		return &seriesOutput{Body: seriesToBody(s)}, nil
 	})
 
+	// GET /api/v1/series/tmdb-ids — lightweight list for "already added" detection
+	huma.Register(api, huma.Operation{
+		OperationID: "list-series-tmdb-ids",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/series/tmdb-ids",
+		Summary:     "List all TMDB IDs in the library",
+		Tags:        []string{"Series"},
+	}, func(ctx context.Context, _ *struct{}) (*struct{ Body []int64 }, error) {
+		ids, err := showSvc.ListAllTMDBIDs(ctx)
+		if err != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to list TMDB IDs", err)
+		}
+		if ids == nil {
+			ids = []int64{}
+		}
+		return &struct{ Body []int64 }{Body: ids}, nil
+	})
+
 	// GET /api/v1/series
 	huma.Register(api, huma.Operation{
 		OperationID: "list-series",

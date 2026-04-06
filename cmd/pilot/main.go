@@ -53,6 +53,7 @@ import (
 
 	"github.com/beacon-media/pilot/internal/api"
 	"github.com/beacon-media/pilot/internal/api/ws"
+	pulseint "github.com/beacon-media/pilot/internal/pulse"
 	"github.com/beacon-media/pilot/internal/appinfo"
 	"github.com/beacon-media/pilot/internal/config"
 	"github.com/beacon-media/pilot/internal/core/activity"
@@ -260,6 +261,15 @@ func run() error {
 	sched.Add(jobs.ImportListSync(importListSvc, logger))
 	sched.Add(jobs.ActivityPrune(activitySvc, logger))
 
+	// ── Pulse integration (optional) ──────────────────────────────────────────
+	pulseIntegration, err := pulseint.New(cfg.Pulse, cfg.Server.Host, cfg.Server.Port, logger)
+	if err != nil {
+		logger.Warn("pulse integration failed — continuing without it", "error", err)
+	}
+	if pulseIntegration != nil {
+		defer pulseIntegration.Close()
+	}
+
 	// ── HTTP router ───────────────────────────────────────────────────────────
 	startTime := time.Now()
 	router := api.NewRouter(api.RouterConfig{
@@ -290,11 +300,17 @@ func run() error {
 		SonarrImportService:    sonarrImportSvc,
 		WSHub:                  wsHub,
 		Scheduler:              sched,
+		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),
 	})
 
 	// ── Background services ───────────────────────────────────────────────────
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
+
+	// Pulse sync — pull indexers and download clients from the control plane.
+	if pulseIntegration != nil {
+		go pulseIntegration.StartSyncLoop(appCtx, indexerSvc, downloaderSvc, 30*time.Second)
+	}
 
 	go sched.Start(appCtx)
 
@@ -339,4 +355,12 @@ func run() error {
 
 	logger.Info("server stopped cleanly")
 	return nil
+}
+
+// pulseSyncHandler returns the Pulse sync webhook handler, or nil if disabled.
+func pulseSyncHandler(integration *pulseint.Integration, indexerSvc *indexer.Service, dlSvc *downloader.Service) http.HandlerFunc {
+	if integration == nil {
+		return nil
+	}
+	return integration.SyncHandler(indexerSvc, dlSvc)
 }

@@ -28,6 +28,7 @@ import {
   Layers,
   ListPlus,
   Film,
+  Compass,
 } from "lucide-react";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
@@ -42,6 +43,7 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { to: "/",           icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/discover",   icon: Compass,         label: "Discover" },
   { to: "/activity",   icon: Activity,        label: "Activity" },
   { to: "/calendar",   icon: CalendarDays,    label: "Calendar" },
   { to: "/wanted",     icon: Bookmark,        label: "Wanted" },

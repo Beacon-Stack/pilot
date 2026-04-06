@@ -68,6 +68,7 @@ type RouterConfig struct {
 	SonarrImportService    *sonarrimport.Service
 	WSHub                  *ws.Hub
 	Scheduler              *scheduler.Scheduler
+	PulseSyncHandler       http.HandlerFunc
 }
 
 // NewRouter builds and returns the application HTTP handler.
@@ -87,6 +88,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+
+	// Pulse sync webhook — called by Beacon Pulse when configs change.
+	if cfg.PulseSyncHandler != nil {
+		r.Post("/api/v1/hooks/pulse/sync", cfg.PulseSyncHandler)
+	}
 
 	// WebSocket endpoint — registered directly on chi so the upgrade
 	// bypasses the huma JSON middleware stack.

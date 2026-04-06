@@ -21,22 +21,64 @@ export function useSeriesDetail(id: string) {
 
 // ── Lookup (search TMDB before adding) ──────────────────────────────────────
 
+export interface LookupResult {
+  tmdb_id: number;
+  title: string;
+  original_title: string;
+  overview: string;
+  first_air_date: string;
+  year: number;
+  poster_path: string;
+  backdrop_path: string;
+  popularity: number;
+}
+
+export function tmdbPosterURL(path: string, size = "w500"): string {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  return `https://image.tmdb.org/t/p/${size}${path}`;
+}
+
 export function useLookupSeries(query: string) {
   return useQuery({
     queryKey: ["series", "lookup", query],
-    queryFn: () => apiFetch<Series[]>(`/series/lookup?q=${encodeURIComponent(query)}`),
-    enabled: query.length >= 2,
+    queryFn: () => apiFetch<LookupResult[]>("/series/lookup", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
+    enabled: query.length >= 3,
+  });
+}
+
+// ── Library TMDB IDs (for "already added" detection) ────────────────────────
+
+export function useLibraryTmdbIds() {
+  return useQuery({
+    queryKey: ["series", "tmdb-ids"],
+    queryFn: () => apiFetch<number[]>("/series/tmdb-ids"),
   });
 }
 
 // ── Mutations ────────────────────────────────────────────────────────────────
 
+interface AddSeriesInput {
+  tmdb_id: number;
+  library_id: string;
+  quality_profile_id: string;
+  monitored: boolean;
+  monitor_type: string;
+  series_type: string;
+}
+
 export function useAddSeries() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<Series>) =>
+    mutationFn: (body: AddSeriesInput) =>
       apiFetch<Series>("/series", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["series"] }); },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["series"] });
+      void qc.invalidateQueries({ queryKey: ["series", "tmdb-ids"] });
+    },
   });
 }
 

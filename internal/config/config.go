@@ -10,10 +10,17 @@ type Config struct {
 	Auth     AuthConfig     `mapstructure:"auth"`
 	TVDB     TVDBConfig     `mapstructure:"tvdb"`
 	Trakt    TraktConfig    `mapstructure:"trakt"`
+	Pulse    PulseConfig    `mapstructure:"pulse"`
 
 	// ConfigFile is the path of the config file that was loaded, if any.
 	// Empty when running on defaults/env vars only.
 	ConfigFile string `mapstructure:"-"`
+}
+
+// PulseConfig holds optional Beacon Pulse integration settings.
+type PulseConfig struct {
+	URL    string `mapstructure:"url"`
+	APIKey Secret `mapstructure:"api_key"`
 }
 
 // ServerConfig controls the HTTP server.

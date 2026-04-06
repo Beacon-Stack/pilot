@@ -183,11 +183,28 @@ export default function Dashboard() {
         >
           Series
         </h1>
-        {data && (
-          <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-            {data.total} series
-          </span>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {data && (
+            <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+              {data.total} series
+            </span>
+          )}
+          <button
+            onClick={() => navigate("/discover")}
+            style={{
+              background: "var(--color-accent)",
+              color: "var(--color-accent-fg)",
+              border: "none",
+              borderRadius: 6,
+              padding: "6px 14px",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            + Add Series
+          </button>
+        </div>
       </div>
 
       {/* Stats summary row */}
