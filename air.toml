@@ -1,4 +1,4 @@
-# Air hot-reload configuration for Screenarr development.
+# Air hot-reload configuration for Pilot development.
 # Install: go install github.com/air-verse/air@latest
 # Run: air
 
@@ -6,8 +6,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  bin = "./tmp/screenarr"
-  cmd = "go build -o ./tmp/screenarr ./cmd/screenarr"
+  bin = "./tmp/pilot"
+  cmd = "go build -o ./tmp/pilot ./cmd/pilot"
   delay = 1000
   exclude_dir = ["bin", "tmp", "web/ui/node_modules", "web/ui/dist", "vendor"]
   exclude_regex = ["_test\\.go$"]

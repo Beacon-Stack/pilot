@@ -1,9 +1,9 @@
-## Screenarr Makefile
+## Pilot Makefile
 
-MODULE  := github.com/screenarr/screenarr
-BINARY  := screenarr
+MODULE  := github.com/pilot/pilot
+BINARY  := pilot
 BIN_DIR := ./bin
-CMD     := ./cmd/screenarr
+CMD     := ./cmd/pilot
 
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -13,12 +13,12 @@ LDFLAGS   := -ldflags "\
   -X $(MODULE)/internal/config.DefaultTMDBKey=$(TMDB_API_KEY) \
   -X $(MODULE)/internal/config.DefaultTraktClientID=$(TRAKT_CLIENT_ID)"
 
-IMAGE ?= ghcr.io/screenarr/screenarr
+IMAGE ?= ghcr.io/pilot/pilot
 
 .PHONY: build run dev test test/unit test/cover test/race test/frontend \
         lint check generate clean docker docker/push help
 
-## build: Compile the binary into ./bin/screenarr
+## build: Compile the binary into ./bin/pilot
 build:
 	@mkdir -p $(BIN_DIR)
 	go build $(LDFLAGS) -o $(BIN_DIR)/$(BINARY) $(CMD)

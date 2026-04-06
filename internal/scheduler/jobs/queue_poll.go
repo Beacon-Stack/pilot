@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/core/queue"
-	"github.com/screenarr/screenarr/internal/scheduler"
+	"github.com/beacon-media/pilot/internal/core/queue"
+	"github.com/beacon-media/pilot/internal/scheduler"
 )
 
 // QueuePoll returns a Job that polls all active downloads and updates their

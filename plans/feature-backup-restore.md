@@ -6,7 +6,7 @@
 
 Luminarr has backup/restore functionality (218 lines backend + frontend
 section). Users can download the SQLite database as a backup file and upload
-a previously saved backup to restore. Screenarr has none of this — users have
+a previously saved backup to restore. Pilot has none of this — users have
 no way to protect their data.
 
 ## Backend
@@ -19,7 +19,7 @@ Port from Luminarr's backup.go:
 - Execute `VACUUM INTO ?` with a temp file path to create a consistent,
   defragmented copy of the SQLite database
 - Stream the file as `application/octet-stream`
-- Set `Content-Disposition: attachment; filename="screenarr-backup-YYYY-MM-DD.db"`
+- Set `Content-Disposition: attachment; filename="pilot-backup-YYYY-MM-DD.db"`
 - Clean up temp file after streaming
 - Requires `dbPath` to be passed in (from RouterConfig)
 
@@ -27,9 +27,9 @@ Port from Luminarr's backup.go:
 - Accept raw binary upload (`application/octet-stream`), max 500 MiB
 - Validate SQLite magic header (first 16 bytes = `SQLite format 3\000`)
 - Write to staging path `{dbPath}.restore`
-- On next app startup, `cmd/screenarr/main.go` already has the staging
+- On next app startup, `cmd/pilot/main.go` already has the staging
   swap logic (check `{dbPath}.restore` exists → rename over `{dbPath}`)
-- Return JSON: `{"message":"Restore file saved. Restart Screenarr to complete the restore."}`
+- Return JSON: `{"message":"Restore file saved. Restart Pilot to complete the restore."}`
 
 ### `internal/api/v1/backup_test.go` (~87 lines)
 
@@ -67,7 +67,7 @@ Add a "Backup & Restore" section at the bottom of the page:
 
 **Restore** — hidden file input (accept=".db"):
 - On file select, upload via `fetch("/api/v1/system/restore", { method: "POST", body: file })`
-- Show success message: "Restore staged — restart Screenarr to apply the backup."
+- Show success message: "Restore staged — restart Pilot to apply the backup."
 - Show error on failure
 
 Style to match existing settings sections.

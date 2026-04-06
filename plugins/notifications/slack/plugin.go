@@ -1,4 +1,4 @@
-// Package slack implements a Screenarr notification plugin that sends events
+// Package slack implements a Pilot notification plugin that sends events
 // to a Slack channel via an Incoming Webhook URL.
 package slack
 
@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -55,7 +55,7 @@ type Notifier struct {
 // New creates a new Notifier from the given config.
 func New(cfg Config) *Notifier {
 	if cfg.Username == "" {
-		cfg.Username = "Screenarr"
+		cfg.Username = "Pilot"
 	}
 	if cfg.IconEmoji == "" {
 		cfg.IconEmoji = ":clapper:"
@@ -108,9 +108,9 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 		Attachments: []slackAttachment{
 			{
 				Color:  colorForEvent(event.Type),
-				Title:  fmt.Sprintf("[Screenarr] %s", event.Type),
+				Title:  fmt.Sprintf("[Pilot] %s", event.Type),
 				Text:   event.Message,
-				Footer: "Screenarr",
+				Footer: "Pilot",
 				Ts:     event.Timestamp.UTC().Unix(),
 			},
 		},
@@ -144,6 +144,6 @@ func (n *Notifier) Test(ctx context.Context) error {
 	return n.Notify(ctx, plugin.NotificationEvent{
 		Type:      plugin.EventType("test"),
 		Timestamp: time.Now().UTC(),
-		Message:   "Screenarr Slack test — connection successful",
+		Message:   "Pilot Slack test — connection successful",
 	})
 }

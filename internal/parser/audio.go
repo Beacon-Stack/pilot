@@ -3,7 +3,7 @@ package parser
 import (
 	"regexp"
 
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 var (

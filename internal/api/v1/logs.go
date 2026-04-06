@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/screenarr/screenarr/internal/logging"
+	"github.com/beacon-media/pilot/internal/logging"
 )
 
 type logEntryBody struct {

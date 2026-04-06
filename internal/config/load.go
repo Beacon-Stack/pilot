@@ -25,8 +25,8 @@ const (
 // If cfgFile is empty, the following paths are searched in order:
 //
 //	/config/config.yaml              (Docker volume mount)
-//	$HOME/.config/screenarr/config.yaml
-//	/etc/screenarr/config.yaml
+//	$HOME/.config/pilot/config.yaml
+//	/etc/pilot/config.yaml
 //	./config.yaml
 //
 // Missing config file is not an error — defaults and environment variables
@@ -50,23 +50,23 @@ func Load(cfgFile string) (*Config, error) {
 		v.SetConfigType("yaml")
 		v.AddConfigPath("/config") // Docker volume mount point
 		if home != "" {
-			v.AddConfigPath(filepath.Join(home, ".config", "screenarr"))
+			v.AddConfigPath(filepath.Join(home, ".config", "pilot"))
 		}
-		v.AddConfigPath("/etc/screenarr")
+		v.AddConfigPath("/etc/pilot")
 		v.AddConfigPath(".")
 	}
 
 	// Environment variable overrides.
-	v.SetEnvPrefix("SCREENARR")
+	v.SetEnvPrefix("PILOT")
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Explicit bindings for keys that contain underscores.
-	_ = v.BindEnv("auth.api_key", "SCREENARR_AUTH_API_KEY")
-	_ = v.BindEnv("tvdb.api_key", "SCREENARR_TVDB_API_KEY")
-	_ = v.BindEnv("trakt.client_id", "SCREENARR_TRAKT_CLIENT_ID")
-	_ = v.BindEnv("database.path", "SCREENARR_DATABASE_PATH")
-	_ = v.BindEnv("database.dsn", "SCREENARR_DATABASE_DSN")
+	_ = v.BindEnv("auth.api_key", "PILOT_AUTH_API_KEY")
+	_ = v.BindEnv("tvdb.api_key", "PILOT_TVDB_API_KEY")
+	_ = v.BindEnv("trakt.client_id", "PILOT_TRAKT_CLIENT_ID")
+	_ = v.BindEnv("database.path", "PILOT_DATABASE_PATH")
+	_ = v.BindEnv("database.dsn", "PILOT_DATABASE_DSN")
 
 	if err := v.ReadInConfig(); err != nil {
 		// Missing config file is not an error — we use defaults.
@@ -88,14 +88,14 @@ func Load(cfgFile string) (*Config, error) {
 	}
 
 	// Default SQLite path: if /config exists (Docker volume), use it;
-	// otherwise fall back to ~/.config/screenarr/ (bare-metal).
+	// otherwise fall back to ~/.config/pilot/ (bare-metal).
 	if cfg.Database.Driver == "sqlite" && cfg.Database.Path == "" {
 		if info, err := os.Stat("/config"); err == nil && info.IsDir() {
-			cfg.Database.Path = "/config/screenarr.db"
+			cfg.Database.Path = "/config/pilot.db"
 		} else if home, _ := os.UserHomeDir(); home != "" {
-			cfg.Database.Path = filepath.Join(home, ".config", "screenarr", "screenarr.db")
+			cfg.Database.Path = filepath.Join(home, ".config", "pilot", "pilot.db")
 		} else {
-			cfg.Database.Path = "/config/screenarr.db"
+			cfg.Database.Path = "/config/pilot.db"
 		}
 	}
 

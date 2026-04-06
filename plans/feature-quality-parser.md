@@ -2,7 +2,7 @@
 
 **Status: DONE** (already implemented — verified 2026-03-30)
 
-Screenarr's `internal/parser/video.go` + `audio.go` already extract resolution,
+Pilot's `internal/parser/video.go` + `audio.go` already extract resolution,
 source, codec, HDR, audio codec, and audio channels. `parser.Parse()` returns
 a `ParsedRelease` with all quality fields. Quality profile matching exists in
 `internal/core/quality/profile.go` (`WantRelease`). No separate wrapper needed.
@@ -12,18 +12,18 @@ a `ParsedRelease` with all quality fields. Quality profile matching exists in
 Luminarr has an 18KB quality parser (`internal/core/quality/parser.go`) that
 uses compiled regexes to extract resolution, source, codec, HDR, and audio
 from release titles. This feeds into custom format scoring and quality profile
-matching. Screenarr removed this file entirely — the parser module has
+matching. Pilot removed this file entirely — the parser module has
 `episode.go` for TV-specific parsing but no quality extraction.
 
 ## Assessment
 
-Before implementing, check what Screenarr's `internal/parser/` already does.
+Before implementing, check what Pilot's `internal/parser/` already does.
 Luminarr's parser package (`internal/parser/`) handles video quality
 (resolution, source, codec, HDR) in `video.go`. The _separate_
 `internal/core/quality/parser.go` in Luminarr is a higher-level layer that
 takes parsed output and maps it to quality profile entries.
 
-**Key question**: Does Screenarr's `internal/parser/video.go` already extract
+**Key question**: Does Pilot's `internal/parser/video.go` already extract
 Resolution, Source, Codec, and HDR? If yes, the missing piece is only the
 quality profile matching layer, not the regex parsing itself.
 

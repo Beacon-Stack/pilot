@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/screenarr/screenarr/pkg/plugin"
-	"github.com/screenarr/screenarr/plugins/downloaders/sabnzbd"
+	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-media/pilot/plugins/downloaders/sabnzbd"
 )
 
 func newTestServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Server {

@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // fakeDelugeHandler returns a handler that simulates Deluge's JSON-RPC API.

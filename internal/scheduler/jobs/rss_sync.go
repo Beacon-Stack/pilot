@@ -9,10 +9,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/screenarr/screenarr/internal/core/downloader"
-	"github.com/screenarr/screenarr/internal/core/indexer"
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/scheduler"
+	"github.com/beacon-media/pilot/internal/core/downloader"
+	"github.com/beacon-media/pilot/internal/core/indexer"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/scheduler"
 )
 
 // RSSSync returns a Job that polls all enabled indexers for recent releases,

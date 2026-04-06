@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/core/importlist"
-	"github.com/screenarr/screenarr/internal/scheduler"
+	"github.com/beacon-media/pilot/internal/core/importlist"
+	"github.com/beacon-media/pilot/internal/scheduler"
 )
 
 // ImportListSync returns a Job that syncs all enabled import lists every 6 hours.

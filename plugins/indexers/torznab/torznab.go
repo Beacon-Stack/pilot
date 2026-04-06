@@ -1,4 +1,4 @@
-// Package torznab implements the Torznab indexer plugin for Screenarr.
+// Package torznab implements the Torznab indexer plugin for Pilot.
 // Torznab is an RSS/Atom-style XML protocol used by Prowlarr and Jackett
 // to expose torrent indexers over a common API.
 package torznab
@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {

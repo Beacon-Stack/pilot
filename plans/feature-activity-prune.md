@@ -6,7 +6,7 @@
 
 Luminarr has an `activity_prune` scheduler job that deletes activity log
 entries older than 30 days, running once per 24 hours. Without this,
-Screenarr's `activity_log` table grows unbounded.
+Pilot's `activity_log` table grows unbounded.
 
 ## Files to Create
 
@@ -20,8 +20,8 @@ import (
     "log/slog"
     "time"
 
-    "github.com/screenarr/screenarr/internal/core/activity"
-    "github.com/screenarr/screenarr/internal/scheduler"
+    "github.com/pilot/pilot/internal/core/activity"
+    "github.com/pilot/pilot/internal/scheduler"
 )
 
 func ActivityPrune(svc *activity.Service, logger *slog.Logger) scheduler.Job {
@@ -62,7 +62,7 @@ DELETE FROM activity_log WHERE created_at < ?;
 
 Run `sqlc generate` after adding the query.
 
-### `cmd/screenarr/main.go`
+### `cmd/pilot/main.go`
 
 Add the job to the scheduler:
 

@@ -222,7 +222,7 @@ export default function LibraryList() {
     <>
       <PageHeader
         title="Libraries"
-        description="Define root paths where Screenarr will store and manage TV series."
+        description="Define root paths where Pilot will store and manage TV series."
         action={
           <button
             onClick={() => setShowForm(true)}

@@ -4,7 +4,7 @@
 
 ## Context
 
-Screenarr's AppSettings page and theme system are simplified compared to
+Pilot's AppSettings page and theme system are simplified compared to
 Luminarr. The color mode picker is a plain `<select>` instead of icon buttons,
 5 theme presets are missing, dark/light preset tracking is absent, and the
 tooltip toggle was removed.
@@ -15,7 +15,7 @@ tooltip toggle was removed.
 
 **File**: `web/ui/src/pages/settings/app/AppSettings.tsx` (currently 193 lines → ~500+ lines)
 
-Replace with Luminarr's `AppSettingsPage.tsx` layout, adapted for Screenarr:
+Replace with Luminarr's `AppSettingsPage.tsx` layout, adapted for Pilot:
 
 **Color Mode Picker** — 3 icon buttons instead of `<select>`:
 - Monitor icon → "System"
@@ -36,13 +36,13 @@ Replace with Luminarr's `AppSettingsPage.tsx` layout, adapted for Screenarr:
 - Uses `getTooltipsEnabled()` / `setTooltipsEnabled()` from theme.ts
 
 **API Key Section** (new):
-- Display the Screenarr API key with show/hide toggle
+- Display the Pilot API key with show/hide toggle
 - Copy-to-clipboard button
 - Read from `/api/v1/system/status` (already available)
 
 **Key references**:
 - Luminarr source: `/home/davidfic/dev/luminarr/luminarr/web/ui/src/pages/settings/app/AppSettingsPage.tsx` (891 lines)
-- Screenarr current: `web/ui/src/pages/settings/app/AppSettings.tsx` (193 lines)
+- Pilot current: `web/ui/src/pages/settings/app/AppSettings.tsx` (193 lines)
 
 ### 2. Add Missing Theme Presets
 
@@ -66,7 +66,7 @@ Copy exact hex values from Luminarr's theme.ts.
 
 **File**: `web/ui/src/theme.ts`
 
-Screenarr already has `screenarr-theme-dark` and `screenarr-theme-light` storage
+Pilot already has `pilot-theme-dark` and `pilot-theme-light` storage
 keys. Verify that `setThemePreset(resolvedMode, presetId)` writes to the
 correct mode-specific key and that `getStoredPreset(mode)` reads back the
 right one. The AppSettings page should pass the resolved mode when calling
@@ -78,7 +78,7 @@ right one. The AppSettings page should pass the resolved mode when calling
 
 Add at the end:
 ```typescript
-const TOOLTIPS_KEY = "screenarr-ui-tooltips";
+const TOOLTIPS_KEY = "pilot-ui-tooltips";
 
 export function getTooltipsEnabled(): boolean {
   return localStorage.getItem(TOOLTIPS_KEY) !== "false";

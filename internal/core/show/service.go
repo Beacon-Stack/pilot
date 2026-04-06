@@ -1,4 +1,4 @@
-// Package show manages TV series records in the Screenarr library.
+// Package show manages TV series records in the Pilot library.
 package show
 
 import (
@@ -14,9 +14,9 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/events"
-	"github.com/screenarr/screenarr/internal/metadata/tmdbtv"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/events"
+	"github.com/beacon-media/pilot/internal/metadata/tmdbtv"
 )
 
 // Sentinel errors returned by Service methods.

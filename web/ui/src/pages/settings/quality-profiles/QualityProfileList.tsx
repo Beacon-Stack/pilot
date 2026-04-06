@@ -248,7 +248,7 @@ export default function QualityProfileList() {
     <>
       <PageHeader
         title="Quality Profiles"
-        description="Define which quality tiers Screenarr should download and when to upgrade."
+        description="Define which quality tiers Pilot should download and when to upgrade."
         action={
           <button
             onClick={() => toast.info("Quality profile editor coming soon")}

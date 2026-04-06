@@ -17,9 +17,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -84,7 +84,7 @@ func (c *Client) Test(ctx context.Context) error {
 
 // Add submits a torrent to Deluge. Magnet URIs are added directly via
 // core.add_torrent_magnet. HTTP/HTTPS .torrent URLs are fetched by
-// Screenarr, base64-encoded, and sent via core.add_torrent_file.
+// Pilot, base64-encoded, and sent via core.add_torrent_file.
 func (c *Client) Add(ctx context.Context, r plugin.Release) (string, error) {
 	if err := c.ensureAuth(ctx); err != nil {
 		return "", err

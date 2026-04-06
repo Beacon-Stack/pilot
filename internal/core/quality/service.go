@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/events"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/events"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // ErrNotFound is returned when a quality profile does not exist.

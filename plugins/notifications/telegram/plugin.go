@@ -1,4 +1,4 @@
-// Package telegram implements a Screenarr notification plugin that sends events
+// Package telegram implements a Pilot notification plugin that sends events
 // to a Telegram chat via the Bot API.
 package telegram
 
@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -73,7 +73,7 @@ type sendMessagePayload struct {
 
 // Notify sends the event as a Telegram message.
 func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) error {
-	text := fmt.Sprintf("<b>[Screenarr] %s</b>\n%s", event.Type, event.Message)
+	text := fmt.Sprintf("<b>[Pilot] %s</b>\n%s", event.Type, event.Message)
 
 	payload := sendMessagePayload{
 		ChatID:    n.cfg.ChatID,

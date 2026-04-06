@@ -19,7 +19,7 @@ var sqliteMagic = []byte("SQLite format 3\000")
 func BackupHandler(db *sql.DB, dbPath string, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dir := filepath.Dir(dbPath)
-		tmp, err := os.CreateTemp(dir, "screenarr-backup-*.db")
+		tmp, err := os.CreateTemp(dir, "pilot-backup-*.db")
 		if err != nil {
 			http.Error(w, `{"status":500,"title":"Failed to create temp file"}`, http.StatusInternalServerError)
 			logger.Warn("backup: create temp file", "error", err)
@@ -45,7 +45,7 @@ func BackupHandler(db *sql.DB, dbPath string, logger *slog.Logger) http.HandlerF
 		defer f.Close()
 
 		info, _ := f.Stat()
-		filename := fmt.Sprintf("screenarr-backup-%s.db", time.Now().Format("2006-01-02"))
+		filename := fmt.Sprintf("pilot-backup-%s.db", time.Now().Format("2006-01-02"))
 
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
@@ -92,7 +92,7 @@ func RestoreHandler(dbPath string, logger *slog.Logger) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"message":"Restore file saved. Restart Screenarr to complete the restore."}`))
+		_, _ = w.Write([]byte(`{"message":"Restore file saved. Restart Pilot to complete the restore."}`))
 	}
 }
 

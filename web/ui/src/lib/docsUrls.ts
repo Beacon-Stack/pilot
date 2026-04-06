@@ -1,4 +1,4 @@
-const DOCS_BASE = "https://screenarr.tv/docs";
+const DOCS_BASE = "https://pilot.tv/docs";
 
 export const DOCS_URLS = {
   // Settings pages

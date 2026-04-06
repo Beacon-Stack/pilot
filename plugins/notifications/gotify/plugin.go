@@ -1,4 +1,4 @@
-// Package gotify implements a Screenarr notification plugin that sends events
+// Package gotify implements a Pilot notification plugin that sends events
 // to a Gotify server via its REST API.
 package gotify
 
@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -76,7 +76,7 @@ type gotifyPayload struct {
 // Notify sends the event as a Gotify message.
 func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) error {
 	payload := gotifyPayload{
-		Title:    fmt.Sprintf("Screenarr — %s", event.Type),
+		Title:    fmt.Sprintf("Pilot — %s", event.Type),
 		Message:  event.Message,
 		Priority: 5,
 	}
@@ -109,8 +109,8 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 // Test sends a low-priority test message to verify the Gotify server is reachable.
 func (n *Notifier) Test(ctx context.Context) error {
 	payload := gotifyPayload{
-		Title:    "Screenarr",
-		Message:  "Screenarr Gotify test — connection successful",
+		Title:    "Pilot",
+		Message:  "Pilot Gotify test — connection successful",
 		Priority: 1,
 	}
 

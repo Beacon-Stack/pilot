@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // IndexerFactory constructs an Indexer from a JSON settings blob.

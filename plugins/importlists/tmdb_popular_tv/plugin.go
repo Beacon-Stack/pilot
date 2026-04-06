@@ -1,4 +1,4 @@
-// Package tmdb_popular_tv provides a Screenarr import list plugin that fetches
+// Package tmdb_popular_tv provides a Pilot import list plugin that fetches
 // the current most popular TV series from TMDB.
 package tmdbpopulartv
 
@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/screenarr/screenarr/internal/metadata/tmdbtv"
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/metadata/tmdbtv"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {

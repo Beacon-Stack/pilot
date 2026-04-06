@@ -1,5 +1,5 @@
 // Package plugin defines the public interfaces and value types for
-// Screenarr's plugin system. Indexer, DownloadClient, and Notifier
+// Pilot's plugin system. Indexer, DownloadClient, and Notifier
 // implementations (built-in or external) depend only on this package.
 package plugin
 

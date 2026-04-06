@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // All regexps are compiled once at package init — never inside parse functions.

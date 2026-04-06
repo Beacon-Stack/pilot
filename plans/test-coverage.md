@@ -2,7 +2,7 @@
 
 ## Context
 
-Screenarr has ~130 backend tests (all in plugin layer). Luminarr has 550+.
+Pilot has ~130 backend tests (all in plugin layer). Luminarr has 550+.
 The entire core service layer, API integration, parser, and Phase 8 features
 have zero coverage. Frontend has Vitest configured but zero test files.
 
@@ -141,14 +141,14 @@ Key endpoint groups to test:
 - System status + health
 
 Requires: `internal/testutil/` package with `NewTestDB(t)` helper.
-Check if Screenarr already has this — if not, create it (in-memory SQLite
+Check if Pilot already has this — if not, create it (in-memory SQLite
 with migrations applied).
 
 ## Priority 3: Frontend Tests
 
 ### Setup
 
-Screenarr has Vitest in package.json but may need:
+Pilot has Vitest in package.json but may need:
 - `web/ui/vitest.config.ts` or vitest section in `vite.config.ts`
 - `web/ui/src/test/setup.ts` — global test setup
 - `web/ui/src/test/helpers.tsx` — `renderWithProviders()` wrapper

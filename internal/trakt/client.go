@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/safedialer"
+	"github.com/beacon-media/pilot/internal/safedialer"
 )
 
 const (

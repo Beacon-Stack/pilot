@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func TestValidateScriptName_Valid(t *testing.T) {
@@ -51,7 +51,7 @@ func TestNotify_ScriptExecution(t *testing.T) {
 	marker := filepath.Join(tmp, "marker.txt")
 	script := filepath.Join(tmp, "test.sh")
 	// Script writes env vars to marker file and copies stdin to marker.stdin.
-	content := "#!/bin/sh\necho \"TYPE=$SCREENARR_EVENT_TYPE\" > " + marker + "\ncat > " + marker + ".stdin\n"
+	content := "#!/bin/sh\necho \"TYPE=$PILOT_EVENT_TYPE\" > " + marker + "\ncat > " + marker + ".stdin\n"
 	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
 		t.Fatal(err)
 	}

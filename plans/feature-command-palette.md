@@ -5,7 +5,7 @@
 ## Context
 
 Luminarr has a full command palette (~1,340 lines across 6 files) for
-keyboard-driven navigation, series search, and action triggering. Screenarr
+keyboard-driven navigation, series search, and action triggering. Pilot
 has no equivalent. This is a high-visibility UX feature.
 
 ## Files to Create

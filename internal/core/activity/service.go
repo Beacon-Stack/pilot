@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/events"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/events"
 )
 
 // Category groups related event types for filtering.

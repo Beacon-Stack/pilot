@@ -1,32 +1,11 @@
-# Build output
 bin/
-tmp/
-
-# Database
+data/
 *.db
-*.db-journal
-*.db-wal
 *.db-shm
-
-# Config (may contain secrets)
+*.db-wal
 config.yaml
-!config.example.yaml
-
-# Frontend
+.air.toml
+tmp/
 web/ui/node_modules/
-web/static/assets/
-
-# Coverage
-coverage.out
-coverage.html
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
+web/static/
+bin/

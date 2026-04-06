@@ -121,7 +121,7 @@ function SidebarNavItem({
 
 function AppNameDisplay({ collapsed, isMobile }: { collapsed: boolean; isMobile: boolean }) {
   const { data: status } = useSystemStatus();
-  const appName = status?.app_name ?? "Screenarr";
+  const appName = status?.app_name ?? "Pilot";
 
   return (
     <>
@@ -286,7 +286,7 @@ function Sidebar({
         }}
       >
         <a
-          href="https://screenarr.tv/docs"
+          href="https://pilot.tv/docs"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -352,7 +352,7 @@ export function Shell() {
   const commandPalette = useCommandPalette();
 
   const [collapsed, setCollapsed] = useState(() => {
-    return localStorage.getItem("screenarr-sidebar-collapsed") === "true";
+    return localStorage.getItem("pilot-sidebar-collapsed") === "true";
   });
   const [mobileOpen, setMobileOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -362,7 +362,7 @@ export function Shell() {
   }, [isMobile]);
 
   useEffect(() => {
-    localStorage.setItem("screenarr-sidebar-collapsed", String(collapsed));
+    localStorage.setItem("pilot-sidebar-collapsed", String(collapsed));
   }, [collapsed]);
 
   const location = useLocation();
@@ -470,7 +470,7 @@ export function Shell() {
                   letterSpacing: "-0.01em",
                 }}
               >
-                Screenarr
+                Pilot
               </span>
             </Link>
           </div>

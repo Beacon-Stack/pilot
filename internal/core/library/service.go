@@ -1,4 +1,4 @@
-// Package library manages Screenarr library records and their series counts.
+// Package library manages Pilot library records and their series counts.
 package library
 
 import (
@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/events"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/events"
 )
 
 // ErrNotFound is returned when a library does not exist.

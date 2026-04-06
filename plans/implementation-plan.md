@@ -1,8 +1,8 @@
-# Screenarr — Full Feature Implementation Plan
+# Pilot — Full Feature Implementation Plan
 
 ## Context
 
-Screenarr is a Sonarr clone — a TV series manager that automates episode acquisition, quality management, and library organization. It's the sibling project to Luminarr (Radarr clone for movies). The project skeleton already exists at `~/dev/screenarr` with config, db, events, logging, API router, health/status endpoints, and a React shell. Now we need the actual features.
+Pilot is a Sonarr clone — a TV series manager that automates episode acquisition, quality management, and library organization. It's the sibling project to Luminarr (Radarr clone for movies). The project skeleton already exists at `~/dev/pilot` with config, db, events, logging, API router, health/status endpoints, and a React shell. Now we need the actual features.
 
 **Goal**: Clone Sonarr's feature set using Luminarr's architecture patterns and UI design language. No improvements yet — feature parity first.
 

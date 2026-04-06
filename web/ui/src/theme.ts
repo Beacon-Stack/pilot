@@ -37,8 +37,8 @@ export interface ThemePreset {
 export const THEME_PRESETS: ThemePreset[] = [
   // ── Dark themes ──────────────────────────────────────────────────────────
   {
-    id: "screenarr",
-    label: "Screenarr",
+    id: "pilot",
+    label: "Pilot",
     mode: "dark",
     preview: { bg: "#0d0d12", surface: "#13131a", accent: "#7c6af7", text: "#f0f0f5" },
     vars: {
@@ -365,14 +365,14 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
 ];
 
-export const DEFAULT_DARK_PRESET = "screenarr";
+export const DEFAULT_DARK_PRESET = "pilot";
 export const DEFAULT_LIGHT_PRESET = "catppuccin-latte";
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
-const KEY_MODE = "screenarr-theme-mode";
-const KEY_DARK = "screenarr-theme-dark";
-const KEY_LIGHT = "screenarr-theme-light";
+const KEY_MODE = "pilot-theme-mode";
+const KEY_DARK = "pilot-theme-dark";
+const KEY_LIGHT = "pilot-theme-light";
 
 // ── Apply ─────────────────────────────────────────────────────────────────────
 
@@ -419,7 +419,7 @@ export function getStoredPreset(resolvedMode: "dark" | "light"): string {
   return localStorage.getItem(key) ?? (resolvedMode === "dark" ? DEFAULT_DARK_PRESET : DEFAULT_LIGHT_PRESET);
 }
 
-/** Find a preset by ID, falling back to the Screenarr default. */
+/** Find a preset by ID, falling back to the Pilot default. */
 export function findPreset(id: string): ThemePreset {
   return THEME_PRESETS.find((p) => p.id === id) ?? THEME_PRESETS[0];
 }
@@ -453,7 +453,7 @@ export function setThemePreset(resolvedMode: "dark" | "light", presetId: string)
 
 // ── UI Preferences ───────────────────────────────────────────────────────────
 
-const KEY_TOOLTIPS = "screenarr-ui-tooltips";
+const KEY_TOOLTIPS = "pilot-ui-tooltips";
 
 /** Read whether tooltips are enabled (default: true). */
 export function getTooltipsEnabled(): boolean {

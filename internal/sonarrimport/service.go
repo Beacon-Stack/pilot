@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/screenarr/screenarr/internal/core/downloader"
-	"github.com/screenarr/screenarr/internal/core/indexer"
-	"github.com/screenarr/screenarr/internal/core/library"
-	"github.com/screenarr/screenarr/internal/core/quality"
-	"github.com/screenarr/screenarr/internal/core/show"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/core/downloader"
+	"github.com/beacon-media/pilot/internal/core/indexer"
+	"github.com/beacon-media/pilot/internal/core/library"
+	"github.com/beacon-media/pilot/internal/core/quality"
+	"github.com/beacon-media/pilot/internal/core/show"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // ── Result types ─────────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ func NewService(
 }
 
 // Preview connects to a Sonarr instance and returns a summary of what would be
-// imported, without making any changes to the Screenarr database.
+// imported, without making any changes to the Pilot database.
 func (s *Service) Preview(ctx context.Context, sonarrURL, apiKey string) (*PreviewResult, error) {
 	c := NewClient(sonarrURL, apiKey)
 
@@ -179,7 +179,7 @@ func (s *Service) Preview(ctx context.Context, sonarrURL, apiKey string) (*Previ
 	return result, nil
 }
 
-// Execute imports data from Sonarr into Screenarr according to opts.
+// Execute imports data from Sonarr into Pilot according to opts.
 func (s *Service) Execute(ctx context.Context, sonarrURL, apiKey string, opts ImportOptions) (*ImportResult, error) {
 	c := NewClient(sonarrURL, apiKey)
 

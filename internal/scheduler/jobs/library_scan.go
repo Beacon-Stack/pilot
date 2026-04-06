@@ -11,12 +11,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/screenarr/screenarr/internal/core/library"
-	"github.com/screenarr/screenarr/internal/core/parser"
-	"github.com/screenarr/screenarr/internal/core/show"
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/scheduler"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/core/library"
+	"github.com/beacon-media/pilot/internal/core/parser"
+	"github.com/beacon-media/pilot/internal/core/show"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/scheduler"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // libraryScanInterval is how often the library scan job runs.

@@ -1,8 +1,9 @@
-module github.com/screenarr/screenarr
+module github.com/beacon-media/pilot
 
 go 1.25.0
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/danielgtaylor/huma/v2 v2.37.3
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
@@ -16,7 +17,6 @@ require (
 )
 
 require (
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect

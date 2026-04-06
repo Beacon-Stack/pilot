@@ -1,15 +1,15 @@
 services:
-  screenarr:
+  pilot:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: screenarr:local
-    container_name: screenarr
+    image: pilot:local
+    container_name: pilot
     restart: unless-stopped
     ports:
       - "8383:8383"
     volumes:
-      - ${HOME}/.config/screenarr:/config
+      - ${HOME}/.config/pilot:/config
       # Mount your TV library directory. The container path (/tv) must match
       # the root path you configure in Settings > Libraries.
       # Add additional lines for each root folder you want accessible.

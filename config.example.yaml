@@ -1,6 +1,6 @@
-# Screenarr configuration
-# Copy to ~/.config/screenarr/config.yaml or /config/config.yaml (Docker).
-# All values can also be set via SCREENARR_* environment variables.
+# Pilot configuration
+# Copy to ~/.config/pilot/config.yaml or /config/config.yaml (Docker).
+# All values can also be set via PILOT_* environment variables.
 
 server:
   host: "0.0.0.0"
@@ -8,7 +8,7 @@ server:
 
 database:
   driver: sqlite
-  # path: "/path/to/screenarr.db"   # default: ~/.config/screenarr/screenarr.db
+  # path: "/path/to/pilot.db"   # default: ~/.config/pilot/pilot.db
   # dsn: ""                        # Postgres only
 
 log:

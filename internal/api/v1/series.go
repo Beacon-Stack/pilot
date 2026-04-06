@@ -8,8 +8,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/screenarr/screenarr/internal/core/show"
-	"github.com/screenarr/screenarr/internal/metadata/tmdbtv"
+	"github.com/beacon-media/pilot/internal/core/show"
+	"github.com/beacon-media/pilot/internal/metadata/tmdbtv"
 )
 
 // ── Response body shapes ─────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-// Package email implements a Screenarr notification plugin that sends events
+// Package email implements a Pilot notification plugin that sends events
 // as plain-text emails via an SMTP server.
 package email
 
@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -75,7 +75,7 @@ func (n *Notifier) Name() string { return "Email" }
 
 // Notify sends the event as a plain-text email.
 func (n *Notifier) Notify(_ context.Context, event plugin.NotificationEvent) error {
-	subject := fmt.Sprintf("[Screenarr] %s", event.Type)
+	subject := fmt.Sprintf("[Pilot] %s", event.Type)
 	body := fmt.Sprintf("Event: %s\nTime: %s\n\n%s",
 		event.Type,
 		event.Timestamp.UTC().Format(time.RFC1123),
@@ -96,7 +96,7 @@ func (n *Notifier) Test(ctx context.Context) error {
 	return n.Notify(ctx, plugin.NotificationEvent{
 		Type:      plugin.EventType("test"),
 		Timestamp: time.Now().UTC(),
-		Message:   "Screenarr email test — connection successful",
+		Message:   "Pilot email test — connection successful",
 	})
 }
 

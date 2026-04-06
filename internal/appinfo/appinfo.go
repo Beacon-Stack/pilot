@@ -3,4 +3,4 @@
 package appinfo
 
 // AppName is the user-visible application name.
-const AppName = "Screenarr"
+const AppName = "Pilot"

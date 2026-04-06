@@ -33,12 +33,12 @@ COPY --from=frontend /app/web/static/ ./web/static/
 
 # modernc/sqlite is pure Go — CGO_ENABLED=0 produces a fully static binary.
 RUN CGO_ENABLED=0 GOOS=linux go build \
-      -ldflags "-X github.com/screenarr/screenarr/internal/version.Version=${VERSION} \
-                -X github.com/screenarr/screenarr/internal/version.BuildTime=${BUILD_TIME} \
-                -X github.com/screenarr/screenarr/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
-                -X github.com/screenarr/screenarr/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
+      -ldflags "-X github.com/pilot/pilot/internal/version.Version=${VERSION} \
+                -X github.com/pilot/pilot/internal/version.BuildTime=${BUILD_TIME} \
+                -X github.com/pilot/pilot/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
+                -X github.com/pilot/pilot/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
                 -s -w" \
-      -o /screenarr ./cmd/screenarr
+      -o /pilot ./cmd/pilot
 
 # ── Final stage ───────────────────────────────────────────────────────────────
 # Alpine with ffmpeg (includes ffprobe) for media scanning out of the box.
@@ -47,16 +47,16 @@ FROM alpine:3.21
 # ffmpeg pulls in ffprobe. ca-certificates is needed for outbound HTTPS.
 # tzdata provides timezone data for correct time display.
 RUN apk add --no-cache ffmpeg ca-certificates tzdata && \
-    adduser -D -u 1000 screenarr
+    adduser -D -u 1000 pilot
 
 # The binary
-COPY --from=builder /screenarr /screenarr
+COPY --from=builder /pilot /pilot
 
 # Default data directory (mount a volume here in production)
 VOLUME ["/config"]
 
 EXPOSE 8383
 
-USER screenarr
+USER pilot
 
-ENTRYPOINT ["/screenarr"]
+ENTRYPOINT ["/pilot"]

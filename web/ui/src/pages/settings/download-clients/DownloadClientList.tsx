@@ -373,7 +373,7 @@ function DownloadClientModal({ editing, onClose }: ModalProps) {
                       onChange={(e) => set("qb_category", e.currentTarget.value)}
                       onFocus={focusBorder}
                       onBlur={blurBorder}
-                      placeholder="screenarr"
+                      placeholder="pilot"
                     />
                   </div>
                   <div style={fieldStyle}>
@@ -427,7 +427,7 @@ function DownloadClientModal({ editing, onClose }: ModalProps) {
                       onChange={(e) => set("dl_label", e.currentTarget.value)}
                       onFocus={focusBorder}
                       onBlur={blurBorder}
-                      placeholder="screenarr"
+                      placeholder="pilot"
                     />
                   </div>
                   <div style={fieldStyle}>
@@ -523,7 +523,7 @@ function DownloadClientModal({ editing, onClose }: ModalProps) {
                     onChange={(e) => set("sab_category", e.currentTarget.value)}
                     onFocus={focusBorder}
                     onBlur={blurBorder}
-                    placeholder="screenarr"
+                    placeholder="pilot"
                   />
                 </div>
               </>
@@ -578,7 +578,7 @@ function DownloadClientModal({ editing, onClose }: ModalProps) {
                     onChange={(e) => set("nzbget_category", e.currentTarget.value)}
                     onFocus={focusBorder}
                     onBlur={blurBorder}
-                    placeholder="screenarr"
+                    placeholder="pilot"
                   />
                 </div>
               </>

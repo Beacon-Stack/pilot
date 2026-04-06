@@ -1,4 +1,4 @@
-// Package webhook implements a Screenarr notification plugin that sends events
+// Package webhook implements a Pilot notification plugin that sends events
 // as JSON HTTP POST requests to a user-configured URL.
 package webhook
 
@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -108,6 +108,6 @@ func (n *Notifier) Test(ctx context.Context) error {
 	return n.Notify(ctx, plugin.NotificationEvent{
 		Type:      plugin.EventType("test"),
 		Timestamp: time.Now().UTC(),
-		Message:   "Screenarr webhook test — connection successful",
+		Message:   "Pilot webhook test — connection successful",
 	})
 }

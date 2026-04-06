@@ -11,9 +11,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/screenarr/screenarr/internal/core/dbutil"
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/registry"
+	"github.com/beacon-media/pilot/internal/core/dbutil"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/registry"
 )
 
 // ErrNotFound is returned when a media server config does not exist.

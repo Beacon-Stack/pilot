@@ -1,4 +1,4 @@
-// Package pushover implements a Screenarr notification plugin that sends events
+// Package pushover implements a Pilot notification plugin that sends events
 // via the Pushover API.
 package pushover
 
@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -77,7 +77,7 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 	payload := pushoverPayload{
 		Token:   n.cfg.APIToken,
 		User:    n.cfg.UserKey,
-		Title:   fmt.Sprintf("Screenarr — %s", event.Type),
+		Title:   fmt.Sprintf("Pilot — %s", event.Type),
 		Message: event.Message,
 	}
 

@@ -1,24 +1,24 @@
-# Screenarr — Claude Code Rules
+# Pilot — Claude Code Rules
 
 ## App Name
 
-The display name **"Screenarr"** is a working title. It is centralised in
+The display name **"Pilot"** is a working title. It is centralised in
 `internal/appinfo/appinfo.go` — change it there and everything (startup
 banner, API responses, docs) updates automatically.
 
 **Rename checklist** (when the name changes):
 1. `internal/appinfo/appinfo.go` — `const AppName`
 2. `web/ui/index.html` — `<title>` tag
-3. Structural: Go module path (`go.mod`), env prefix (`SCREENARR_`),
-   binary name (`cmd/screenarr`), config dirs (`~/.config/screenarr/`),
-   DB filename (`screenarr.db`), Makefile vars, Docker image name.
+3. Structural: Go module path (`go.mod`), env prefix (`PILOT_`),
+   binary name (`cmd/pilot`), config dirs (`~/.config/pilot/`),
+   DB filename (`pilot.db`), Makefile vars, Docker image name.
 
 ## GitHub
 
-All `gh` commands MUST target `screenarr/screenarr`:
+All `gh` commands MUST target `pilot/pilot`:
 
 ```sh
-gh <command> --repo screenarr/screenarr
+gh <command> --repo pilot/pilot
 ```
 
 ## Branching

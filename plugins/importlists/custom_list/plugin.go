@@ -1,4 +1,4 @@
-// Package custom_list provides a Screenarr import list plugin that fetches
+// Package custom_list provides a Pilot import list plugin that fetches
 // series from a user-provided JSON URL.
 package customlist
 
@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 const maxResponseSize = 10 << 20 // 10 MiB

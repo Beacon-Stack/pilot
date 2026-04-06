@@ -1,4 +1,4 @@
-// Package newznab implements the Newznab indexer plugin for Screenarr.
+// Package newznab implements the Newznab indexer plugin for Pilot.
 // Newznab is an RSS/Atom-style XML protocol for NZB indexers. It shares the
 // same feed envelope and API parameter shape as Torznab, but serves NZB
 // releases rather than torrents — so there are no seeder/peer attributes.
@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {

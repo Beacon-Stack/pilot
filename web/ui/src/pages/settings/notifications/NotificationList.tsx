@@ -268,7 +268,7 @@ function DiscordSettings({ form, set, editing, focusBorder, blurBorder }: SubFor
             onChange={(e) => set("dc_username", e.currentTarget.value)}
             onFocus={focusBorder}
             onBlur={blurBorder}
-            placeholder="Screenarr"
+            placeholder="Pilot"
           />
         </div>
         <div style={fieldStyle}>
@@ -317,7 +317,7 @@ function SlackSettings({ form, set, editing, focusBorder, blurBorder }: SubFormP
             onChange={(e) => set("sl_username", e.currentTarget.value)}
             onFocus={focusBorder}
             onBlur={blurBorder}
-            placeholder="Screenarr"
+            placeholder="Pilot"
           />
         </div>
         <div style={fieldStyle}>
@@ -438,7 +438,7 @@ function EmailSettings({ form, set, editing, focusBorder, blurBorder }: SubFormP
           onChange={(e) => set("em_from", e.currentTarget.value)}
           onFocus={focusBorder}
           onBlur={blurBorder}
-          placeholder="screenarr@example.com"
+          placeholder="pilot@example.com"
         />
       </div>
       <div style={fieldStyle}>
@@ -588,7 +588,7 @@ function NtfySettings({ form, set, editing, focusBorder, blurBorder }: SubFormPr
             onChange={(e) => set("nt_topic", e.currentTarget.value)}
             onFocus={focusBorder}
             onBlur={blurBorder}
-            placeholder="screenarr"
+            placeholder="pilot"
           />
         </div>
       </div>

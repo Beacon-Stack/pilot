@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
 )
 
 // Definition describes a known quality level and the acceptable file-size

@@ -1,4 +1,4 @@
-// Package command implements a Screenarr notification plugin that executes
+// Package command implements a Pilot notification plugin that executes
 // a user-provided script from /config/scripts/ on each event. The event
 // payload is passed as JSON on stdin and key fields are set as environment
 // variables.
@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // ScriptsDir is the directory from which scripts are resolved.
@@ -84,10 +84,10 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 	cmd.WaitDelay = 3 * time.Second             // give pipes time to drain after kill
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.Env = append(os.Environ(),
-		"SCREENARR_EVENT_TYPE="+string(event.Type),
-		"SCREENARR_SERIES_ID="+event.SeriesID,
-		"SCREENARR_MESSAGE="+event.Message,
-		"SCREENARR_TIMESTAMP="+event.Timestamp.Format(time.RFC3339),
+		"PILOT_EVENT_TYPE="+string(event.Type),
+		"PILOT_SERIES_ID="+event.SeriesID,
+		"PILOT_MESSAGE="+event.Message,
+		"PILOT_TIMESTAMP="+event.Timestamp.Format(time.RFC3339),
 	)
 
 	// Use a buffer for combined output instead of CombinedOutput() which

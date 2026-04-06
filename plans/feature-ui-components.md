@@ -4,7 +4,7 @@
 
 ## Context
 
-Luminarr has 7 shared UI components that Screenarr is missing. Some are used
+Luminarr has 7 shared UI components that Pilot is missing. Some are used
 across multiple pages (ErrorBoundary, QualityBadge, StatusBadge). Others
 enhance specific features (DirPicker for library paths, ScoreChip for
 custom formats).
@@ -110,7 +110,7 @@ Port from Luminarr:
 - Loading skeleton, error handling
 
 **Requires API**: `GET /api/v1/system/fs?path=/some/dir` endpoint that lists
-subdirectories. Check if this exists in Screenarr — if not, add it.
+subdirectories. Check if this exists in Pilot — if not, add it.
 
 **Hook**: `useFsBrowse(path)` in `web/ui/src/api/system.ts`
 
@@ -118,7 +118,7 @@ Used in: library creation/edit modal.
 
 ### 7. Poster improvements
 
-Screenarr likely has a Poster component already. Compare with Luminarr's
+Pilot likely has a Poster component already. Compare with Luminarr's
 version (126 lines) and ensure it has:
 - Image with fallback to placeholder on error
 - `PosterPlaceholder` with hash-based color gradient

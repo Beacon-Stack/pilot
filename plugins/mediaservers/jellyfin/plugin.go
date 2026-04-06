@@ -1,4 +1,4 @@
-// Package jellyfin implements a Screenarr media server plugin for Jellyfin.
+// Package jellyfin implements a Pilot media server plugin for Jellyfin.
 // On import_complete it triggers a full library refresh.
 package jellyfin
 
@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {

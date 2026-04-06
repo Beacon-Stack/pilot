@@ -4,7 +4,7 @@
 
 Luminarr has a `watch_sync` scheduler job (~38 lines) that syncs watch
 history from media servers (Plex) every 6 hours. This enables automatic
-unmonitoring of watched content. Screenarr has no equivalent.
+unmonitoring of watched content. Pilot has no equivalent.
 
 ## Dependencies
 
@@ -30,7 +30,7 @@ import (
     "log/slog"
     "time"
 
-    "github.com/screenarr/screenarr/internal/scheduler"
+    "github.com/pilot/pilot/internal/scheduler"
 )
 
 // WatchSyncService is the interface the job needs.

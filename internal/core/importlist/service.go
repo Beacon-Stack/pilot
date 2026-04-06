@@ -14,13 +14,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/screenarr/screenarr/internal/core/dbutil"
-	"github.com/screenarr/screenarr/internal/core/show"
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/metadata/tmdbtv"
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/trakt"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/core/dbutil"
+	"github.com/beacon-media/pilot/internal/core/show"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/metadata/tmdbtv"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/trakt"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // ErrNotFound is returned when an import list config does not exist.

@@ -1,4 +1,4 @@
-// Package ntfy implements a Screenarr notification plugin that sends events
+// Package ntfy implements a Pilot notification plugin that sends events
 // to an ntfy server (ntfy.sh or self-hosted).
 package ntfy
 
@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -79,7 +79,7 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 		return fmt.Errorf("ntfy: building request: %w", err)
 	}
 
-	req.Header.Set("Title", fmt.Sprintf("Screenarr — %s", event.Type))
+	req.Header.Set("Title", fmt.Sprintf("Pilot — %s", event.Type))
 	req.Header.Set("Priority", fmt.Sprintf("%d", n.cfg.Priority))
 	if n.cfg.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+n.cfg.Token)
@@ -102,12 +102,12 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 func (n *Notifier) Test(ctx context.Context) error {
 	url := fmt.Sprintf("%s/%s", n.cfg.URL, n.cfg.Topic)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url,
-		strings.NewReader("Screenarr ntfy test — connection successful"))
+		strings.NewReader("Pilot ntfy test — connection successful"))
 	if err != nil {
 		return fmt.Errorf("ntfy: building test request: %w", err)
 	}
 
-	req.Header.Set("Title", "Screenarr")
+	req.Header.Set("Title", "Pilot")
 	req.Header.Set("Tags", "test")
 	req.Header.Set("Priority", "1")
 	if n.cfg.Token != "" {

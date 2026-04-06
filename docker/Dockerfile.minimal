@@ -16,17 +16,17 @@ COPY . .
 
 # modernc/sqlite is pure Go - CGO_ENABLED=0 produces a fully static binary.
 RUN CGO_ENABLED=0 GOOS=linux go build \
-      -ldflags "-X github.com/screenarr/screenarr/internal/version.Version=${VERSION} \
-                -X github.com/screenarr/screenarr/internal/version.BuildTime=${BUILD_TIME} \
-                -X github.com/screenarr/screenarr/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
-                -X github.com/screenarr/screenarr/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
+      -ldflags "-X github.com/pilot/pilot/internal/version.Version=${VERSION} \
+                -X github.com/pilot/pilot/internal/version.BuildTime=${BUILD_TIME} \
+                -X github.com/pilot/pilot/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
+                -X github.com/pilot/pilot/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
                 -s -w" \
-      -o /screenarr ./cmd/screenarr
+      -o /pilot ./cmd/pilot
 
 # Create a minimal /etc/passwd so the scratch image has a non-root user.
 # UID/GID 65532 matches the distroless "nonroot" convention.
-RUN echo "nonroot:x:65532:65532:nonroot:/:/sbin/nologin" > /etc/passwd.screenarr && \
-    echo "nonroot:x:65532:" > /etc/group.screenarr
+RUN echo "nonroot:x:65532:65532:nonroot:/:/sbin/nologin" > /etc/passwd.pilot && \
+    echo "nonroot:x:65532:" > /etc/group.pilot
 
 # ── Final stage ───────────────────────────────────────────────────────────────
 # scratch: zero OS footprint. No ffprobe - media scanning requires host-side
@@ -37,11 +37,11 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Minimal passwd/group so the process can run as a named non-root user.
-COPY --from=builder /etc/passwd.screenarr /etc/passwd
-COPY --from=builder /etc/group.screenarr /etc/group
+COPY --from=builder /etc/passwd.pilot /etc/passwd
+COPY --from=builder /etc/group.pilot /etc/group
 
 # The binary
-COPY --from=builder /screenarr /screenarr
+COPY --from=builder /pilot /pilot
 
 # Default data directory (mount a volume here in production)
 VOLUME ["/config"]
@@ -52,4 +52,4 @@ EXPOSE 8383
 # or mounted with appropriate permissions, for the process to write to it.
 USER nonroot:nonroot
 
-ENTRYPOINT ["/screenarr"]
+ENTRYPOINT ["/pilot"]

@@ -10,7 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/screenarr/screenarr/internal/core/library"
+	"github.com/beacon-media/pilot/internal/core/library"
 )
 
 // ── Request / response shapes ─────────────────────────────────────────────────

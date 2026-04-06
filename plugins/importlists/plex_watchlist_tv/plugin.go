@@ -1,4 +1,4 @@
-// Package plex_watchlist_tv provides a Screenarr import list plugin that fetches
+// Package plex_watchlist_tv provides a Pilot import list plugin that fetches
 // TV shows from a Plex user's watchlist via the Plex metadata API.
 package plexwatchlisttv
 
@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/metadata/tmdbtv"
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/metadata/tmdbtv"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {

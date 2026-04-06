@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/screenarr/screenarr/internal/core/dbutil"
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/core/dbutil"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
 )
 
 // ErrAlreadyBlocklisted is returned when adding a GUID that is already on the blocklist.

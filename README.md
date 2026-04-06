@@ -1,21 +1,21 @@
 <p align="center">
-  <h1 align="center">Screenarr</h1>
+  <h1 align="center">Pilot</h1>
   <p align="center">A self-hosted TV series manager built for simplicity.</p>
 </p>
 <p align="center">
-  <a href="https://github.com/screenarr/screenarr/blob/main/LICENSE"><img src="https://img.shields.io/github/license/screenarr/screenarr" alt="License"></a>
+  <a href="https://github.com/pilot/pilot/blob/main/LICENSE"><img src="https://img.shields.io/github/license/pilot/pilot" alt="License"></a>
   <img src="https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white" alt="Go 1.25">
 </p>
 <p align="center">
-  <a href="https://github.com/screenarr/screenarr/issues">Bug Reports</a> ·
-  <a href="https://github.com/screenarr/screenarr/wiki">Documentation</a>
+  <a href="https://github.com/pilot/pilot/issues">Bug Reports</a> ·
+  <a href="https://github.com/pilot/pilot/wiki">Documentation</a>
 </p>
 
 ---
 
-**Screenarr** monitors your TV series library, searches indexers, and automatically grabs the best available release for each episode. It is written in Go and React, starts in under a second, and idles under 60 MB of RAM.
+**Pilot** monitors your TV series library, searches indexers, and automatically grabs the best available release for each episode. It is written in Go and React, starts in under a second, and idles under 60 MB of RAM.
 
-If you are coming from Sonarr, Screenarr can import your quality profiles, libraries, indexers, download clients, and series list in one step.
+If you are coming from Sonarr, Pilot can import your quality profiles, libraries, indexers, download clients, and series list in one step.
 
 ## Features
 
@@ -102,8 +102,8 @@ Notifications:
 
 ```yaml
 services:
-  screenarr:
-    image: ghcr.io/screenarr/screenarr:latest
+  pilot:
+    image: ghcr.io/pilot/pilot:latest
     ports:
       - "8383:8383"
     volumes:
@@ -124,11 +124,11 @@ The `/config` volume stores the database and auto-generated API key. The `/tv` p
 
 ```bash
 docker run -d \
-  --name screenarr \
+  --name pilot \
   -p 8383:8383 \
   -v /path/to/config:/config \
   -v /path/to/tv:/tv \
-  ghcr.io/screenarr/screenarr:latest
+  ghcr.io/pilot/pilot:latest
 ```
 
 ### Build from source
@@ -136,8 +136,8 @@ docker run -d \
 Requires Go 1.25+ and Node.js 22+.
 
 ```bash
-git clone https://github.com/screenarr/screenarr
-cd screenarr
+git clone https://github.com/pilot/pilot
+cd pilot
 
 # Build the frontend
 cd web/ui && npm ci && npm run build && cd ../..
@@ -146,37 +146,37 @@ cd web/ui && npm ci && npm run build && cd ../..
 make build
 
 # Run
-./bin/screenarr
+./bin/pilot
 ```
 
 The default Docker image includes ffmpeg/ffprobe for media file analysis. When running from source, install ffmpeg separately if you want media scanning.
 
 ## Configuration
 
-Screenarr works out of the box with zero configuration. All settings can be changed through the web UI or via environment variables.
+Pilot works out of the box with zero configuration. All settings can be changed through the web UI or via environment variables.
 
 ### Environment variables
 
-All configuration keys can be set with the `SCREENARR_` prefix:
+All configuration keys can be set with the `PILOT_` prefix:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SCREENARR_SERVER_HOST` | `0.0.0.0` | Bind address |
-| `SCREENARR_SERVER_PORT` | `8383` | HTTP port |
-| `SCREENARR_DATABASE_DRIVER` | `sqlite` | `sqlite` or `postgres` |
-| `SCREENARR_DATABASE_PATH` | auto-detected | SQLite file path |
-| `SCREENARR_DATABASE_DSN` | | Postgres connection string |
-| `SCREENARR_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `SCREENARR_LOG_FORMAT` | `json` | `json` or `text` |
-| `SCREENARR_AUTH_API_KEY` | auto-generated | API key for external access |
+| `PILOT_SERVER_HOST` | `0.0.0.0` | Bind address |
+| `PILOT_SERVER_PORT` | `8383` | HTTP port |
+| `PILOT_DATABASE_DRIVER` | `sqlite` | `sqlite` or `postgres` |
+| `PILOT_DATABASE_PATH` | auto-detected | SQLite file path |
+| `PILOT_DATABASE_DSN` | | Postgres connection string |
+| `PILOT_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `PILOT_LOG_FORMAT` | `json` | `json` or `text` |
+| `PILOT_AUTH_API_KEY` | auto-generated | API key for external access |
 
 ### Config file
 
-Screenarr looks for `config.yaml` in these locations (in order):
+Pilot looks for `config.yaml` in these locations (in order):
 
 1. `/config/config.yaml` (Docker volume mount)
-2. `~/.config/screenarr/config.yaml`
-3. `/etc/screenarr/config.yaml`
+2. `~/.config/pilot/config.yaml`
+3. `/etc/pilot/config.yaml`
 4. `./config.yaml`
 
 ```yaml
@@ -186,7 +186,7 @@ server:
 
 database:
   driver: sqlite
-  # path: "/config/screenarr.db"
+  # path: "/config/pilot.db"
 
 log:
   level: info
@@ -195,17 +195,17 @@ log:
 
 ### Database path
 
-When running in Docker with a `/config` volume, the database defaults to `/config/screenarr.db`. On bare metal it defaults to `~/.config/screenarr/screenarr.db`. Override with `SCREENARR_DATABASE_PATH` or `database.path` in the config file.
+When running in Docker with a `/config` volume, the database defaults to `/config/pilot.db`. On bare metal it defaults to `~/.config/pilot/pilot.db`. Override with `PILOT_DATABASE_PATH` or `database.path` in the config file.
 
 ## API
 
-Screenarr exposes a REST API under `/api/v1/`. Interactive documentation is available at `/api/docs` when the server is running.
+Pilot exposes a REST API under `/api/v1/`. Interactive documentation is available at `/api/docs` when the server is running.
 
-All API requests from external clients require an `X-Api-Key` header. Browser requests from the same origin are authenticated automatically. The API key is shown in Settings > App Settings, or can be set via the `SCREENARR_AUTH_API_KEY` environment variable.
+All API requests from external clients require an `X-Api-Key` header. Browser requests from the same origin are authenticated automatically. The API key is shown in Settings > App Settings, or can be set via the `PILOT_AUTH_API_KEY` environment variable.
 
 ## Sonarr Migration
 
-Screenarr can import from a running Sonarr instance. Go to Settings > Import, enter your Sonarr URL and API key, preview what will be imported, and select which categories to bring over. Supported imports:
+Pilot can import from a running Sonarr instance. Go to Settings > Import, enter your Sonarr URL and API key, preview what will be imported, and select which categories to bring over. Supported imports:
 
 - Quality profiles
 - Libraries (root folders)
@@ -213,18 +213,18 @@ Screenarr can import from a running Sonarr instance. Go to Settings > Import, en
 - Download clients
 - Series (with monitoring state)
 
-Screenarr uses port 8383, so you can run both side by side during migration.
+Pilot uses port 8383, so you can run both side by side during migration.
 
 ## Privacy
 
-Screenarr makes outbound connections only to services you explicitly configure: TMDB (for metadata), your indexers, your download clients, your media servers, and your notification targets. No telemetry, no analytics, no crash reporting, no update checks.
+Pilot makes outbound connections only to services you explicitly configure: TMDB (for metadata), your indexers, your download clients, your media servers, and your notification targets. No telemetry, no analytics, no crash reporting, no update checks.
 
 Credentials are stored in your local config and database only. They are never written to logs.
 
 ## Project Structure
 
 ```
-cmd/screenarr/          Entry point
+cmd/pilot/          Entry point
 internal/
   api/                  HTTP router, middleware, API v1 handlers
   config/               Configuration loading
@@ -262,7 +262,7 @@ make generate
 
 ## How This Was Built
 
-Screenarr was built with AI assistance using [Claude Code](https://claude.ai/code) (Anthropic), with human design and architectural decisions throughout. The code is readable and tested. If something does not make sense, that is a bug. [Open an issue](https://github.com/screenarr/screenarr/issues).
+Pilot was built with AI assistance using [Claude Code](https://claude.ai/code) (Anthropic), with human design and architectural decisions throughout. The code is readable and tested. If something does not make sense, that is a bug. [Open an issue](https://github.com/pilot/pilot/issues).
 
 ## Contributing
 

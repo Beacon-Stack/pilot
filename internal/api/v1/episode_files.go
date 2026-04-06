@@ -7,8 +7,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/screenarr/screenarr/internal/core/show"
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/core/show"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
 )
 
 // ── Response body shapes ──────────────────────────────────────────────────────

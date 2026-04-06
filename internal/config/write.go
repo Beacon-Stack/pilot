@@ -12,7 +12,7 @@ import (
 // writeAtomic writes data to path atomically via temp-file + rename.
 func writeAtomic(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".screenarr-config-*.tmp")
+	tmp, err := os.CreateTemp(dir, ".pilot-config-*.tmp")
 	if err != nil {
 		return fmt.Errorf("creating temp file: %w", err)
 	}
@@ -47,7 +47,7 @@ func WriteConfigKey(configFile, key, value string) (writePath string, err error)
 		if info, err := os.Stat("/config"); err == nil && info.IsDir() {
 			path = "/config/config.yaml"
 		} else if home, _ := os.UserHomeDir(); home != "" {
-			path = filepath.Join(home, ".config", "screenarr", "config.yaml")
+			path = filepath.Join(home, ".config", "pilot", "config.yaml")
 		} else {
 			path = "/config/config.yaml"
 		}

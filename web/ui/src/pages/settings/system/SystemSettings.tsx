@@ -20,7 +20,7 @@ export default function SystemSettings() {
     <>
       <PageHeader
         title="System"
-        description="Runtime information about this Screenarr instance."
+        description="Runtime information about this Pilot instance."
       />
 
       <div

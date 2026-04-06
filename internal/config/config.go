@@ -2,7 +2,7 @@ package config
 
 // Config holds all application configuration.
 // Values are loaded from config.yaml and can be overridden by
-// SCREENARR_* environment variables (e.g. SCREENARR_SERVER_PORT=8383).
+// PILOT_* environment variables (e.g. PILOT_SERVER_PORT=8383).
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
@@ -40,7 +40,7 @@ type LogConfig struct {
 	Format string `mapstructure:"format"`
 }
 
-// AuthConfig holds the Screenarr API key used to authenticate requests.
+// AuthConfig holds the Pilot API key used to authenticate requests.
 type AuthConfig struct {
 	APIKey Secret `mapstructure:"api_key"`
 }
@@ -56,9 +56,9 @@ type TraktConfig struct {
 }
 
 // DefaultTMDBKey is set at build time via ldflags. Users can override
-// it with the SCREENARR_TVDB_API_KEY env var or tvdb.api_key in config.yaml.
+// it with the PILOT_TVDB_API_KEY env var or tvdb.api_key in config.yaml.
 var DefaultTMDBKey string
 
 // DefaultTraktClientID is set at build time via ldflags. Users can override
-// it with the SCREENARR_TRAKT_CLIENT_ID env var or trakt.client_id in config.yaml.
+// it with the PILOT_TRAKT_CLIENT_ID env var or trakt.client_id in config.yaml.
 var DefaultTraktClientID string

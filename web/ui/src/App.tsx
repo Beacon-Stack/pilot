@@ -53,7 +53,7 @@ export default function App() {
             <Route path="queue" element={<Queue />} />
             <Route path="history" element={<HistoryPage />} />
 
-            {/* Settings — flat, no nested layout (matches Screenarr) */}
+            {/* Settings — flat, no nested layout (matches Pilot) */}
             <Route path="settings/libraries" element={<LibraryList />} />
             <Route path="settings/media-management" element={<MediaManagementPage />} />
             <Route path="settings/quality-profiles" element={<QualityProfileList />} />

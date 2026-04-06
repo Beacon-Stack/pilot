@@ -13,12 +13,12 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/dbutil"
-	"github.com/screenarr/screenarr/internal/events"
-	"github.com/screenarr/screenarr/internal/ratelimit"
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/dbutil"
+	"github.com/beacon-media/pilot/internal/events"
+	"github.com/beacon-media/pilot/internal/ratelimit"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // ErrNotFound is returned when an indexer config does not exist.

@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -289,7 +289,7 @@ type errMagnetRedirect struct{ magnetURL string }
 func (e errMagnetRedirect) Error() string { return "magnet redirect: " + e.magnetURL }
 
 func (c *Client) addTorrentURL(ctx context.Context, torrentURL string) (string, error) {
-	// Download the .torrent file using Screenarr's own HTTP client so that
+	// Download the .torrent file using Pilot's own HTTP client so that
 	// qBittorrent does not need network access to the indexer/Prowlarr URL.
 	torrentData, err := c.fetchURL(ctx, torrentURL)
 	if err != nil {

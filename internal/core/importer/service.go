@@ -16,11 +16,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/screenarr/screenarr/internal/core/mediamanagement"
-	"github.com/screenarr/screenarr/internal/core/parser"
-	dbsqlite "github.com/screenarr/screenarr/internal/db/generated/sqlite"
-	"github.com/screenarr/screenarr/internal/events"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/core/mediamanagement"
+	"github.com/beacon-media/pilot/internal/core/parser"
+	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/internal/events"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // epKey is used to index episodes by (season, episode) number.

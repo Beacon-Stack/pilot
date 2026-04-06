@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/core/stats"
-	"github.com/screenarr/screenarr/internal/scheduler"
+	"github.com/beacon-media/pilot/internal/core/stats"
+	"github.com/beacon-media/pilot/internal/scheduler"
 )
 
 // StatsSnapshot returns a Job that records a point-in-time stats snapshot daily.

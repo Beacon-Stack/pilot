@@ -1,5 +1,5 @@
 // Package sonarrimport fetches data from a running Sonarr instance and
-// creates matching records in Screenarr's database using the existing service
+// creates matching records in Pilot's database using the existing service
 // layer. It is used only for the one-time migration wizard in the UI.
 package sonarrimport
 
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/safedialer"
+	"github.com/beacon-media/pilot/internal/safedialer"
 )
 
 // ── Sonarr API types ─────────────────────────────────────────────────────────

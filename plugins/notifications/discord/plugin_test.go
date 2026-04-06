@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func TestNotify_Success(t *testing.T) {
@@ -74,8 +74,8 @@ func TestNotify_ServerError(t *testing.T) {
 
 func TestNew_DefaultUsername(t *testing.T) {
 	n := New(Config{WebhookURL: "http://example.com"})
-	if n.cfg.Username != "Screenarr" {
-		t.Errorf("Username = %q, want Screenarr", n.cfg.Username)
+	if n.cfg.Username != "Pilot" {
+		t.Errorf("Username = %q, want Pilot", n.cfg.Username)
 	}
 }
 

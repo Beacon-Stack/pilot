@@ -6,7 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/screenarr/screenarr/internal/sonarrimport"
+	"github.com/beacon-media/pilot/internal/sonarrimport"
 )
 
 // ── Request / response shapes ────────────────────────────────────────────────

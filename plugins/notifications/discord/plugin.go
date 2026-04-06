@@ -1,4 +1,4 @@
-// Package discord implements a Screenarr notification plugin that sends events
+// Package discord implements a Pilot notification plugin that sends events
 // as rich embed messages to a Discord channel via a Discord webhook URL.
 package discord
 
@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/screenarr/screenarr/internal/registry"
-	"github.com/screenarr/screenarr/internal/safedialer"
-	"github.com/screenarr/screenarr/pkg/plugin"
+	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 func init() {
@@ -55,7 +55,7 @@ type Notifier struct {
 // New creates a new Notifier from the given config.
 func New(cfg Config) *Notifier {
 	if cfg.Username == "" {
-		cfg.Username = "Screenarr"
+		cfg.Username = "Pilot"
 	}
 	return &Notifier{
 		cfg:    cfg,
@@ -104,7 +104,7 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 		AvatarURL: n.cfg.AvatarURL,
 		Embeds: []discordEmbed{
 			{
-				Title:       fmt.Sprintf("[Screenarr] %s", event.Type),
+				Title:       fmt.Sprintf("[Pilot] %s", event.Type),
 				Description: event.Message,
 				Color:       colorForEvent(event.Type),
 				Timestamp:   event.Timestamp.UTC().Format(time.RFC3339),
@@ -141,6 +141,6 @@ func (n *Notifier) Test(ctx context.Context) error {
 	return n.Notify(ctx, plugin.NotificationEvent{
 		Type:      plugin.EventType("test"),
 		Timestamp: time.Now().UTC(),
-		Message:   "Screenarr Discord test — connection successful",
+		Message:   "Pilot Discord test — connection successful",
 	})
 }

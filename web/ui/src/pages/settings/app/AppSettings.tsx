@@ -393,7 +393,7 @@ function BackupRestoreSection() {
         const data = await res.json().catch(() => ({ title: "Upload failed" }));
         throw new Error(data.title || `HTTP ${res.status}`);
       }
-      toast.success("Restore staged — restart Screenarr to apply the backup.");
+      toast.success("Restore staged — restart Pilot to apply the backup.");
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -504,7 +504,7 @@ export default function AppSettings() {
     <>
       <PageHeader
         title="App Settings"
-        description="Customize the appearance and behaviour of Screenarr."
+        description="Customize the appearance and behaviour of Pilot."
       />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
