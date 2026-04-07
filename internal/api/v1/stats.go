@@ -6,7 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/beacon-media/pilot/internal/core/stats"
+	"github.com/beacon-stack/pilot/internal/core/stats"
 )
 
 // ── Output wrappers ───────────────────────────────────────────────────────────

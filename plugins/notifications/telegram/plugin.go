@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/beacon-media/pilot/internal/registry"
-	"github.com/beacon-media/pilot/internal/safedialer"
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/internal/registry"
+	"github.com/beacon-stack/pilot/internal/safedialer"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 func init() {

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/beacon-media/pilot/internal/core/downloader"
-	"github.com/beacon-media/pilot/internal/core/indexer"
+	"github.com/beacon-stack/pilot/internal/core/downloader"
+	"github.com/beacon-stack/pilot/internal/core/indexer"
 )
 
 // SyncHandler returns an http.HandlerFunc that triggers an immediate

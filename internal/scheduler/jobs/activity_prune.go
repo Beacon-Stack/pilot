@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/beacon-media/pilot/internal/core/activity"
-	"github.com/beacon-media/pilot/internal/scheduler"
+	"github.com/beacon-stack/pilot/internal/core/activity"
+	"github.com/beacon-stack/pilot/internal/scheduler"
 )
 
 // ActivityPrune returns a Job that deletes activity log entries older than 30 days.

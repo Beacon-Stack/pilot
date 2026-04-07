@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/beacon-media/pilot/pkg/plugin"
-	"github.com/beacon-media/pilot/plugins/downloaders/nzbget"
+	"github.com/beacon-stack/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/plugins/downloaders/nzbget"
 )
 
 type rpcHandler struct {

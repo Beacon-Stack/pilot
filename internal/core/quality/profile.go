@@ -3,7 +3,7 @@ package quality
 import (
 	"strings"
 
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // Profile defines a quality policy for a monitored series.

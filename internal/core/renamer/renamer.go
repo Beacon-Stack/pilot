@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // Default format constants used when a library has no explicit format configured.

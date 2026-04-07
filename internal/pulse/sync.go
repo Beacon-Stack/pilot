@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beacon-media/pulse/pkg/sdk"
-	"github.com/beacon-media/pilot/internal/core/downloader"
-	"github.com/beacon-media/pilot/internal/core/indexer"
+	"github.com/beacon-stack/pulse/pkg/sdk"
+	"github.com/beacon-stack/pilot/internal/core/downloader"
+	"github.com/beacon-stack/pilot/internal/core/indexer"
 )
 
 // SyncIndexers pulls indexers assigned to this service from Pulse

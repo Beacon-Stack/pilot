@@ -13,11 +13,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/beacon-media/pilot/internal/core/dbutil"
-	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
-	"github.com/beacon-media/pilot/internal/events"
-	"github.com/beacon-media/pilot/internal/registry"
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
+	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-stack/pilot/internal/events"
+	"github.com/beacon-stack/pilot/internal/registry"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // ErrNotFound is returned when a download client config does not exist.

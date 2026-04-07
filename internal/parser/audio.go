@@ -3,7 +3,7 @@ package parser
 import (
 	"regexp"
 
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 var (

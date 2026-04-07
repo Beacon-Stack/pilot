@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/beacon-media/pilot/internal/core/show"
-	"github.com/beacon-media/pilot/internal/scheduler"
+	"github.com/beacon-stack/pilot/internal/core/show"
+	"github.com/beacon-stack/pilot/internal/scheduler"
 )
 
 // RefreshMetadata returns a Job that re-fetches metadata for all series.

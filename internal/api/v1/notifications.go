@@ -9,8 +9,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/beacon-media/pilot/internal/core/notification"
-	"github.com/beacon-media/pilot/internal/registry"
+	"github.com/beacon-stack/pilot/internal/core/notification"
+	"github.com/beacon-stack/pilot/internal/registry"
 )
 
 // ── Request / response shapes ─────────────────────────────────────────────────

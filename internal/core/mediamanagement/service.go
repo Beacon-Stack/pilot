@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beacon-media/pilot/internal/core/dbutil"
-	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
+	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
 )
 
 // Settings is the application-level view of the media_management table.

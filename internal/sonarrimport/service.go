@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/beacon-media/pilot/internal/core/downloader"
-	"github.com/beacon-media/pilot/internal/core/indexer"
-	"github.com/beacon-media/pilot/internal/core/library"
-	"github.com/beacon-media/pilot/internal/core/quality"
-	"github.com/beacon-media/pilot/internal/core/show"
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/internal/core/downloader"
+	"github.com/beacon-stack/pilot/internal/core/indexer"
+	"github.com/beacon-stack/pilot/internal/core/library"
+	"github.com/beacon-stack/pilot/internal/core/quality"
+	"github.com/beacon-stack/pilot/internal/core/show"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // ── Result types ─────────────────────────────────────────────────────────────

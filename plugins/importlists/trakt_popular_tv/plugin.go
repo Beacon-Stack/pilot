@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/beacon-media/pilot/internal/registry"
-	"github.com/beacon-media/pilot/internal/trakt"
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/internal/registry"
+	"github.com/beacon-stack/pilot/internal/trakt"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 func init() {

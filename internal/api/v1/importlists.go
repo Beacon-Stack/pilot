@@ -9,7 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/beacon-media/pilot/internal/core/importlist"
+	"github.com/beacon-stack/pilot/internal/core/importlist"
 )
 
 // ── Request / response shapes ────────────────────────────────────────────────

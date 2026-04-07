@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 func TestValidateScriptName_Valid(t *testing.T) {

@@ -1,9 +1,9 @@
-module github.com/beacon-media/pilot
+module github.com/beacon-stack/pilot
 
 go 1.25.0
 
 require (
-	github.com/beacon-media/pulse v0.0.0
+	github.com/beacon-stack/pulse v0.0.0
 	github.com/coder/websocket v1.8.14
 	github.com/danielgtaylor/huma/v2 v2.37.3
 	github.com/go-chi/chi/v5 v5.2.5
@@ -46,4 +46,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace github.com/beacon-media/pulse => /data/home/davidfic/dev/beacon/pulse
+replace github.com/beacon-stack/pulse => /data/home/davidfic/dev/beacon/pulse

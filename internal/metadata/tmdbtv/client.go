@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beacon-media/pilot/internal/appinfo"
+	"github.com/beacon-stack/pilot/internal/appinfo"
 )
 
 const (

@@ -13,7 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/beacon-media/pilot/internal/events"
+	"github.com/beacon-stack/pilot/internal/events"
 )
 
 const (

@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/beacon-media/pulse/pkg/sdk"
-	"github.com/beacon-media/pilot/internal/config"
-	"github.com/beacon-media/pilot/internal/version"
+	"github.com/beacon-stack/pulse/pkg/sdk"
+	"github.com/beacon-stack/pilot/internal/config"
+	"github.com/beacon-stack/pilot/internal/version"
 )
 
 // Integration wraps the Pulse SDK client and provides

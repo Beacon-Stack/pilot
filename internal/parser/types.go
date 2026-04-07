@@ -3,7 +3,7 @@
 // language, and marker information from a single Parse() call.
 package parser
 
-import "github.com/beacon-media/pilot/pkg/plugin"
+import "github.com/beacon-stack/pilot/pkg/plugin"
 
 // Language identifies a detected language tag.
 type Language string

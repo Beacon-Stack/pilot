@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 func TestNotify_Success(t *testing.T) {

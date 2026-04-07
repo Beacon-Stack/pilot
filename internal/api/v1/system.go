@@ -8,9 +8,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/beacon-media/pilot/internal/appinfo"
-	"github.com/beacon-media/pilot/internal/config"
-	"github.com/beacon-media/pilot/internal/version"
+	"github.com/beacon-stack/pilot/internal/appinfo"
+	"github.com/beacon-stack/pilot/internal/config"
+	"github.com/beacon-stack/pilot/internal/version"
 )
 
 // systemStatus holds the shape of the status response body.

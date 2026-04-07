@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beacon-media/pilot/internal/safedialer"
+	"github.com/beacon-stack/pilot/internal/safedialer"
 )
 
 // ── Sonarr API types ─────────────────────────────────────────────────────────

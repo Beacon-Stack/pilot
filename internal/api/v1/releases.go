@@ -9,11 +9,11 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/beacon-media/pilot/internal/core/downloader"
-	"github.com/beacon-media/pilot/internal/core/indexer"
-	"github.com/beacon-media/pilot/internal/core/show"
-	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
-	"github.com/beacon-media/pilot/pkg/plugin"
+	"github.com/beacon-stack/pilot/internal/core/downloader"
+	"github.com/beacon-stack/pilot/internal/core/indexer"
+	"github.com/beacon-stack/pilot/internal/core/show"
+	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // ── Request / response shapes ────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
 )
 
 // ── Request / response shapes ────────────────────────────────────────────────

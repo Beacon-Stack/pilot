@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"time"
 
-	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
-	"github.com/beacon-media/pilot/internal/events"
-	"github.com/beacon-media/pilot/pkg/plugin"
+	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-stack/pilot/internal/events"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // Item is the queue-service view of an active download, enriching the raw

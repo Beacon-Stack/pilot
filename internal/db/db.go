@@ -6,7 +6,7 @@ import (
 
 	_ "modernc.org/sqlite" // registers "sqlite" driver
 
-	"github.com/beacon-media/pilot/internal/config"
+	"github.com/beacon-stack/pilot/internal/config"
 )
 
 // DB wraps the underlying sql.DB and tracks which driver is in use.

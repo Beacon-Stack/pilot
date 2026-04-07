@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
-	"github.com/beacon-media/pilot/internal/events"
+	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-stack/pilot/internal/events"
 )
 
 // ErrNotFound is returned when a library does not exist.
