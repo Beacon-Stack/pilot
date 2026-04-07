@@ -1,6 +1,6 @@
 import { CheckCircle2, Circle } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
-import type { Season, EpisodeFile } from "@/types";
+import type { Season } from "@/types";
 
 interface SeasonSummary {
   season: Season;

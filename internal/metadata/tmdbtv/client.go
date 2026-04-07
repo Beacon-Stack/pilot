@@ -173,6 +173,7 @@ func (c *Client) GetSeasonEpisodes(ctx context.Context, tmdbID int, seasonNum in
 			SeasonNumber  int    `json:"season_number"`
 			EpisodeNumber int    `json:"episode_number"`
 			StillPath     string `json:"still_path"`
+			Runtime       int    `json:"runtime"`
 		} `json:"episodes"`
 	}
 
@@ -184,12 +185,14 @@ func (c *Client) GetSeasonEpisodes(ctx context.Context, tmdbID int, seasonNum in
 	episodes := make([]EpisodeDetail, 0, len(raw.Episodes))
 	for _, e := range raw.Episodes {
 		episodes = append(episodes, EpisodeDetail{
-			ID:            e.ID,
-			SeasonNumber:  e.SeasonNumber,
-			EpisodeNumber: e.EpisodeNumber,
-			Title:         e.Name,
-			Overview:      e.Overview,
-			AirDate:       e.AirDate,
+			ID:             e.ID,
+			SeasonNumber:   e.SeasonNumber,
+			EpisodeNumber:  e.EpisodeNumber,
+			Title:          e.Name,
+			Overview:       e.Overview,
+			AirDate:        e.AirDate,
+			StillPath:      e.StillPath,
+			RuntimeMinutes: e.Runtime,
 		})
 	}
 

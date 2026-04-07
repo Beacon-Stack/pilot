@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -9,19 +10,20 @@ import (
 
 	"github.com/beacon-media/pilot/internal/core/show"
 	dbsqlite "github.com/beacon-media/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-media/pilot/pkg/plugin"
 )
 
 // ── Response body shapes ──────────────────────────────────────────────────────
 
 type episodeFileBody struct {
-	ID          string `json:"id"           doc:"Episode file UUID"`
-	EpisodeID   string `json:"episode_id"   doc:"Parent episode UUID"`
-	SeriesID    string `json:"series_id"    doc:"Parent series UUID"`
-	Path        string `json:"path"         doc:"Absolute path on disk"`
-	SizeBytes   int64  `json:"size_bytes"   doc:"File size in bytes"`
-	QualityJSON string `json:"quality_json" doc:"JSON-encoded quality metadata"`
-	ImportedAt  string `json:"imported_at"  doc:"ISO-8601 timestamp of import"`
-	IndexedAt   string `json:"indexed_at"   doc:"ISO-8601 timestamp of last index"`
+	ID         string         `json:"id"           doc:"Episode file UUID"`
+	EpisodeID  string         `json:"episode_id"   doc:"Parent episode UUID"`
+	SeriesID   string         `json:"series_id"    doc:"Parent series UUID"`
+	Path       string         `json:"path"         doc:"Absolute path on disk"`
+	SizeBytes  int64          `json:"size_bytes"   doc:"File size in bytes"`
+	Quality    plugin.Quality `json:"quality"      doc:"Quality metadata"`
+	ImportedAt string         `json:"imported_at"  doc:"ISO-8601 timestamp of import"`
+	IndexedAt  string         `json:"indexed_at"   doc:"ISO-8601 timestamp of last index"`
 }
 
 type renamePreviewBody struct {
@@ -138,14 +140,17 @@ func RegisterEpisodeFileRoutes(api huma.API, svc *show.Service) {
 
 // episodeFileToBody converts a DB model to the API response shape.
 func episodeFileToBody(f dbsqlite.EpisodeFile) *episodeFileBody {
+	var q plugin.Quality
+	_ = json.Unmarshal([]byte(f.QualityJson), &q)
+
 	return &episodeFileBody{
-		ID:          f.ID,
-		EpisodeID:   f.EpisodeID,
-		SeriesID:    f.SeriesID,
-		Path:        f.Path,
-		SizeBytes:   f.SizeBytes,
-		QualityJSON: f.QualityJson,
-		ImportedAt:  f.ImportedAt,
-		IndexedAt:   f.IndexedAt,
+		ID:         f.ID,
+		EpisodeID:  f.EpisodeID,
+		SeriesID:   f.SeriesID,
+		Path:       f.Path,
+		SizeBytes:  f.SizeBytes,
+		Quality:    q,
+		ImportedAt: f.ImportedAt,
+		IndexedAt:  f.IndexedAt,
 	}
 }

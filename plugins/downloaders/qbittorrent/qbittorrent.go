@@ -267,18 +267,21 @@ func (c *Client) addMagnet(ctx context.Context, magnetURL string) (string, error
 		return "", errors.New("qbittorrent: could not parse info hash from magnet link")
 	}
 
+	// Count trackers in the magnet for diagnostics.
+	trackerCount := strings.Count(magnetURL, "&tr=") + strings.Count(magnetURL, "?tr=")
+
 	form := c.addFormBase()
 	form.Set("urls", magnetURL)
 
 	resp, err := c.post(ctx, "/api/v2/torrents/add", form)
 	if err != nil {
-		return "", fmt.Errorf("qbittorrent: add magnet failed: %w", err)
+		return "", fmt.Errorf("qbittorrent: add magnet failed (hash=%s, trackers=%d): %w", hash, trackerCount, err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<10)) // 1 KiB — response is "Ok." or error message
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<10))
 	if strings.TrimSpace(string(body)) != "Ok." {
-		return "", fmt.Errorf("qbittorrent: add magnet returned %q", string(body))
+		return "", fmt.Errorf("qbittorrent: add magnet returned %q (hash=%s, trackers=%d, magnet_len=%d)", string(body), hash, trackerCount, len(magnetURL))
 	}
 	return hash, nil
 }

@@ -45,10 +45,12 @@ func (s *Scheduler) Jobs() []Job {
 
 // RunNow triggers the named job immediately in a new goroutine.
 // Returns an error if no job with that name is registered.
-func (s *Scheduler) RunNow(ctx context.Context, name string) error {
+// The job receives a detached context so it is not cancelled when the
+// caller's context (e.g. an HTTP request) completes.
+func (s *Scheduler) RunNow(_ context.Context, name string) error {
 	for _, j := range s.jobs {
 		if j.Name == name {
-			go j.Fn(ctx)
+			go j.Fn(context.Background())
 			return nil
 		}
 	}

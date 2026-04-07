@@ -57,12 +57,6 @@ function kindDef(value: string): KindDef | undefined {
   return KINDS.find((k) => k.value === value);
 }
 
-function kindDisplayName(value: string): string {
-  const def = kindDef(value);
-  if (!def) return value;
-  return `${def.group} — ${def.label}`;
-}
-
 // ── Shared styles ──────────────────────────────────────────────────────────────
 
 const inputStyle: React.CSSProperties = {
@@ -538,7 +532,7 @@ function RowActions({ cfg, onEdit }: { cfg: ImportListConfig; onEdit: () => void
   function handleTest() {
     setTestResult(null);
     test.mutate(cfg.id, {
-      onSuccess: (r) => { setTestResult(r); setTimeout(() => setTestResult(null), 4000); },
+      onSuccess: () => { setTestResult({ ok: true }); setTimeout(() => setTestResult(null), 4000); },
       onError: (e) => { setTestResult({ ok: false, message: e.message }); setTimeout(() => setTestResult(null), 4000); },
     });
   }

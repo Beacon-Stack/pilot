@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Search, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, Search, X } from "lucide-react";
 
 interface Props {
   count: number;

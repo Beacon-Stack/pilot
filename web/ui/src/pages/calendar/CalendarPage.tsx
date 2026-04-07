@@ -73,7 +73,7 @@ function EpisodeChip({
     >
       {episode.series_poster_url ? (
         <img
-          src={episode.series_poster_url}
+          src={episode.series_poster_url?.startsWith("/") ? `https://image.tmdb.org/t/p/w92${episode.series_poster_url}` : episode.series_poster_url}
           alt=""
           style={{
             width: 14,

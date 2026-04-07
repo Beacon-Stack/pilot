@@ -245,7 +245,7 @@ export default function QualityProfileList() {
   }
 
   return (
-    <>
+    <div style={{ padding: 24, maxWidth: 900 }}>
       <PageHeader
         title="Quality Profiles"
         description="Define which quality tiers Pilot should download and when to upgrade."
@@ -312,6 +312,6 @@ export default function QualityProfileList() {
       {viewing && (
         <ProfileDetailModal profile={viewing} onClose={() => setViewing(null)} />
       )}
-    </>
+    </div>
   );
 }

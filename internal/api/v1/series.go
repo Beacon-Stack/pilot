@@ -62,6 +62,8 @@ type episodeBody struct {
 	Overview       string `json:"overview"                   doc:"Episode synopsis"`
 	Monitored      bool   `json:"monitored"                  doc:"Whether this episode is monitored"`
 	HasFile        bool   `json:"has_file"                   doc:"Whether a file is linked to this episode"`
+	StillPath      string `json:"still_path,omitempty"       doc:"TMDB still image path"`
+	RuntimeMinutes int    `json:"runtime_minutes,omitempty"  doc:"Episode runtime in minutes"`
 }
 
 type lookupResultBody struct {
@@ -240,6 +242,8 @@ func episodeToBody(e show.Episode) *episodeBody {
 		Overview:       e.Overview,
 		Monitored:      e.Monitored,
 		HasFile:        e.HasFile,
+		StillPath:      e.StillPath,
+		RuntimeMinutes: e.RuntimeMinutes,
 	}
 }
 

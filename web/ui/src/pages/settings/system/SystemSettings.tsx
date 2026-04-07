@@ -17,7 +17,7 @@ export default function SystemSettings() {
     : [];
 
   return (
-    <>
+    <div style={{ padding: 24, maxWidth: 900 }}>
       <PageHeader
         title="System"
         description="Runtime information about this Pilot instance."
@@ -67,6 +67,6 @@ export default function SystemSettings() {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

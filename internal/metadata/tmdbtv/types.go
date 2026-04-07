@@ -40,10 +40,12 @@ type SeasonSummary struct {
 
 // EpisodeDetail holds per-episode metadata returned by /tv/{id}/season/{n}.
 type EpisodeDetail struct {
-	ID            int
-	SeasonNumber  int
-	EpisodeNumber int
-	Title         string
-	Overview      string
-	AirDate       string
+	ID             int
+	SeasonNumber   int
+	EpisodeNumber  int
+	Title          string
+	Overview       string
+	AirDate        string
+	StillPath      string
+	RuntimeMinutes int
 }

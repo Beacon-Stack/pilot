@@ -48,7 +48,6 @@ export default function AddSeriesDrawer({ result, isAdded, onClose }: Props) {
 
   const handleAdd = () => {
     if (!libraryId) { toast.error("Select a library first"); return; }
-    if (!profileId) { toast.error("Select a quality profile first"); return; }
 
     addSeries.mutate(
       {
@@ -162,17 +161,12 @@ export default function AddSeriesDrawer({ result, isAdded, onClose }: Props) {
             {/* Quality Profile */}
             <div>
               <label style={labelStyle}>Quality Profile</label>
-              {!profiles?.length ? (
-                <div style={{ fontSize: 12, color: "var(--color-warning)" }}>
-                  No quality profiles configured. <a href="/settings/quality-profiles" style={{ color: "var(--color-accent)" }}>Create one first</a>
-                </div>
-              ) : (
-                <select style={inputStyle} value={profileId} onChange={(e) => setProfileId(e.target.value)}>
-                  {profiles.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              )}
+              <select style={inputStyle} value={profileId} onChange={(e) => setProfileId(e.target.value)}>
+                <option value="">Any Quality</option>
+                {profiles?.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
             </div>
 
             {/* Monitor Type */}
@@ -209,12 +203,12 @@ export default function AddSeriesDrawer({ result, isAdded, onClose }: Props) {
         <div style={{ padding: "12px 20px", borderTop: "1px solid var(--color-border-subtle)", display: "flex", justifyContent: "flex-end" }}>
           <button
             onClick={handleAdd}
-            disabled={addSeries.isPending || !libraryId || !profileId}
+            disabled={addSeries.isPending || !libraryId}
             style={{
               padding: "8px 20px", borderRadius: 6, border: "none",
               background: "var(--color-accent)", color: "var(--color-accent-fg)",
               fontSize: 13, fontWeight: 500, cursor: "pointer",
-              opacity: !libraryId || !profileId ? 0.5 : 1,
+              opacity: !libraryId ? 0.5 : 1,
               display: "flex", alignItems: "center", gap: 6,
             }}
           >

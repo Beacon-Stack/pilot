@@ -54,6 +54,8 @@ export interface Episode {
   overview: string;
   monitored: boolean;
   has_file: boolean;
+  still_path?: string;
+  runtime_minutes?: number;
 }
 
 export interface EpisodeFile {
@@ -126,15 +128,15 @@ export interface IndexerConfig {
 export interface ReleaseResult {
   title: string;
   guid: string;
-  indexer_url: string;
+  indexer: string;
+  indexer_id: string;
+  download_url: string;
+  info_url: string;
   size: number;
   protocol: string; // "usenet" or "torrent"
-  seeders: number;
+  seeds: number;
   peers: number;
   age_days: number;
-  indexer_id: string;
-  indexer_name: string;
-  indexer_flags: string[];
   quality: {
     name: string;
     resolution: string;
@@ -142,6 +144,7 @@ export interface ReleaseResult {
     codec: string;
     hdr: string;
   };
+  quality_score: number;
 }
 
 // ── Download Clients ────────────────────────────────────────────────────────

@@ -19,16 +19,28 @@ export function useSearchReleases({ seriesId, season, episode }: SearchReleasesP
     queryFn: () =>
       apiFetch<ReleaseResult[]>(`/series/${seriesId}/releases${qs ? `?${qs}` : ""}`),
     enabled: enabled && !!seriesId,
-    staleTime: 0, // always re-fetch when modal opens
+    staleTime: 0,
+    gcTime: 0,       // don't cache stale/error results across modal opens
+    retry: 1,        // retry once then show error
   });
+}
+
+interface GrabReleaseInput {
+  guid: string;
+  title: string;
+  indexer_id: string;
+  protocol: string;
+  download_url: string;
+  size: number;
+  quality: { resolution: string; source: string; codec: string; hdr: string; name: string };
 }
 
 export function useGrabRelease(seriesId: string) {
   return useMutation({
-    mutationFn: (guid: string) =>
+    mutationFn: (release: GrabReleaseInput) =>
       apiFetch<void>(`/series/${seriesId}/releases/grab`, {
         method: "POST",
-        body: JSON.stringify({ guid }),
+        body: JSON.stringify(release),
       }),
   });
 }

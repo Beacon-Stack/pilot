@@ -104,46 +104,74 @@ export default function EpisodeRow({
 
       {/* Expanded detail */}
       {expanded && (
-        <div style={{ padding: "8px 12px 16px 72px", fontSize: 13 }}>
-          {/* Overview */}
-          {ep.overview && (
-            <p style={{ margin: "0 0 12px", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
-              {ep.overview}
-            </p>
-          )}
+        <div style={{ padding: "10px 12px 16px 52px", fontSize: 13 }}>
+          <div style={{ display: "flex", gap: 16 }}>
+            {/* Episode still image */}
+            {ep.still_path && (
+              <img
+                src={`https://image.tmdb.org/t/p/w300${ep.still_path}`}
+                alt={ep.title}
+                style={{
+                  width: 200, borderRadius: 6, flexShrink: 0,
+                  aspectRatio: "16/9", objectFit: "cover",
+                  background: "var(--color-bg-elevated)",
+                }}
+              />
+            )}
 
-          {/* File info */}
-          {file && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-              <div style={{ color: "var(--color-text-muted)", fontSize: 12 }}>
-                <span style={{ fontWeight: 500 }}>File:</span>{" "}
-                <span style={{ fontFamily: "var(--font-family-mono)", fontSize: 11 }}>{file.path}</span>
+            {/* Episode metadata */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Meta row */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 8, fontSize: 12, color: "var(--color-text-muted)" }}>
+                {ep.air_date && (
+                  <span>
+                    {new Date(ep.air_date).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "long", day: "numeric" })}
+                  </span>
+                )}
+                {ep.runtime_minutes != null && ep.runtime_minutes > 0 && (
+                  <span>{ep.runtime_minutes} min</span>
+                )}
               </div>
-              <div style={{ color: "var(--color-text-muted)", fontSize: 12 }}>
-                <span style={{ fontWeight: 500 }}>Quality:</span>{" "}
-                {file.quality.source && `${file.quality.source} `}
-                {file.quality.resolution && `${file.quality.resolution} `}
-                {file.quality.codec && `· ${file.quality.codec} `}
-                {file.quality.hdr && `· ${file.quality.hdr} `}
-                · {formatBytes(file.size_bytes)}
-              </div>
-              <div style={{ color: "var(--color-text-muted)", fontSize: 12 }}>
-                <span style={{ fontWeight: 500 }}>Imported:</span>{" "}
-                {new Date(file.imported_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+
+              {/* Overview */}
+              {ep.overview && (
+                <p style={{ margin: "0 0 12px", color: "var(--color-text-secondary)", lineHeight: 1.55, fontSize: 13 }}>
+                  {ep.overview}
+                </p>
+              )}
+
+              {/* File info */}
+              {file && (
+                <div style={{
+                  display: "flex", flexDirection: "column", gap: 3, marginBottom: 12,
+                  padding: "8px 10px", borderRadius: 6,
+                  background: "var(--color-bg-elevated)",
+                  border: "1px solid var(--color-border-subtle)",
+                }}>
+                  <div style={{ color: "var(--color-text-muted)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ fontWeight: 500 }}>File:</span>{" "}
+                    <span style={{ fontFamily: "var(--font-family-mono)", fontSize: 11 }}>{file.path.split("/").pop()}</span>
+                  </div>
+                  <div style={{ color: "var(--color-text-muted)", fontSize: 12 }}>
+                    <span style={{ fontWeight: 500 }}>Quality:</span>{" "}
+                    {[file.quality?.source, file.quality?.resolution, file.quality?.codec].filter(Boolean).join(" · ") || "Unknown"}
+                    {" · "}{formatBytes(file.size_bytes)}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={onSearch} style={actionBtnStyle}>
+                  <Search size={13} /> Search
+                </button>
+                {file && onDeleteFile && (
+                  <button onClick={onDeleteFile} style={{ ...actionBtnStyle, color: "var(--color-danger)" }}>
+                    <Trash2 size={13} /> Delete File
+                  </button>
+                )}
               </div>
             </div>
-          )}
-
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onSearch} style={actionBtnStyle}>
-              <Search size={13} /> Search
-            </button>
-            {file && onDeleteFile && (
-              <button onClick={onDeleteFile} style={{ ...actionBtnStyle, color: "var(--color-danger)" }}>
-                <Trash2 size={13} /> Delete File
-              </button>
-            )}
           </div>
         </div>
       )}

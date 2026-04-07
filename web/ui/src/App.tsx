@@ -22,7 +22,6 @@ import CustomFormatsPage from "@/pages/settings/custom-formats/CustomFormatsPage
 import ImportListList from "@/pages/settings/import-lists/ImportListList";
 import ImportExclusions from "@/pages/settings/import-lists/ImportExclusions";
 import ImportPage from "@/pages/settings/import/ImportPage";
-import PlaceholderPage from "@/pages/PlaceholderPage";
 import Queue from "@/pages/queue/Queue";
 import CalendarPage from "@/pages/calendar/CalendarPage";
 import WantedPage from "@/pages/wanted/WantedPage";

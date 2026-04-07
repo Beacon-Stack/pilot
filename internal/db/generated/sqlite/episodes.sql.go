@@ -45,12 +45,14 @@ func (q *Queries) CountMissingEpisodes(ctx context.Context) (int64, error) {
 const createEpisode = `-- name: CreateEpisode :one
 INSERT INTO episodes (
     id, series_id, season_id, season_number, episode_number,
-    absolute_number, air_date, title, overview, monitored, has_file
+    absolute_number, air_date, title, overview, monitored, has_file,
+    still_path, runtime_minutes
 ) VALUES (
     ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?,
+    ?, ?
 )
-RETURNING id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file
+RETURNING id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes
 `
 
 type CreateEpisodeParams struct {
@@ -65,6 +67,8 @@ type CreateEpisodeParams struct {
 	Overview       string  `json:"overview"`
 	Monitored      int64   `json:"monitored"`
 	HasFile        int64   `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
 }
 
 func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (Episode, error) {
@@ -80,6 +84,8 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (E
 		arg.Overview,
 		arg.Monitored,
 		arg.HasFile,
+		arg.StillPath,
+		arg.RuntimeMinutes,
 	)
 	var i Episode
 	err := row.Scan(
@@ -94,6 +100,8 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (E
 		&i.Overview,
 		&i.Monitored,
 		&i.HasFile,
+		&i.StillPath,
+		&i.RuntimeMinutes,
 	)
 	return i, err
 }
@@ -108,7 +116,7 @@ func (q *Queries) DeleteEpisodesBySeriesID(ctx context.Context, seriesID string)
 }
 
 const getEpisode = `-- name: GetEpisode :one
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file FROM episodes WHERE id = ?
+SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE id = ?
 `
 
 func (q *Queries) GetEpisode(ctx context.Context, id string) (Episode, error) {
@@ -126,12 +134,14 @@ func (q *Queries) GetEpisode(ctx context.Context, id string) (Episode, error) {
 		&i.Overview,
 		&i.Monitored,
 		&i.HasFile,
+		&i.StillPath,
+		&i.RuntimeMinutes,
 	)
 	return i, err
 }
 
 const listEpisodesByAirDateRange = `-- name: ListEpisodesByAirDateRange :many
-SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, s.title as series_title
+SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e
 JOIN series s ON s.id = e.series_id
 WHERE e.air_date >= ? AND e.air_date <= ?
@@ -155,6 +165,8 @@ type ListEpisodesByAirDateRangeRow struct {
 	Overview       string  `json:"overview"`
 	Monitored      int64   `json:"monitored"`
 	HasFile        int64   `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
 	SeriesTitle    string  `json:"seriesTitle"`
 }
 
@@ -179,6 +191,8 @@ func (q *Queries) ListEpisodesByAirDateRange(ctx context.Context, arg ListEpisod
 			&i.Overview,
 			&i.Monitored,
 			&i.HasFile,
+			&i.StillPath,
+			&i.RuntimeMinutes,
 			&i.SeriesTitle,
 		); err != nil {
 			return nil, err
@@ -195,7 +209,7 @@ func (q *Queries) ListEpisodesByAirDateRange(ctx context.Context, arg ListEpisod
 }
 
 const listEpisodesBySeasonID = `-- name: ListEpisodesBySeasonID :many
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file FROM episodes WHERE season_id = ? ORDER BY episode_number ASC
+SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE season_id = ? ORDER BY episode_number ASC
 `
 
 func (q *Queries) ListEpisodesBySeasonID(ctx context.Context, seasonID string) ([]Episode, error) {
@@ -219,6 +233,8 @@ func (q *Queries) ListEpisodesBySeasonID(ctx context.Context, seasonID string) (
 			&i.Overview,
 			&i.Monitored,
 			&i.HasFile,
+			&i.StillPath,
+			&i.RuntimeMinutes,
 		); err != nil {
 			return nil, err
 		}
@@ -234,7 +250,7 @@ func (q *Queries) ListEpisodesBySeasonID(ctx context.Context, seasonID string) (
 }
 
 const listEpisodesBySeriesID = `-- name: ListEpisodesBySeriesID :many
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file FROM episodes WHERE series_id = ? ORDER BY season_number ASC, episode_number ASC
+SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE series_id = ? ORDER BY season_number ASC, episode_number ASC
 `
 
 func (q *Queries) ListEpisodesBySeriesID(ctx context.Context, seriesID string) ([]Episode, error) {
@@ -258,6 +274,8 @@ func (q *Queries) ListEpisodesBySeriesID(ctx context.Context, seriesID string) (
 			&i.Overview,
 			&i.Monitored,
 			&i.HasFile,
+			&i.StillPath,
+			&i.RuntimeMinutes,
 		); err != nil {
 			return nil, err
 		}
@@ -273,7 +291,7 @@ func (q *Queries) ListEpisodesBySeriesID(ctx context.Context, seriesID string) (
 }
 
 const listMissingEpisodes = `-- name: ListMissingEpisodes :many
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= date('now')
+SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= date('now')
 ORDER BY air_date DESC LIMIT ? OFFSET ?
 `
 
@@ -303,6 +321,8 @@ func (q *Queries) ListMissingEpisodes(ctx context.Context, arg ListMissingEpisod
 			&i.Overview,
 			&i.Monitored,
 			&i.HasFile,
+			&i.StillPath,
+			&i.RuntimeMinutes,
 		); err != nil {
 			return nil, err
 		}
@@ -318,7 +338,7 @@ func (q *Queries) ListMissingEpisodes(ctx context.Context, arg ListMissingEpisod
 }
 
 const listMissingEpisodesWithSeries = `-- name: ListMissingEpisodesWithSeries :many
-SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, s.title as series_title
+SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e
 JOIN series s ON s.id = e.series_id
 WHERE e.monitored = 1 AND e.has_file = 0 AND e.air_date IS NOT NULL AND e.air_date <= date('now')
@@ -343,6 +363,8 @@ type ListMissingEpisodesWithSeriesRow struct {
 	Overview       string  `json:"overview"`
 	Monitored      int64   `json:"monitored"`
 	HasFile        int64   `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
 	SeriesTitle    string  `json:"seriesTitle"`
 }
 
@@ -367,6 +389,8 @@ func (q *Queries) ListMissingEpisodesWithSeries(ctx context.Context, arg ListMis
 			&i.Overview,
 			&i.Monitored,
 			&i.HasFile,
+			&i.StillPath,
+			&i.RuntimeMinutes,
 			&i.SeriesTitle,
 		); err != nil {
 			return nil, err
@@ -387,17 +411,21 @@ UPDATE episodes SET
     title    = ?,
     overview = ?,
     air_date = ?,
-    has_file = ?
+    has_file = ?,
+    still_path = ?,
+    runtime_minutes = ?
 WHERE id = ?
-RETURNING id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file
+RETURNING id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes
 `
 
 type UpdateEpisodeParams struct {
-	Title    string  `json:"title"`
-	Overview string  `json:"overview"`
-	AirDate  *string `json:"airDate"`
-	HasFile  int64   `json:"hasFile"`
-	ID       string  `json:"id"`
+	Title          string  `json:"title"`
+	Overview       string  `json:"overview"`
+	AirDate        *string `json:"airDate"`
+	HasFile        int64   `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
+	ID             string  `json:"id"`
 }
 
 func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (Episode, error) {
@@ -406,6 +434,8 @@ func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (E
 		arg.Overview,
 		arg.AirDate,
 		arg.HasFile,
+		arg.StillPath,
+		arg.RuntimeMinutes,
 		arg.ID,
 	)
 	var i Episode
@@ -421,6 +451,8 @@ func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (E
 		&i.Overview,
 		&i.Monitored,
 		&i.HasFile,
+		&i.StillPath,
+		&i.RuntimeMinutes,
 	)
 	return i, err
 }

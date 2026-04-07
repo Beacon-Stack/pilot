@@ -95,6 +95,10 @@ type grabOutput struct {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 func indexerResultToReleaseBody(r indexer.SearchResult) *releaseBody {
+	q := r.Quality
+	if q.Resolution == "" && q.Source == "" {
+		q = plugin.ParseQualityFromTitle(r.Title)
+	}
 	return &releaseBody{
 		GUID:         r.GUID,
 		Title:        r.Title,
@@ -107,8 +111,8 @@ func indexerResultToReleaseBody(r indexer.SearchResult) *releaseBody {
 		Seeds:        r.Seeds,
 		Peers:        r.Peers,
 		AgeDays:      r.AgeDays,
-		Quality:      r.Quality,
-		QualityScore: r.QualityScore,
+		Quality:      q,
+		QualityScore: q.Score(),
 	}
 }
 
@@ -247,9 +251,7 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		if downloaderSvc != nil {
 			clientID, itemID, addErr := downloaderSvc.Add(ctx, release, nil)
 			if addErr != nil {
-				// Log the failure but return the grab record — the user can retry
-				// or manually assign it later.
-				_ = addErr
+				return nil, huma.NewError(http.StatusBadGateway, "failed to send to download client: "+addErr.Error())
 			} else {
 				_ = indexerSvc.UpdateGrabDownloadClient(ctx, dbsqlite.UpdateGrabDownloadClientParams{
 					ID:               row.ID,

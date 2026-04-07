@@ -93,6 +93,8 @@ type Episode struct {
 	Overview       string
 	Monitored      bool
 	HasFile        bool
+	StillPath      string
+	RuntimeMinutes int
 }
 
 // AddRequest carries the fields needed to add a series to the library.
@@ -290,6 +292,8 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 				Overview:       ep.Overview,
 				Monitored:      1, // will be overridden by monitor_type pass below
 				HasFile:        0,
+				StillPath:      ep.StillPath,
+				RuntimeMinutes: int64(ep.RuntimeMinutes),
 			})
 			if err != nil {
 				return Series{}, fmt.Errorf("create episode S%02dE%02d: %w", ep.SeasonNumber, ep.EpisodeNumber, err)
@@ -810,7 +814,65 @@ func rowToEpisode(row dbsqlite.Episode) Episode {
 		Overview:       row.Overview,
 		Monitored:      row.Monitored != 0,
 		HasFile:        row.HasFile != 0,
+		StillPath:      row.StillPath,
+		RuntimeMinutes: int(row.RuntimeMinutes),
 	}
+}
+
+// RefreshEpisodeMetadata re-fetches episode details from TMDB for the given
+// series and updates still_path and runtime_minutes on each episode.
+func (s *Service) RefreshEpisodeMetadata(ctx context.Context, seriesID string, tmdbID int) error {
+	if s.meta == nil {
+		return ErrMetadataNotConfigured
+	}
+
+	episodes, err := s.q.ListEpisodesBySeriesID(ctx, seriesID)
+	if err != nil {
+		return err
+	}
+
+	// Group episodes by season to minimise TMDB calls.
+	type seasonKey int
+	seasonEps := make(map[seasonKey][]dbsqlite.Episode)
+	for _, ep := range episodes {
+		sn := seasonKey(ep.SeasonNumber)
+		seasonEps[sn] = append(seasonEps[sn], ep)
+	}
+
+	for sn, eps := range seasonEps {
+		details, err := s.meta.GetSeasonEpisodes(ctx, tmdbID, int(sn))
+		if err != nil {
+			s.logger.Warn("refresh: failed to fetch season episodes",
+				"tmdb_id", tmdbID, "season", sn, "error", err)
+			continue
+		}
+
+		detailMap := make(map[int]tmdbtv.EpisodeDetail, len(details))
+		for _, d := range details {
+			detailMap[d.EpisodeNumber] = d
+		}
+
+		for _, ep := range eps {
+			d, ok := detailMap[int(ep.EpisodeNumber)]
+			if !ok {
+				continue
+			}
+			// Only update if there's new data.
+			if ep.StillPath == d.StillPath && ep.RuntimeMinutes == int64(d.RuntimeMinutes) {
+				continue
+			}
+			_, _ = s.q.UpdateEpisode(ctx, dbsqlite.UpdateEpisodeParams{
+				ID:             ep.ID,
+				Title:          ep.Title,
+				Overview:       ep.Overview,
+				AirDate:        ep.AirDate,
+				HasFile:        ep.HasFile,
+				StillPath:      d.StillPath,
+				RuntimeMinutes: int64(d.RuntimeMinutes),
+			})
+		}
+	}
+	return nil
 }
 
 // sortTitle returns a normalised sort key by stripping common leading articles.
@@ -877,11 +939,13 @@ func (s *Service) DeleteFile(ctx context.Context, fileID string, deleteFromDisk 
 	ep, err := s.q.GetEpisode(ctx, f.EpisodeID)
 	if err == nil {
 		_, _ = s.q.UpdateEpisode(ctx, dbsqlite.UpdateEpisodeParams{
-			ID:       ep.ID,
-			Title:    ep.Title,
-			Overview: ep.Overview,
-			AirDate:  ep.AirDate,
-			HasFile:  0,
+			ID:             ep.ID,
+			Title:          ep.Title,
+			Overview:       ep.Overview,
+			AirDate:        ep.AirDate,
+			HasFile:        0,
+			StillPath:      ep.StillPath,
+			RuntimeMinutes: ep.RuntimeMinutes,
 		})
 	}
 

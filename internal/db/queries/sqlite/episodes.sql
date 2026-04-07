@@ -1,10 +1,12 @@
 -- name: CreateEpisode :one
 INSERT INTO episodes (
     id, series_id, season_id, season_number, episode_number,
-    absolute_number, air_date, title, overview, monitored, has_file
+    absolute_number, air_date, title, overview, monitored, has_file,
+    still_path, runtime_minutes
 ) VALUES (
     ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?,
+    ?, ?
 )
 RETURNING *;
 
@@ -22,7 +24,9 @@ UPDATE episodes SET
     title    = ?,
     overview = ?,
     air_date = ?,
-    has_file = ?
+    has_file = ?,
+    still_path = ?,
+    runtime_minutes = ?
 WHERE id = ?
 RETURNING *;
 
@@ -49,16 +53,17 @@ ORDER BY air_date DESC LIMIT ? OFFSET ?;
 DELETE FROM episodes WHERE series_id = ?;
 
 -- name: ListEpisodesByAirDateRange :many
-SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, s.title as series_title
+SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e
 JOIN series s ON s.id = e.series_id
 WHERE e.air_date >= ? AND e.air_date <= ?
 ORDER BY e.air_date ASC, s.title ASC, e.episode_number ASC;
 
 -- name: ListMissingEpisodesWithSeries :many
-SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, s.title as series_title
+SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e
 JOIN series s ON s.id = e.series_id
 WHERE e.monitored = 1 AND e.has_file = 0 AND e.air_date IS NOT NULL AND e.air_date <= date('now')
 ORDER BY e.air_date DESC
 LIMIT ? OFFSET ?;
+

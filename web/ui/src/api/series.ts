@@ -117,7 +117,7 @@ export function useUpdateSeasonMonitored(seriesId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ seasonId, monitored }: { seasonId: string; monitored: boolean }) =>
-      apiFetch<Season>(`/series/${seriesId}/seasons/${seasonId}`, {
+      apiFetch<Season>(`/seasons/${seasonId}`, {
         method: "PUT",
         body: JSON.stringify({ monitored }),
       }),
@@ -133,7 +133,7 @@ export function useEpisodes(seriesId: string, seasonNumber: number) {
   return useQuery({
     queryKey: ["series", seriesId, "episodes", seasonNumber],
     queryFn: () =>
-      apiFetch<Episode[]>(`/series/${seriesId}/episodes?season=${seasonNumber}`),
+      apiFetch<Episode[]>(`/series/${seriesId}/seasons/${seasonNumber}/episodes`),
     enabled: !!seriesId,
   });
 }
@@ -142,7 +142,7 @@ export function useUpdateEpisodeMonitored(seriesId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ episodeId, monitored, seasonNumber }: { episodeId: string; monitored: boolean; seasonNumber: number }) =>
-      apiFetch<Episode>(`/series/${seriesId}/episodes/${episodeId}`, {
+      apiFetch<Episode>(`/episodes/${episodeId}`, {
         method: "PUT",
         body: JSON.stringify({ monitored }),
       }).then((ep) => ({ ep, seasonNumber })),

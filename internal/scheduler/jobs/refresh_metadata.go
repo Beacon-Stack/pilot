@@ -10,8 +10,7 @@ import (
 )
 
 // RefreshMetadata returns a Job that re-fetches metadata for all series.
-// Runs every 12 hours. Silently skips series removed mid-run and exits early
-// if the metadata provider is not configured.
+// Runs every 12 hours. Updates episode still images and runtimes from TMDB.
 func RefreshMetadata(showSvc *show.Service, logger *slog.Logger) scheduler.Job {
 	return scheduler.Job{
 		Name:     "refresh_metadata",
@@ -38,20 +37,18 @@ func RefreshMetadata(showSvc *show.Service, logger *slog.Logger) scheduler.Job {
 }
 
 func runRefreshMetadata(ctx context.Context, showSvc *show.Service, logger *slog.Logger) error {
-	// List all series in the library.
 	result, err := showSvc.List(ctx, show.ListRequest{Page: 1, PerPage: 10000})
 	if err != nil {
 		return err
 	}
 
-	if len(result.Series) == 0 {
-		return nil
+	for _, s := range result.Series {
+		if err := showSvc.RefreshEpisodeMetadata(ctx, s.ID, s.TMDBID); err != nil {
+			logger.Warn("refresh_metadata: failed for series",
+				"series", s.Title, "tmdb_id", s.TMDBID, "error", err)
+			continue
+		}
+		logger.Info("refresh_metadata: updated", "series", s.Title)
 	}
-
-	// RefreshMetadata is not yet implemented on the show service.
-	// Log once and return rather than iterating fruitlessly.
-	logger.Info("refresh_metadata: metadata refresh not yet implemented — skipping",
-		"series_count", len(result.Series),
-	)
 	return nil
 }

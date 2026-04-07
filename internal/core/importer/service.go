@@ -262,11 +262,13 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 		return fmt.Errorf("fetching episode %q to update has_file: %w", episodeID, err)
 	}
 	if _, err := s.q.UpdateEpisode(ctx, dbsqlite.UpdateEpisodeParams{
-		ID:       ep.ID,
-		Title:    ep.Title,
-		Overview: ep.Overview,
-		AirDate:  ep.AirDate,
-		HasFile:  1,
+		ID:             ep.ID,
+		Title:          ep.Title,
+		Overview:       ep.Overview,
+		AirDate:        ep.AirDate,
+		HasFile:        1,
+		StillPath:      ep.StillPath,
+		RuntimeMinutes: ep.RuntimeMinutes,
 	}); err != nil {
 		return fmt.Errorf("marking episode %q as has_file: %w", episodeID, err)
 	}

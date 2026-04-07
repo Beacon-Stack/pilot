@@ -54,6 +54,8 @@ type Episode struct {
 	Overview       string  `json:"overview"`
 	Monitored      int64   `json:"monitored"`
 	HasFile        int64   `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
 }
 
 type EpisodeFile struct {

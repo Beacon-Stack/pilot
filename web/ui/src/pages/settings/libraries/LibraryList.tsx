@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Plus, Trash2, Pencil, X } from "lucide-react";
+import { Plus, Trash2, Pencil, X, FolderSync } from "lucide-react";
 import { toast } from "sonner";
 import { useLibraries, useCreateLibrary, useUpdateLibrary, useDeleteLibrary } from "@/api/libraries";
+import { useLibraryScan } from "@/api/episode-files";
 import PageHeader from "@/components/PageHeader";
 import Modal from "@/components/Modal";
 import type { Library } from "@/types";
@@ -207,6 +208,7 @@ function LibraryForm({ initial, onClose }: LibraryFormProps) {
 export default function LibraryList() {
   const { data: libraries, isLoading } = useLibraries();
   const deleteLibrary = useDeleteLibrary();
+  const libraryScan = useLibraryScan();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Library | null>(null);
 
@@ -219,30 +221,53 @@ export default function LibraryList() {
   }
 
   return (
-    <>
+    <div style={{ padding: 24, maxWidth: 900 }}>
       <PageHeader
         title="Libraries"
         description="Define root paths where Pilot will store and manage TV series."
         action={
-          <button
-            onClick={() => setShowForm(true)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "8px 14px",
-              background: "var(--color-accent)",
-              border: "none",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--color-accent-fg)",
-            }}
-          >
-            <Plus size={15} strokeWidth={2.5} />
-            Add Library
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => libraryScan.mutate()}
+              disabled={libraryScan.isPending}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                background: "none",
+                border: "1px solid var(--color-border-default)",
+                borderRadius: 6,
+                cursor: libraryScan.isPending ? "not-allowed" : "pointer",
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--color-text-secondary)",
+                opacity: libraryScan.isPending ? 0.7 : 1,
+              }}
+            >
+              <FolderSync size={15} strokeWidth={1.5} style={libraryScan.isPending ? { animation: "spin 1s linear infinite" } : undefined} />
+              {libraryScan.isPending ? "Scanning…" : "Scan All"}
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                background: "var(--color-accent)",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--color-accent-fg)",
+              }}
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              Add Library
+            </button>
+          </div>
         }
       />
 
@@ -342,6 +367,6 @@ export default function LibraryList() {
 
       {showForm && <LibraryForm onClose={() => setShowForm(false)} />}
       {editing && <LibraryForm initial={editing} onClose={() => setEditing(null)} />}
-    </>
+    </div>
   );
 }

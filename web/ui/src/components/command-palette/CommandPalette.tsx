@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Poster } from "@/components/Poster";
 import { toast } from "sonner";
-import { useLookupSeries } from "@/api/series";
+import { useLookupSeries, type LookupResult } from "@/api/series";
 import { useRunTask } from "@/api/system";
 import {
   NAV_COMMANDS,
@@ -113,7 +113,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   );
 
   const handleSeries = useCallback(
-    (tmdbId: number, librarySeries: Series | undefined) => {
+    (_tmdbId: number, librarySeries: Series | undefined) => {
       if (librarySeries) {
         navigate(`/series/${librarySeries.id}`);
       } else {
@@ -128,7 +128,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const filteredNav = filterCommands(NAV_COMMANDS, query);
   const filteredActions = filterCommands(ACTION_COMMANDS, query);
   const cachedSeries = getCachedSeries(queryClient);
-  const seriesResults: Series[] =
+  const seriesResults: LookupResult[] =
     query.length >= 2 && lookup.data ? lookup.data : [];
 
   const items: PaletteItem[] = [];
@@ -152,7 +152,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       category: "series",
       label: series.title,
       subtitle: series.year ? String(series.year) : undefined,
-      posterUrl: series.poster_url ?? undefined,
+      posterUrl: series.poster_path ?? undefined,
       inLibrary: !!librarySeries,
       onSelect: () => handleSeries(series.tmdb_id, librarySeries),
     });

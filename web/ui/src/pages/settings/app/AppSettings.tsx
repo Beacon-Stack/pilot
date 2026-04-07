@@ -501,7 +501,7 @@ export default function AppSettings() {
   }
 
   return (
-    <>
+    <div style={{ padding: 24, maxWidth: 900 }}>
       <PageHeader
         title="App Settings"
         description="Customize the appearance and behaviour of Pilot."
@@ -581,6 +581,6 @@ export default function AppSettings() {
         {/* ── Backup & Restore ───────────────────────────────────────────── */}
         <BackupRestoreSection />
       </div>
-    </>
+    </div>
   );
 }

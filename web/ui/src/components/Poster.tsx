@@ -97,6 +97,15 @@ interface PosterProps {
  * - src is null/undefined/empty
  * - the image fails to load (CDN outage, 404, etc.)
  */
+function resolvePosterUrl(src: string): string {
+  if (src.startsWith("http")) return src;
+  // Relative TMDB paths like "/vhnrkTGYPqcB63ALcSJm0WoaKHT.jpg"
+  if (src.startsWith("/") && !src.startsWith("/api")) {
+    return `https://image.tmdb.org/t/p/w500${src}`;
+  }
+  return src;
+}
+
 export function Poster({ src, title, year, style, imgStyle, loading = "lazy" }: PosterProps) {
   const [failed, setFailed] = useState(false);
 
@@ -104,9 +113,11 @@ export function Poster({ src, title, year, style, imgStyle, loading = "lazy" }: 
     return <PosterPlaceholder title={title} year={year} style={style} />;
   }
 
+  const resolvedSrc = resolvePosterUrl(src);
+
   return (
     <img
-      src={src}
+      src={resolvedSrc}
       alt={title}
       loading={loading}
       onError={() => setFailed(true)}
