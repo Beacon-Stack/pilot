@@ -1,0 +1,121 @@
+# GoReleaser config for Pilot
+# https://goreleaser.com
+#
+# Triggered from .github/workflows/release.yml on `v*` tag pushes.
+# Builds cross-platform binaries, archives them, publishes a GitHub
+# Release, and pushes multi-tag docker images to ghcr.io.
+
+version: 2
+
+project_name: pilot
+
+before:
+  hooks:
+    - go mod download
+    - sh -c "cd web/ui && npm ci && npm run build"
+
+builds:
+  - id: pilot
+    main: ./cmd/pilot
+    binary: pilot
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/beacon-stack/pilot/internal/version.Version={{.Version}}
+      - -X github.com/beacon-stack/pilot/internal/version.BuildTime={{.Date}}
+      - -X github.com/beacon-stack/pilot/internal/version.Commit={{.FullCommit}}
+      - -X github.com/beacon-stack/pilot/internal/config.DefaultTMDBKey={{.Env.TMDB_API_KEY}}
+      - -X github.com/beacon-stack/pilot/internal/config.DefaultTraktClientID={{.Env.TRAKT_CLIENT_ID}}
+
+archives:
+  - id: pilot
+    ids: [pilot]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - config.example.yaml
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^chore:'
+      - '^test:'
+      - '^ci:'
+      - '(?i)merge pull request'
+
+dockers:
+  - id: pilot-latest
+    image_templates:
+      - 'ghcr.io/beacon-stack/pilot:{{ .Version }}'
+      - 'ghcr.io/beacon-stack/pilot:v{{ .Major }}.{{ .Minor }}'
+      - 'ghcr.io/beacon-stack/pilot:v{{ .Major }}'
+      - 'ghcr.io/beacon-stack/pilot:latest'
+    dockerfile: docker/Dockerfile
+    use: buildx
+    goos: linux
+    goarch: amd64
+    build_flag_templates:
+      - '--pull'
+      - '--platform=linux/amd64'
+      - '--label=org.opencontainers.image.title=pilot'
+      - '--label=org.opencontainers.image.description=Self-hosted TV series manager for the Beacon media stack'
+      - '--label=org.opencontainers.image.source=https://github.com/beacon-stack/pilot'
+      - '--label=org.opencontainers.image.version={{ .Version }}'
+      - '--label=org.opencontainers.image.revision={{ .FullCommit }}'
+      - '--label=org.opencontainers.image.licenses=MIT'
+    build_flag_templates_env:
+      TMDB_API_KEY: '{{ .Env.TMDB_API_KEY }}'
+      TRAKT_CLIENT_ID: '{{ .Env.TRAKT_CLIENT_ID }}'
+
+  - id: pilot-minimal
+    image_templates:
+      - 'ghcr.io/beacon-stack/pilot:{{ .Version }}-minimal'
+      - 'ghcr.io/beacon-stack/pilot:v{{ .Major }}.{{ .Minor }}-minimal'
+      - 'ghcr.io/beacon-stack/pilot:latest-minimal'
+    dockerfile: docker/Dockerfile.minimal
+    use: buildx
+    goos: linux
+    goarch: amd64
+    build_flag_templates:
+      - '--pull'
+      - '--platform=linux/amd64'
+      - '--label=org.opencontainers.image.title=pilot-minimal'
+      - '--label=org.opencontainers.image.description=Pilot on scratch base (no ffprobe)'
+      - '--label=org.opencontainers.image.source=https://github.com/beacon-stack/pilot'
+      - '--label=org.opencontainers.image.version={{ .Version }}'
+      - '--label=org.opencontainers.image.revision={{ .FullCommit }}'
+      - '--label=org.opencontainers.image.licenses=MIT'
+
+release:
+  github:
+    owner: beacon-stack
+    name: pilot
+  draft: false
+  prerelease: auto
+  name_template: 'v{{ .Version }}'
