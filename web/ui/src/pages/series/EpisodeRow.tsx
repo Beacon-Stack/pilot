@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Search, Trash2, CheckCircle2, Circle } from "lucide-react";
+import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 import type { Episode, EpisodeFile } from "@/types";
 
@@ -11,12 +11,13 @@ interface Props {
   onToggleSelect: () => void;
   onToggleMonitor: () => void;
   onSearch: () => void;
+  onAutoSearch: () => void;
   onDeleteFile?: () => void;
 }
 
 export default function EpisodeRow({
   episode, file, seasonNumber, selected,
-  onToggleSelect, onToggleMonitor, onSearch, onDeleteFile,
+  onToggleSelect, onToggleMonitor, onSearch, onAutoSearch, onDeleteFile,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const ep = episode;
@@ -38,30 +39,21 @@ export default function EpisodeRow({
           alignItems: "center",
           gap: 10,
           padding: "8px 12px",
-          cursor: "pointer",
         }}
-        onClick={() => setExpanded(!expanded)}
       >
         {/* Checkbox */}
         <input
           type="checkbox"
           checked={selected}
-          onClick={(e) => e.stopPropagation()}
           onChange={onToggleSelect}
           style={{ width: 14, height: 14, accentColor: "var(--color-accent)", cursor: "pointer", flexShrink: 0 }}
         />
 
-        {/* Expand icon */}
-        {expanded
-          ? <ChevronDown size={14} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
-          : <ChevronRight size={14} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
-        }
-
         {/* Monitor indicator */}
         <button
-          onClick={(e) => { e.stopPropagation(); onToggleMonitor(); }}
+          onClick={onToggleMonitor}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", flexShrink: 0 }}
-          title={ep.monitored ? "Monitored" : "Unmonitored"}
+          title={ep.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
         >
           {ep.monitored
             ? <CheckCircle2 size={14} style={{ color: "var(--color-accent)" }} />
@@ -92,14 +84,38 @@ export default function EpisodeRow({
           <StatusBadge episode={ep} file={file} aired={aired} />
         </div>
 
-        {/* Quick search */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onSearch(); }}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "var(--color-text-muted)", flexShrink: 0 }}
-          title="Search"
-        >
-          <Search size={13} />
-        </button>
+        {/* Action buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+          {/* Expand — episode details */}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            style={iconBtn}
+            title="Episode details"
+          >
+            {expanded
+              ? <ChevronDown size={15} style={{ color: "var(--color-text-muted)" }} />
+              : <Info size={14} style={{ color: "var(--color-text-muted)" }} />
+            }
+          </button>
+
+          {/* Auto search — grabs the best match */}
+          <button
+            onClick={onAutoSearch}
+            style={iconBtn}
+            title="Auto search — grab the best match"
+          >
+            <Zap size={14} style={{ color: "var(--color-accent)" }} />
+          </button>
+
+          {/* Interactive search — opens the search modal */}
+          <button
+            onClick={onSearch}
+            style={iconBtn}
+            title="Interactive search — browse and pick a release"
+          >
+            <Search size={14} style={{ color: "var(--color-text-secondary)" }} />
+          </button>
+        </div>
       </div>
 
       {/* Expanded detail */}
@@ -162,9 +178,6 @@ export default function EpisodeRow({
 
               {/* Actions */}
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={onSearch} style={actionBtnStyle}>
-                  <Search size={13} /> Search
-                </button>
                 {file && onDeleteFile && (
                   <button onClick={onDeleteFile} style={{ ...actionBtnStyle, color: "var(--color-danger)" }}>
                     <Trash2 size={13} /> Delete File
@@ -178,6 +191,17 @@ export default function EpisodeRow({
     </div>
   );
 }
+
+const iconBtn: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  padding: 6,
+  borderRadius: 4,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
 
 const actionBtnStyle: React.CSSProperties = {
   display: "flex", alignItems: "center", gap: 4,

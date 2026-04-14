@@ -247,4 +247,13 @@ type Release struct {
 	Edition      string // canonical edition name parsed from title; empty = untagged
 	ReleaseGroup string // scene group name parsed from title; empty = unknown
 	IndexerFlags []IndexerFlag
+
+	// Media context — populated by Pilot/Prism before sending to download client.
+	// Download clients that support renaming (Haul) use these fields.
+	MediaType     string `json:"media_type,omitempty"`     // "movie" or "tv"
+	MediaTitle    string `json:"media_title,omitempty"`    // series or movie title
+	MediaYear     int    `json:"media_year,omitempty"`     // release year
+	SeasonNumber  int    `json:"season_number,omitempty"`  // TV only
+	EpisodeNumber int    `json:"episode_number,omitempty"` // TV only
+	EpisodeTitle  string `json:"episode_title,omitempty"`  // TV only
 }

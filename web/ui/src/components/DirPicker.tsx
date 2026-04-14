@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useFsBrowse } from "@/api/filesystem";
-import Modal from "@/components/Modal";
+import Modal from "@beacon-shared/Modal";
 
 interface DirPickerProps {
   open: boolean;

@@ -12,11 +12,13 @@ type Capabilities struct {
 
 // SearchQuery is the input to an indexer search.
 type SearchQuery struct {
-	Query  string // free-text query, e.g. "Breaking Bad S01E05"
-	TVDBID int    // TVDB ID when available
-	TMDBID int    // TMDB ID when available
-	IMDBID string // e.g. "tt0903747"
-	Year   int
+	Query   string // free-text query, e.g. "Breaking Bad S01E05"
+	TVDBID  int    // TVDB ID when available
+	TMDBID  int    // TMDB ID when available
+	IMDBID  string // e.g. "tt0903747"
+	Year    int
+	Season  int // season number for TV episode filtering
+	Episode int // episode number for TV episode filtering
 }
 
 // Indexer is the plugin interface for release indexers.

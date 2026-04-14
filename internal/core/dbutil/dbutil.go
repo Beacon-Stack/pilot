@@ -5,16 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	sqlitedrv "modernc.org/sqlite"
+	"github.com/jackc/pgx/v5/pgconn"
 )
-
-// BoolToInt converts a bool to an int64 (1 or 0) for SQLite storage.
-func BoolToInt(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
 
 // MergeSettings returns newSettings with any keys absent from newSettings
 // filled in from existing. Keys present in newSettings always win.
@@ -43,14 +35,12 @@ func MergeSettings(existing, newSettings json.RawMessage) json.RawMessage {
 	return merged
 }
 
-// IsUniqueViolation reports whether err is a SQLite unique constraint violation.
-// Uses the driver's error code (2067 = SQLITE_CONSTRAINT_UNIQUE) rather than
-// fragile string matching.
+// IsUniqueViolation reports whether err is a Postgres unique constraint
+// violation (SQLSTATE 23505).
 func IsUniqueViolation(err error) bool {
-	var e *sqlitedrv.Error
-	if errors.As(err, &e) {
-		const sqliteConstraintUnique = 2067
-		return e.Code() == sqliteConstraintUnique
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
 	}
 	return false
 }

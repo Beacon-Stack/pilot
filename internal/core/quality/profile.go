@@ -35,6 +35,9 @@ type Profile struct {
 	// score meets or exceeds this value (and quality cutoff is met), no further
 	// upgrades are triggered.
 	UpgradeUntilCFScore int
+	// ManagedByPulse is true when this profile is synced from Pulse. Local edits
+	// to such profiles disconnect them from Pulse (set to false).
+	ManagedByPulse bool
 }
 
 // WantRelease reports whether this profile should grab a release with

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Plus, Trash2, Pencil, X, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import { useQualityProfiles, useDeleteQualityProfile } from "@/api/quality";
 import PageHeader from "@/components/PageHeader";
-import Modal from "@/components/Modal";
+import Modal from "@beacon-shared/Modal";
 import type { QualityProfile } from "@/types";
 
 // ── Quality profile detail modal ──────────────────────────────────────────────
@@ -143,8 +144,28 @@ function ProfileCard({
             <Chevron size={16} strokeWidth={1.5} />
           </button>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>
-              {profile.name}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>
+                {profile.name}
+              </div>
+              {profile.managed_by_pulse && (
+                <span
+                  title="This profile is managed by Pulse. Editing disconnects it."
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                    padding: "2px 6px",
+                    borderRadius: 3,
+                    background: "color-mix(in srgb, var(--color-accent) 15%, transparent)",
+                    color: "var(--color-accent)",
+                    border: "1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)",
+                  }}
+                >
+                  Pulse
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 2 }}>
               {profile.qualities.length} qualities · cutoff: {profile.cutoff.name}
@@ -171,6 +192,7 @@ function ProfileCard({
           </button>
           <button
             onClick={onDelete}
+            disabled={profile.managed_by_pulse}
             style={{
               display: "flex",
               alignItems: "center",
@@ -178,10 +200,11 @@ function ProfileCard({
               background: "none",
               border: "1px solid var(--color-border-default)",
               borderRadius: 6,
-              cursor: "pointer",
+              cursor: profile.managed_by_pulse ? "not-allowed" : "pointer",
               color: "var(--color-danger)",
+              opacity: profile.managed_by_pulse ? 0.4 : 1,
             }}
-            title="Delete"
+            title={profile.managed_by_pulse ? "Managed by Pulse — delete via Pulse instead" : "Delete"}
           >
             <Trash2 size={14} strokeWidth={1.5} />
           </button>
@@ -236,8 +259,10 @@ export default function QualityProfileList() {
   const deleteProfile = useDeleteQualityProfile();
   const [viewing, setViewing] = useState<QualityProfile | null>(null);
 
-  function handleDelete(profile: QualityProfile) {
-    if (!confirm(`Delete quality profile "${profile.name}"?`)) return;
+  const confirm = useConfirm();
+
+  async function handleDelete(profile: QualityProfile) {
+    if (!await confirm({ title: "Delete Quality Profile", message: `Delete quality profile "${profile.name}"?` })) return;
     deleteProfile.mutate(profile.id, {
       onSuccess: () => toast.success("Profile deleted"),
       onError: (err) => toast.error(err.message),

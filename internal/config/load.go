@@ -16,7 +16,7 @@ import (
 const (
 	DefaultHost      = "0.0.0.0"
 	DefaultPort      = 8383
-	DefaultDBDriver  = "sqlite"
+	DefaultDBDriver  = "postgres"
 	DefaultLogLevel  = "info"
 	DefaultLogFormat = "json"
 )
@@ -67,6 +67,8 @@ func Load(cfgFile string) (*Config, error) {
 	_ = v.BindEnv("trakt.client_id", "PILOT_TRAKT_CLIENT_ID")
 	_ = v.BindEnv("database.path", "PILOT_DATABASE_PATH")
 	_ = v.BindEnv("database.dsn", "PILOT_DATABASE_DSN")
+	_ = v.BindEnv("pulse.url", "PILOT_PULSE_URL")
+	_ = v.BindEnv("pulse.api_key", "PILOT_PULSE_API_KEY")
 
 	if err := v.ReadInConfig(); err != nil {
 		// Missing config file is not an error — we use defaults.

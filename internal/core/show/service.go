@@ -9,15 +9,26 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-stack/pilot/internal/core/renamer"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
+
+// RenameSettings holds the format configuration for renaming files.
+type RenameSettings struct {
+	EpisodeFormat      string
+	SeriesFolderFormat string
+	SeasonFolderFormat string
+	ColonReplacement   renamer.ColonReplacement
+}
 
 // Sentinel errors returned by Service methods.
 var (
@@ -74,10 +85,13 @@ type Series struct {
 
 // Season is the domain representation of a season record.
 type Season struct {
-	ID           string
-	SeriesID     string
-	SeasonNumber int
-	Monitored    bool
+	ID               string
+	SeriesID         string
+	SeasonNumber     int
+	Monitored        bool
+	EpisodeCount     int64
+	EpisodeFileCount int64
+	TotalSizeBytes   int64
 }
 
 // Episode is the domain representation of an episode record.
@@ -143,13 +157,13 @@ type LookupRequest struct {
 // seasonEntry groups a freshly created season row with its episode rows.
 // Used only during the Add flow to carry data into applyMonitorType.
 type seasonEntry struct {
-	row      dbsqlite.Season
-	episodes []dbsqlite.Episode
+	row      db.Season
+	episodes []db.Episode
 }
 
 // Service manages TV series, seasons, and episodes.
 type Service struct {
-	q      dbsqlite.Querier
+	q      db.Querier
 	meta   MetadataProvider
 	bus    *events.Bus
 	logger *slog.Logger
@@ -157,7 +171,7 @@ type Service struct {
 
 // NewService creates a new Service. meta may be nil; methods that require it
 // will return ErrMetadataNotConfigured.
-func NewService(q dbsqlite.Querier, meta MetadataProvider, bus *events.Bus, logger *slog.Logger) *Service {
+func NewService(q db.Querier, meta MetadataProvider, bus *events.Bus, logger *slog.Logger) *Service {
 	return &Service{
 		q:      q,
 		meta:   meta,
@@ -175,7 +189,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 	}
 
 	// Reject duplicates before hitting the metadata API.
-	_, err := s.q.GetSeriesByTMDBID(ctx, int64(req.TMDBID))
+	_, err := s.q.GetSeriesByTMDBID(ctx, int32(req.TMDBID))
 	if err == nil {
 		return Series{}, ErrAlreadyExists
 	}
@@ -198,7 +212,6 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 	}
 
 	seriesID := uuid.NewString()
-	monitoredInt := boolToInt(req.Monitored)
 
 	monitorType := req.MonitorType
 	if monitorType == "" {
@@ -209,25 +222,24 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 		seriesType = "standard"
 	}
 
-	var runtimePtr *int64
+	runtimeMinutes := sql.NullInt32{}
 	if detail.RuntimeMinutes > 0 {
-		rt := int64(detail.RuntimeMinutes)
-		runtimePtr = &rt
+		runtimeMinutes = sql.NullInt32{Int32: int32(detail.RuntimeMinutes), Valid: true}
 	}
 
-	posterURL := nullableString(detail.PosterPath)
-	fanartURL := nullableString(detail.BackdropPath)
-	network := nullableString(detail.Network)
+	posterURL := toNullString(detail.PosterPath)
+	fanartURL := toNullString(detail.BackdropPath)
+	network := toNullString(detail.Network)
 
-	row, err := s.q.CreateSeries(ctx, dbsqlite.CreateSeriesParams{
+	row, err := s.q.CreateSeries(ctx, db.CreateSeriesParams{
 		ID:                  seriesID,
-		TmdbID:              int64(detail.ID),
-		ImdbID:              nil,
+		TmdbID:              int32(detail.ID),
+		ImdbID:              sql.NullString{},
 		Title:               detail.Title,
 		SortTitle:           sortTitle(detail.Title),
-		Year:                int64(detail.Year),
+		Year:                int32(detail.Year),
 		Overview:            detail.Overview,
-		RuntimeMinutes:      runtimePtr,
+		RuntimeMinutes:      runtimeMinutes,
 		GenresJson:          string(genresJSON),
 		PosterUrl:           posterURL,
 		FanartUrl:           fanartURL,
@@ -235,15 +247,15 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 		SeriesType:          seriesType,
 		MonitorType:         monitorType,
 		Network:             network,
-		AirTime:             nil,
-		Certification:       nil,
-		Monitored:           monitoredInt,
+		AirTime:             sql.NullString{},
+		Certification:       sql.NullString{},
+		Monitored:           req.Monitored,
 		LibraryID:           req.LibraryID,
 		QualityProfileID:    req.QualityProfileID,
-		Path:                nil,
+		Path:                sql.NullString{},
 		AddedAt:             now,
 		UpdatedAt:           now,
-		MetadataRefreshedAt: &metaNow,
+		MetadataRefreshedAt: sql.NullString{String: metaNow, Valid: true},
 	})
 	if err != nil {
 		return Series{}, fmt.Errorf("create series: %w", err)
@@ -255,11 +267,11 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 
 	for _, ss := range detail.Seasons {
 		seasonID := uuid.NewString()
-		seasonRow, err := s.q.CreateSeason(ctx, dbsqlite.CreateSeasonParams{
+		seasonRow, err := s.q.CreateSeason(ctx, db.CreateSeasonParams{
 			ID:           seasonID,
 			SeriesID:     seriesID,
-			SeasonNumber: int64(ss.SeasonNumber),
-			Monitored:    1, // will be overridden by monitor_type pass below
+			SeasonNumber: int32(ss.SeasonNumber),
+			Monitored:    true, // will be overridden by monitor_type pass below
 		})
 		if err != nil {
 			return Series{}, fmt.Errorf("create season %d: %w", ss.SeasonNumber, err)
@@ -276,24 +288,24 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 			epDetails = nil
 		}
 
-		var episodeRows []dbsqlite.Episode
+		var episodeRows []db.Episode
 		for _, ep := range epDetails {
 			epID := uuid.NewString()
-			airDate := nullableString(ep.AirDate)
-			epRow, err := s.q.CreateEpisode(ctx, dbsqlite.CreateEpisodeParams{
+			airDate := toNullString(ep.AirDate)
+			epRow, err := s.q.CreateEpisode(ctx, db.CreateEpisodeParams{
 				ID:             epID,
 				SeriesID:       seriesID,
 				SeasonID:       seasonID,
-				SeasonNumber:   int64(ep.SeasonNumber),
-				EpisodeNumber:  int64(ep.EpisodeNumber),
-				AbsoluteNumber: nil,
+				SeasonNumber:   int32(ep.SeasonNumber),
+				EpisodeNumber:  int32(ep.EpisodeNumber),
+				AbsoluteNumber: sql.NullInt32{},
 				AirDate:        airDate,
 				Title:          ep.Title,
 				Overview:       ep.Overview,
-				Monitored:      1, // will be overridden by monitor_type pass below
-				HasFile:        0,
+				Monitored:      true, // will be overridden by monitor_type pass below
+				HasFile:        false,
 				StillPath:      ep.StillPath,
-				RuntimeMinutes: int64(ep.RuntimeMinutes),
+				RuntimeMinutes: int32(ep.RuntimeMinutes),
 			})
 			if err != nil {
 				return Series{}, fmt.Errorf("create episode S%02dE%02d: %w", ep.SeasonNumber, ep.EpisodeNumber, err)
@@ -345,51 +357,51 @@ func (s *Service) applyMonitorType(
 
 	for seasonNum, entry := range seasonMap {
 		for _, ep := range entry.episodes {
-			var monitored int64
+			var monitored bool
 
 			switch monitorType {
 			case "all":
-				monitored = 1
+				monitored = true
 
 			case "future":
 				// Monitor episodes with no air date or air date after today.
-				if ep.AirDate == nil || *ep.AirDate == "" || *ep.AirDate > today {
-					monitored = 1
+				if !ep.AirDate.Valid || ep.AirDate.String == "" || ep.AirDate.String > today {
+					monitored = true
 				}
 
 			case "missing":
 				// For a new series, no files exist — monitor all aired episodes.
-				if ep.AirDate != nil && *ep.AirDate != "" && *ep.AirDate <= today {
-					monitored = 1
+				if ep.AirDate.Valid && ep.AirDate.String != "" && ep.AirDate.String <= today {
+					monitored = true
 				}
 
 			case "none":
-				monitored = 0
+				monitored = false
 
 			case "pilot":
 				if seasonNum == 1 && ep.EpisodeNumber == 1 {
-					monitored = 1
+					monitored = true
 				}
 
 			case "first_season":
 				if seasonNum == 1 {
-					monitored = 1
+					monitored = true
 				}
 
 			case "last_season":
 				if seasonNum == lastSeasonNum {
-					monitored = 1
+					monitored = true
 				}
 
 			case "existing":
 				// New series has no files — nothing is monitored.
-				monitored = 0
+				monitored = false
 
 			default:
-				monitored = 1
+				monitored = true
 			}
 
-			if err := s.q.UpdateEpisodeMonitored(ctx, dbsqlite.UpdateEpisodeMonitoredParams{
+			if err := s.q.UpdateEpisodeMonitored(ctx, db.UpdateEpisodeMonitoredParams{
 				Monitored: monitored,
 				ID:        ep.ID,
 			}); err != nil {
@@ -398,31 +410,31 @@ func (s *Service) applyMonitorType(
 		}
 
 		// Season is monitored if any episode within it is monitored.
-		seasonMonitored := int64(0)
+		seasonMonitored := false
 		switch monitorType {
 		case "all":
-			seasonMonitored = 1
+			seasonMonitored = true
 		case "future", "missing":
-			seasonMonitored = 1
+			seasonMonitored = true
 		case "first_season":
 			if seasonNum == 1 {
-				seasonMonitored = 1
+				seasonMonitored = true
 			}
 		case "last_season":
 			if seasonNum == lastSeasonNum {
-				seasonMonitored = 1
+				seasonMonitored = true
 			}
 		case "pilot":
 			if seasonNum == 1 {
-				seasonMonitored = 1
+				seasonMonitored = true
 			}
 		case "none", "existing":
-			seasonMonitored = 0
+			seasonMonitored = false
 		default:
-			seasonMonitored = 1
+			seasonMonitored = true
 		}
 
-		if err := s.q.UpdateSeasonMonitored(ctx, dbsqlite.UpdateSeasonMonitoredParams{
+		if err := s.q.UpdateSeasonMonitored(ctx, db.UpdateSeasonMonitoredParams{
 			Monitored: seasonMonitored,
 			ID:        entry.row.ID,
 		}); err != nil {
@@ -456,10 +468,10 @@ func (s *Service) List(ctx context.Context, req ListRequest) (ListResult, error)
 		perPage = 50
 	}
 
-	offset := int64((page - 1) * perPage)
-	limit := int64(perPage)
+	offset := int32((page - 1) * perPage)
+	limit := int32(perPage)
 
-	var rows []dbsqlite.Series
+	var rows []db.Series
 	var total int64
 
 	if req.LibraryID != "" {
@@ -468,7 +480,7 @@ func (s *Service) List(ctx context.Context, req ListRequest) (ListResult, error)
 		if err != nil {
 			return ListResult{}, fmt.Errorf("count series by library: %w", err)
 		}
-		rows, err = s.q.ListSeriesByLibrary(ctx, dbsqlite.ListSeriesByLibraryParams{
+		rows, err = s.q.ListSeriesByLibrary(ctx, db.ListSeriesByLibraryParams{
 			LibraryID: req.LibraryID,
 			Limit:     limit,
 			Offset:    offset,
@@ -482,7 +494,7 @@ func (s *Service) List(ctx context.Context, req ListRequest) (ListResult, error)
 		if err != nil {
 			return ListResult{}, fmt.Errorf("count series: %w", err)
 		}
-		rows, err = s.q.ListSeries(ctx, dbsqlite.ListSeriesParams{
+		rows, err = s.q.ListSeries(ctx, db.ListSeriesParams{
 			Limit:  limit,
 			Offset: offset,
 		})
@@ -535,22 +547,20 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Ser
 		seriesType = existing.SeriesType
 	}
 
-	var pathPtr *string
+	pathVal := existing.Path
 	if req.Path != "" {
-		pathPtr = &req.Path
-	} else {
-		pathPtr = existing.Path
+		pathVal = sql.NullString{String: req.Path, Valid: true}
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	row, err := s.q.UpdateSeries(ctx, dbsqlite.UpdateSeriesParams{
+	row, err := s.q.UpdateSeries(ctx, db.UpdateSeriesParams{
 		ID:               id,
 		Title:            title,
-		Monitored:        boolToInt(req.Monitored),
+		Monitored:        req.Monitored,
 		LibraryID:        libraryID,
 		QualityProfileID: qualityProfileID,
 		SeriesType:       seriesType,
-		Path:             pathPtr,
+		Path:             pathVal,
 		UpdatedAt:        now,
 	})
 	if err != nil {
@@ -613,7 +623,8 @@ func (s *Service) Lookup(ctx context.Context, req LookupRequest) ([]tmdbtv.Searc
 	return results, nil
 }
 
-// GetSeasons returns all seasons for the given series ID.
+// GetSeasons returns all seasons for the given series ID, annotated with
+// per-season episode counts (total and with-file).
 func (s *Service) GetSeasons(ctx context.Context, seriesID string) ([]Season, error) {
 	rows, err := s.q.ListSeasonsBySeriesID(ctx, seriesID)
 	if err != nil {
@@ -622,6 +633,38 @@ func (s *Service) GetSeasons(ctx context.Context, seriesID string) ([]Season, er
 	seasons := make([]Season, len(rows))
 	for i, r := range rows {
 		seasons[i] = rowToSeason(r)
+	}
+
+	episodes, err := s.q.ListEpisodesBySeriesID(ctx, seriesID)
+	if err != nil {
+		return nil, fmt.Errorf("list episodes for season counts: %w", err)
+	}
+	totals := make(map[string]int64, len(seasons))
+	withFile := make(map[string]int64, len(seasons))
+	episodeToSeason := make(map[string]string, len(episodes))
+	for _, ep := range episodes {
+		totals[ep.SeasonID]++
+		if ep.HasFile {
+			withFile[ep.SeasonID]++
+		}
+		episodeToSeason[ep.ID] = ep.SeasonID
+	}
+
+	files, err := s.q.ListEpisodeFilesBySeriesID(ctx, seriesID)
+	if err != nil {
+		return nil, fmt.Errorf("list episode files for season sizes: %w", err)
+	}
+	sizes := make(map[string]int64, len(seasons))
+	for _, f := range files {
+		if seasonID, ok := episodeToSeason[f.EpisodeID]; ok {
+			sizes[seasonID] += f.SizeBytes
+		}
+	}
+
+	for i := range seasons {
+		seasons[i].EpisodeCount = totals[seasons[i].ID]
+		seasons[i].EpisodeFileCount = withFile[seasons[i].ID]
+		seasons[i].TotalSizeBytes = sizes[seasons[i].ID]
 	}
 	return seasons, nil
 }
@@ -641,8 +684,8 @@ func (s *Service) GetEpisodes(ctx context.Context, seasonID string) ([]Episode, 
 
 // UpdateEpisodeMonitored sets the monitored flag on a single episode.
 func (s *Service) UpdateEpisodeMonitored(ctx context.Context, episodeID string, monitored bool) error {
-	if err := s.q.UpdateEpisodeMonitored(ctx, dbsqlite.UpdateEpisodeMonitoredParams{
-		Monitored: boolToInt(monitored),
+	if err := s.q.UpdateEpisodeMonitored(ctx, db.UpdateEpisodeMonitoredParams{
+		Monitored: monitored,
 		ID:        episodeID,
 	}); err != nil {
 		return fmt.Errorf("update episode monitored: %w", err)
@@ -653,17 +696,15 @@ func (s *Service) UpdateEpisodeMonitored(ctx context.Context, episodeID string, 
 // UpdateSeasonMonitored sets the monitored flag on a season and cascades the
 // same value to all episodes in that season.
 func (s *Service) UpdateSeasonMonitored(ctx context.Context, seasonID string, monitored bool) error {
-	monInt := boolToInt(monitored)
-
-	if err := s.q.UpdateSeasonMonitored(ctx, dbsqlite.UpdateSeasonMonitoredParams{
-		Monitored: monInt,
+	if err := s.q.UpdateSeasonMonitored(ctx, db.UpdateSeasonMonitoredParams{
+		Monitored: monitored,
 		ID:        seasonID,
 	}); err != nil {
 		return fmt.Errorf("update season monitored: %w", err)
 	}
 
-	if err := s.q.UpdateEpisodesMonitoredBySeason(ctx, dbsqlite.UpdateEpisodesMonitoredBySeasonParams{
-		Monitored: monInt,
+	if err := s.q.UpdateEpisodesMonitoredBySeason(ctx, db.UpdateEpisodesMonitoredBySeasonParams{
+		Monitored: monitored,
 		SeasonID:  seasonID,
 	}); err != nil {
 		return fmt.Errorf("cascade episode monitored for season: %w", err)
@@ -673,7 +714,7 @@ func (s *Service) UpdateSeasonMonitored(ctx context.Context, seasonID string, mo
 }
 
 // buildSeries converts a DB row into a domain Series, fetching episode counts.
-func (s *Service) buildSeries(ctx context.Context, row dbsqlite.Series) (Series, error) {
+func (s *Service) buildSeries(ctx context.Context, row db.Series) (Series, error) {
 	sr, err := rowToSeries(row)
 	if err != nil {
 		return Series{}, err
@@ -693,9 +734,9 @@ func (s *Service) buildSeries(ctx context.Context, row dbsqlite.Series) (Series,
 	return sr, nil
 }
 
-// rowToSeries converts a dbsqlite.Series row into a domain Series.
+// rowToSeries converts a db.Series row into a domain Series.
 // It unmarshals genres_json and parses timestamp strings.
-func rowToSeries(row dbsqlite.Series) (Series, error) {
+func rowToSeries(row db.Series) (Series, error) {
 	var genres []string
 	if row.GenresJson != "" && row.GenresJson != "null" {
 		if err := json.Unmarshal([]byte(row.GenresJson), &genres); err != nil {
@@ -713,94 +754,62 @@ func rowToSeries(row dbsqlite.Series) (Series, error) {
 	}
 
 	var metaRefreshed *time.Time
-	if row.MetadataRefreshedAt != nil && *row.MetadataRefreshedAt != "" {
-		t, err := time.Parse(time.RFC3339, *row.MetadataRefreshedAt)
+	if row.MetadataRefreshedAt.Valid && row.MetadataRefreshedAt.String != "" {
+		t, err := time.Parse(time.RFC3339, row.MetadataRefreshedAt.String)
 		if err == nil {
 			metaRefreshed = &t
 		}
 	}
 
-	var imdbID string
-	if row.ImdbID != nil {
-		imdbID = *row.ImdbID
-	}
 	var runtimeMinutes int
-	if row.RuntimeMinutes != nil {
-		runtimeMinutes = int(*row.RuntimeMinutes)
-	}
-	var posterURL string
-	if row.PosterUrl != nil {
-		posterURL = *row.PosterUrl
-	}
-	var fanartURL string
-	if row.FanartUrl != nil {
-		fanartURL = *row.FanartUrl
-	}
-	var network string
-	if row.Network != nil {
-		network = *row.Network
-	}
-	var airTime string
-	if row.AirTime != nil {
-		airTime = *row.AirTime
-	}
-	var certification string
-	if row.Certification != nil {
-		certification = *row.Certification
-	}
-	var path string
-	if row.Path != nil {
-		path = *row.Path
+	if row.RuntimeMinutes.Valid {
+		runtimeMinutes = int(row.RuntimeMinutes.Int32)
 	}
 
 	return Series{
 		ID:                  row.ID,
 		TMDBID:              int(row.TmdbID),
-		IMDBID:              imdbID,
+		IMDBID:              row.ImdbID.String,
 		Title:               row.Title,
 		SortTitle:           row.SortTitle,
 		Year:                int(row.Year),
 		Overview:            row.Overview,
 		RuntimeMinutes:      runtimeMinutes,
 		Genres:              genres,
-		PosterURL:           posterURL,
-		FanartURL:           fanartURL,
+		PosterURL:           row.PosterUrl.String,
+		FanartURL:           row.FanartUrl.String,
 		Status:              row.Status,
 		SeriesType:          row.SeriesType,
 		MonitorType:         row.MonitorType,
-		Network:             network,
-		AirTime:             airTime,
-		Certification:       certification,
-		Monitored:           row.Monitored != 0,
+		Network:             row.Network.String,
+		AirTime:             row.AirTime.String,
+		Certification:       row.Certification.String,
+		Monitored:           row.Monitored,
 		LibraryID:           row.LibraryID,
 		QualityProfileID:    row.QualityProfileID,
-		Path:                path,
+		Path:                row.Path.String,
 		AddedAt:             addedAt,
 		UpdatedAt:           updatedAt,
 		MetadataRefreshedAt: metaRefreshed,
 	}, nil
 }
 
-// rowToSeason converts a dbsqlite.Season row into a domain Season.
-func rowToSeason(row dbsqlite.Season) Season {
+// rowToSeason converts a db.Season row into a domain Season.
+func rowToSeason(row db.Season) Season {
 	return Season{
 		ID:           row.ID,
 		SeriesID:     row.SeriesID,
 		SeasonNumber: int(row.SeasonNumber),
-		Monitored:    row.Monitored != 0,
+		Monitored:    row.Monitored,
 	}
 }
 
-// rowToEpisode converts a dbsqlite.Episode row into a domain Episode.
-func rowToEpisode(row dbsqlite.Episode) Episode {
+// rowToEpisode converts a db.Episode row into a domain Episode.
+func rowToEpisode(row db.Episode) Episode {
 	var absNum *int
-	if row.AbsoluteNumber != nil {
-		n := int(*row.AbsoluteNumber)
+	if row.AbsoluteNumber.Valid {
+		n := int(row.AbsoluteNumber.Int32)
 		absNum = &n
-	}
-	var airDate string
-	if row.AirDate != nil {
-		airDate = *row.AirDate
 	}
 	return Episode{
 		ID:             row.ID,
@@ -809,11 +818,11 @@ func rowToEpisode(row dbsqlite.Episode) Episode {
 		SeasonNumber:   int(row.SeasonNumber),
 		EpisodeNumber:  int(row.EpisodeNumber),
 		AbsoluteNumber: absNum,
-		AirDate:        airDate,
+		AirDate:        row.AirDate.String,
 		Title:          row.Title,
 		Overview:       row.Overview,
-		Monitored:      row.Monitored != 0,
-		HasFile:        row.HasFile != 0,
+		Monitored:      row.Monitored,
+		HasFile:        row.HasFile,
 		StillPath:      row.StillPath,
 		RuntimeMinutes: int(row.RuntimeMinutes),
 	}
@@ -833,7 +842,7 @@ func (s *Service) RefreshEpisodeMetadata(ctx context.Context, seriesID string, t
 
 	// Group episodes by season to minimise TMDB calls.
 	type seasonKey int
-	seasonEps := make(map[seasonKey][]dbsqlite.Episode)
+	seasonEps := make(map[seasonKey][]db.Episode)
 	for _, ep := range episodes {
 		sn := seasonKey(ep.SeasonNumber)
 		seasonEps[sn] = append(seasonEps[sn], ep)
@@ -858,17 +867,17 @@ func (s *Service) RefreshEpisodeMetadata(ctx context.Context, seriesID string, t
 				continue
 			}
 			// Only update if there's new data.
-			if ep.StillPath == d.StillPath && ep.RuntimeMinutes == int64(d.RuntimeMinutes) {
+			if ep.StillPath == d.StillPath && ep.RuntimeMinutes == int32(d.RuntimeMinutes) {
 				continue
 			}
-			_, _ = s.q.UpdateEpisode(ctx, dbsqlite.UpdateEpisodeParams{
+			_, _ = s.q.UpdateEpisode(ctx, db.UpdateEpisodeParams{
 				ID:             ep.ID,
 				Title:          ep.Title,
 				Overview:       ep.Overview,
 				AirDate:        ep.AirDate,
 				HasFile:        ep.HasFile,
 				StillPath:      d.StillPath,
-				RuntimeMinutes: int64(d.RuntimeMinutes),
+				RuntimeMinutes: int32(d.RuntimeMinutes),
 			})
 		}
 	}
@@ -886,26 +895,18 @@ func sortTitle(title string) string {
 	return lower
 }
 
-// boolToInt converts a bool to an SQLite integer (0 or 1).
-func boolToInt(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// nullableString returns nil for an empty string, otherwise a pointer to the value.
-func nullableString(s string) *string {
+// toNullString returns a sql.NullString; Valid is false for an empty string.
+func toNullString(s string) sql.NullString {
 	if s == "" {
-		return nil
+		return sql.NullString{}
 	}
-	return &s
+	return sql.NullString{String: s, Valid: true}
 }
 
 // ── Episode file methods ──────────────────────────────────────────────────────
 
 // ListFiles returns all episode files associated with the given series ID.
-func (s *Service) ListFiles(ctx context.Context, seriesID string) ([]dbsqlite.EpisodeFile, error) {
+func (s *Service) ListFiles(ctx context.Context, seriesID string) ([]db.EpisodeFile, error) {
 	files, err := s.q.ListEpisodeFilesBySeriesID(ctx, seriesID)
 	if err != nil {
 		return nil, fmt.Errorf("list episode files for series %q: %w", seriesID, err)
@@ -938,12 +939,12 @@ func (s *Service) DeleteFile(ctx context.Context, fileID string, deleteFromDisk 
 	// Clear has_file on the associated episode.
 	ep, err := s.q.GetEpisode(ctx, f.EpisodeID)
 	if err == nil {
-		_, _ = s.q.UpdateEpisode(ctx, dbsqlite.UpdateEpisodeParams{
+		_, _ = s.q.UpdateEpisode(ctx, db.UpdateEpisodeParams{
 			ID:             ep.ID,
 			Title:          ep.Title,
 			Overview:       ep.Overview,
 			AirDate:        ep.AirDate,
-			HasFile:        0,
+			HasFile:        false,
 			StillPath:      ep.StillPath,
 			RuntimeMinutes: ep.RuntimeMinutes,
 		})
@@ -953,21 +954,117 @@ func (s *Service) DeleteFile(ctx context.Context, fileID string, deleteFromDisk 
 }
 
 // RenameFiles computes (and optionally applies) renames for all episode files
-// belonging to a series.  This is a stub: when no renamer is configured it
-// returns an empty slice.  A full implementation will be wired in once the
-// renamer package is available.
-func (s *Service) RenameFiles(ctx context.Context, seriesID string, dryRun bool) ([]RenamePreview, error) {
-	// Validate that the series exists.
-	if _, err := s.Get(ctx, seriesID); err != nil {
+// belonging to a series based on the naming format settings.
+func (s *Service) RenameFiles(ctx context.Context, seriesID string, settings RenameSettings, dryRun bool) ([]RenamePreview, error) {
+	series, err := s.Get(ctx, seriesID)
+	if err != nil {
 		return nil, err
 	}
-	// Full rename logic is added in a follow-up when the renamer package lands.
-	// For now return an empty list so the API endpoint is functional.
-	return nil, nil
+
+	lib, err := s.q.GetLibrary(ctx, series.LibraryID)
+	if err != nil {
+		return nil, fmt.Errorf("loading library: %w", err)
+	}
+
+	files, err := s.q.ListEpisodeFilesBySeriesID(ctx, seriesID)
+	if err != nil {
+		return nil, fmt.Errorf("listing episode files: %w", err)
+	}
+
+	if len(files) == 0 {
+		return nil, nil
+	}
+
+	rSeries := renamer.Series{Title: series.Title, Year: int(series.Year)}
+	colon := settings.ColonReplacement
+
+	var previews []RenamePreview
+	var renameErrors []string
+
+	for _, f := range files {
+		// Look up the episode for this file.
+		ep, epErr := s.q.GetEpisode(ctx, f.EpisodeID)
+		if epErr != nil {
+			s.logger.Warn("rename: episode not found for file", "file_id", f.ID, "episode_id", f.EpisodeID)
+			continue
+		}
+
+		ext := filepath.Ext(f.Path)
+		airDate := ep.AirDate.String
+
+		newPath := renamer.DestPath(
+			lib.RootPath,
+			settings.EpisodeFormat,
+			settings.SeriesFolderFormat,
+			settings.SeasonFolderFormat,
+			rSeries,
+			renamer.Episode{
+				SeasonNumber:  int(ep.SeasonNumber),
+				EpisodeNumber: int(ep.EpisodeNumber),
+				Title:         ep.Title,
+				AirDate:       airDate,
+			},
+			plugin.Quality{}, // Quality is not re-parsed for rename; filename is clean already.
+			colon,
+			ext,
+		)
+
+		if newPath == f.Path {
+			continue // already correct
+		}
+
+		previews = append(previews, RenamePreview{
+			FileID:  f.ID,
+			OldPath: f.Path,
+			NewPath: newPath,
+		})
+
+		if !dryRun {
+			// Create destination directory.
+			if mkErr := os.MkdirAll(filepath.Dir(newPath), 0o755); mkErr != nil {
+				renameErrors = append(renameErrors, fmt.Sprintf("mkdir %s: %v", filepath.Dir(newPath), mkErr))
+				continue
+			}
+
+			// Check target doesn't exist.
+			if _, statErr := os.Stat(newPath); statErr == nil {
+				renameErrors = append(renameErrors, fmt.Sprintf("target already exists: %s", newPath))
+				continue
+			}
+
+			if renameErr := os.Rename(f.Path, newPath); renameErr != nil {
+				renameErrors = append(renameErrors, fmt.Sprintf("rename %s → %s: %v", f.Path, newPath, renameErr))
+				continue
+			}
+
+			// Update path in DB.
+			if dbErr := s.q.UpdateEpisodeFilePath(ctx, db.UpdateEpisodeFilePathParams{
+				Path: newPath,
+				ID:   f.ID,
+			}); dbErr != nil {
+				renameErrors = append(renameErrors, fmt.Sprintf("db update %s: %v", f.ID, dbErr))
+			}
+
+			s.logger.Info("renamed episode file", "old", f.Path, "new", newPath)
+		}
+	}
+
+	if len(renameErrors) > 0 {
+		return previews, fmt.Errorf("rename errors: %s", strings.Join(renameErrors, "; "))
+	}
+	return previews, nil
 }
 
 // ListAllTMDBIDs returns all TMDB IDs of series in the library.
 // Used for "already added" detection in the Discover UI.
 func (s *Service) ListAllTMDBIDs(ctx context.Context) ([]int64, error) {
-	return s.q.ListAllTMDBIDs(ctx)
+	ids, err := s.q.ListAllTMDBIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int64, len(ids))
+	for i, id := range ids {
+		out[i] = int64(id)
+	}
+	return out, nil
 }

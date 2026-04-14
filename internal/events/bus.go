@@ -11,18 +11,21 @@ import (
 type Type string
 
 const (
-	TypeShowAdded      Type = "show_added"
-	TypeShowDeleted    Type = "show_deleted"
-	TypeShowUpdated    Type = "show_updated"
-	TypeEpisodeGrabbed Type = "episode_grabbed"
-	TypeGrabFailed     Type = "grab_failed"
-	TypeDownloadDone   Type = "download_done"
-	TypeImportComplete Type = "import_complete"
-	TypeImportFailed   Type = "import_failed"
-	TypeHealthIssue    Type = "health_issue"
-	TypeHealthOK       Type = "health_ok"
-	TypeTaskStarted    Type = "task_started"
-	TypeTaskFinished   Type = "task_finished"
+	TypeShowAdded         Type = "show_added"
+	TypeShowDeleted       Type = "show_deleted"
+	TypeShowUpdated       Type = "show_updated"
+	TypeEpisodeGrabbed    Type = "episode_grabbed"
+	TypeGrabFailed        Type = "grab_failed"
+	TypeGrabStalled       Type = "grab_stalled"         // stallwatcher auto-blocklisted a grab
+	TypeGrabStalledGaveUp Type = "grab_stalled_gave_up" // stall retry circuit breaker hit
+	TypeAutoSearchRetry   Type = "auto_search_retry"    // stallwatcher asks the scheduler to re-search
+	TypeDownloadDone      Type = "download_done"
+	TypeImportComplete    Type = "import_complete"
+	TypeImportFailed      Type = "import_failed"
+	TypeHealthIssue       Type = "health_issue"
+	TypeHealthOK          Type = "health_ok"
+	TypeTaskStarted       Type = "task_started"
+	TypeTaskFinished      Type = "task_finished"
 )
 
 // Event carries the context of something that happened.

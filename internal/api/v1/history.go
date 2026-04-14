@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
 
 type historyItemBody struct {
@@ -38,7 +38,7 @@ type historyListOutput struct {
 
 // RegisterHistoryRoutes registers the global grab history endpoint and the
 // per-series grab history endpoint.
-func RegisterHistoryRoutes(humaAPI huma.API, q dbsqlite.Querier) {
+func RegisterHistoryRoutes(humaAPI huma.API, q db.Querier) {
 	huma.Register(humaAPI, huma.Operation{
 		OperationID: "list-history",
 		Method:      http.MethodGet,
@@ -46,7 +46,7 @@ func RegisterHistoryRoutes(humaAPI huma.API, q dbsqlite.Querier) {
 		Summary:     "List grab history",
 		Tags:        []string{"History"},
 	}, func(ctx context.Context, input *historyListInput) (*historyListOutput, error) {
-		limit := int64(input.Limit)
+		limit := int32(input.Limit)
 		if limit == 0 {
 			limit = 100
 		}
@@ -54,9 +54,9 @@ func RegisterHistoryRoutes(humaAPI huma.API, q dbsqlite.Querier) {
 		if page < 1 {
 			page = 1
 		}
-		offset := int64((page - 1)) * limit
+		offset := int32(page-1) * limit
 
-		rows, err := q.ListGrabHistory(ctx, dbsqlite.ListGrabHistoryParams{
+		rows, err := q.ListGrabHistory(ctx, db.ListGrabHistoryParams{
 			Limit:  limit,
 			Offset: offset,
 		})
@@ -88,28 +88,37 @@ func RegisterHistoryRoutes(humaAPI huma.API, q dbsqlite.Querier) {
 	})
 }
 
-func toHistoryItems(rows []dbsqlite.GrabHistory, statusFilter string) []*historyItemBody {
+func toHistoryItems(rows []db.GrabHistory, statusFilter string) []*historyItemBody {
 	items := make([]*historyItemBody, 0, len(rows))
 	for _, r := range rows {
 		if statusFilter != "" && r.DownloadStatus != statusFilter {
 			continue
 		}
 		grabbedAt, _ := time.Parse(time.RFC3339, r.GrabbedAt)
+		var epID *string
+		if r.EpisodeID.Valid {
+			epID = &r.EpisodeID.String
+		}
+		var sn *int64
+		if r.SeasonNumber.Valid {
+			v := int64(r.SeasonNumber.Int32)
+			sn = &v
+		}
 		item := &historyItemBody{
 			ID:                r.ID,
 			SeriesID:          r.SeriesID,
-			EpisodeID:         r.EpisodeID,
-			SeasonNumber:      r.SeasonNumber,
+			EpisodeID:         epID,
+			SeasonNumber:      sn,
 			ReleaseTitle:      r.ReleaseTitle,
 			ReleaseSource:     r.ReleaseSource,
 			ReleaseResolution: r.ReleaseResolution,
 			Protocol:          r.Protocol,
-			Size:              r.Size,
+			Size:              int64(r.Size),
 			DownloadStatus:    r.DownloadStatus,
 			GrabbedAt:         grabbedAt,
 		}
-		if r.ScoreBreakdown != nil && *r.ScoreBreakdown != "" {
-			item.ScoreBreakdown = json.RawMessage(*r.ScoreBreakdown)
+		if r.ScoreBreakdown.Valid && r.ScoreBreakdown.String != "" {
+			item.ScoreBreakdown = json.RawMessage(r.ScoreBreakdown.String)
 		}
 		items = append(items, item)
 	}

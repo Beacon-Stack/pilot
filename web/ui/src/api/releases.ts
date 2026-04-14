@@ -33,6 +33,11 @@ interface GrabReleaseInput {
   download_url: string;
   size: number;
   quality: { resolution: string; source: string; codec: string; hdr: string; name: string };
+  season_number?: number;
+  episode_id?: string;
+  // When true, removes the release from the blocklist before grabbing.
+  // Sent by the "override and grab anyway" button on grayed (filtered) rows.
+  override?: boolean;
 }
 
 export function useGrabRelease(seriesId: string) {
@@ -41,6 +46,28 @@ export function useGrabRelease(seriesId: string) {
       apiFetch<void>(`/series/${seriesId}/releases/grab`, {
         method: "POST",
         body: JSON.stringify(release),
+      }),
+  });
+}
+
+interface AutoSearchInput {
+  season: number;
+  episode?: number;
+  episode_id?: string;
+}
+
+interface AutoSearchResult {
+  result: "grabbed" | "no_match";
+  release_title?: string;
+  reason?: string;
+}
+
+export function useAutoSearch(seriesId: string) {
+  return useMutation({
+    mutationFn: (input: AutoSearchInput) =>
+      apiFetch<AutoSearchResult>(`/series/${seriesId}/auto-search`, {
+        method: "POST",
+        body: JSON.stringify(input),
       }),
   });
 }

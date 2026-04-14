@@ -31,7 +31,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/queue"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stats"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/logging"
 	"github.com/beacon-stack/pilot/internal/scheduler"
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
@@ -49,7 +49,7 @@ type RouterConfig struct {
 	DBPath                 string
 	ConfigFile             string
 	LogBuffer              *logging.RingBuffer
-	Queries                dbsqlite.Querier
+	Queries                db.Querier
 	ShowService            *show.Service
 	QualityService         *quality.Service
 	LibraryService         *library.Service
@@ -168,7 +168,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.ShowService != nil {
 		v1.RegisterSeriesRoutes(humaAPI, cfg.ShowService)
-		v1.RegisterEpisodeFileRoutes(humaAPI, cfg.ShowService)
+		v1.RegisterEpisodeFileRoutes(humaAPI, cfg.ShowService, cfg.MediaManagementService)
 	}
 
 	if cfg.QualityService != nil {
@@ -181,7 +181,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.IndexerService != nil {
 		v1.RegisterIndexerRoutes(humaAPI, cfg.IndexerService)
-		v1.RegisterReleaseRoutes(humaAPI, cfg.IndexerService, cfg.ShowService, cfg.DownloaderService)
+		v1.RegisterReleaseRoutes(humaAPI, cfg.IndexerService, cfg.ShowService, cfg.DownloaderService, cfg.BlocklistService, cfg.QualityService)
 	}
 
 	if cfg.DownloaderService != nil {

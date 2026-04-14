@@ -109,6 +109,51 @@ func Parse(filename string) ParsedRelease {
 	return result
 }
 
+// NormalizeTitle lowercases a title and strips all non-alphanumeric
+// characters so two titles can be compared without being tripped up by
+// dots, underscores, spaces, or punctuation.
+//
+// Example:
+//
+//	NormalizeTitle("Breaking.Bad") == NormalizeTitle("breaking bad") == "breakingbad"
+func NormalizeTitle(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// TitleMatches reports whether a release's parsed show title refers to the
+// same series as seriesTitle. Comparison is strict after normalization, with
+// one concession: a trailing 4-digit year on the release side is allowed
+// ("Breaking Bad 2008" matches "Breaking Bad") since indexer releases
+// frequently embed the premiere year.
+//
+// It does NOT do any fuzzy matching, substring matching, or word-set
+// comparison — those let unrelated releases slip through and cause the
+// exact wrong-torrent bug this is meant to prevent.
+func TitleMatches(seriesTitle, releaseShowTitle string) bool {
+	s := NormalizeTitle(seriesTitle)
+	r := NormalizeTitle(releaseShowTitle)
+	if s == "" || r == "" {
+		return false
+	}
+	if s == r {
+		return true
+	}
+	if strings.HasPrefix(r, s) {
+		rest := r[len(s):]
+		if len(rest) == 4 && rest >= "1900" && rest <= "2099" {
+			return true
+		}
+	}
+	return false
+}
+
 // cleanTitle replaces dots, underscores, and multiple spaces with a single
 // space and trims whitespace from both ends.
 func cleanTitle(s string) string {

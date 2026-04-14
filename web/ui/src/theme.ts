@@ -287,6 +287,85 @@ export const THEME_PRESETS: ThemePreset[] = [
     },
   },
 
+  {
+    // Warm amber accent on deep charcoal. Distinct from Gruvbox — no yellow tint in the bg.
+    id: "amber",
+    label: "Amber",
+    mode: "dark",
+    preview: { bg: "#141210", surface: "#1c1916", accent: "#e8a628", text: "#f0ece4" },
+    vars: {
+      "bg-base": "#141210",
+      "bg-surface": "#1c1916",
+      "bg-elevated": "#27231e",
+      "bg-subtle": "#332e27",
+      "border-subtle": "rgba(232,166,40,0.09)",
+      "border-default": "rgba(232,166,40,0.15)",
+      "border-strong": "rgba(232,166,40,0.28)",
+      accent: "#e8a628",
+      "accent-hover": "#f0bc50",
+      "accent-muted": "rgba(232,166,40,0.13)",
+      "accent-fg": "#141210",
+      "text-primary": "#f0ece4",
+      "text-secondary": "#b8b09e",
+      "text-muted": "#716859",
+      success: "#34d399",
+      warning: "#fbbf24",
+      danger: "#f87171",
+    },
+  },
+  {
+    // Deep forest green accent on near-black. Softer than neon green, pairs with earthy neutrals.
+    id: "emerald",
+    label: "Emerald",
+    mode: "dark",
+    preview: { bg: "#0d1210", surface: "#131a16", accent: "#34c47a", text: "#e8f0eb" },
+    vars: {
+      "bg-base": "#0d1210",
+      "bg-surface": "#131a16",
+      "bg-elevated": "#1a2320",
+      "bg-subtle": "#222e28",
+      "border-subtle": "rgba(52,196,122,0.09)",
+      "border-default": "rgba(52,196,122,0.15)",
+      "border-strong": "rgba(52,196,122,0.28)",
+      accent: "#34c47a",
+      "accent-hover": "#4dd68e",
+      "accent-muted": "rgba(52,196,122,0.12)",
+      "accent-fg": "#0d1210",
+      "text-primary": "#e8f0eb",
+      "text-secondary": "#a0b8a8",
+      "text-muted": "#5e7868",
+      success: "#34d399",
+      warning: "#fbbf24",
+      danger: "#f87171",
+    },
+  },
+  {
+    // Cool slate — near-neutral blue-gray accent. For people who want color without color.
+    id: "slate",
+    label: "Slate",
+    mode: "dark",
+    preview: { bg: "#0f1117", surface: "#161b27", accent: "#94a3b8", text: "#e2e8f0" },
+    vars: {
+      "bg-base": "#0f1117",
+      "bg-surface": "#161b27",
+      "bg-elevated": "#1e2535",
+      "bg-subtle": "#263044",
+      "border-subtle": "rgba(148,163,184,0.09)",
+      "border-default": "rgba(148,163,184,0.15)",
+      "border-strong": "rgba(148,163,184,0.28)",
+      accent: "#94a3b8",
+      "accent-hover": "#b0bdd0",
+      "accent-muted": "rgba(148,163,184,0.12)",
+      "accent-fg": "#0f1117",
+      "text-primary": "#e2e8f0",
+      "text-secondary": "#94a3b8",
+      "text-muted": "#4e5a6e",
+      success: "#34d399",
+      warning: "#fbbf24",
+      danger: "#f87171",
+    },
+  },
+
   // ── Light themes ─────────────────────────────────────────────────────────
   {
     id: "gruvbox-light",
@@ -363,10 +442,63 @@ export const THEME_PRESETS: ThemePreset[] = [
       danger: "#dc322f",
     },
   },
+  {
+    // Original light theme. Pure white base, blue-gray surfaces, a calm indigo accent.
+    // Designed to feel like a clean macOS app — not a dark theme inverted.
+    id: "beacon-light",
+    label: "Beacon Light",
+    mode: "light",
+    preview: { bg: "#f7f8fa", surface: "#ffffff", accent: "#4f6ef7", text: "#1a1d2e" },
+    vars: {
+      "bg-base": "#f7f8fa",
+      "bg-surface": "#ffffff",
+      "bg-elevated": "#f0f2f7",
+      "bg-subtle": "#e4e7f0",
+      "border-subtle": "rgba(30,35,60,0.07)",
+      "border-default": "rgba(30,35,60,0.12)",
+      "border-strong": "rgba(30,35,60,0.22)",
+      accent: "#4f6ef7",
+      "accent-hover": "#3d5de6",
+      "accent-muted": "rgba(79,110,247,0.09)",
+      "accent-fg": "#ffffff",
+      "text-primary": "#1a1d2e",
+      "text-secondary": "#4a4f68",
+      "text-muted": "#8a90aa",
+      success: "#0f9e5e",
+      warning: "#c07c0a",
+      danger: "#d63040",
+    },
+  },
+  {
+    // Warm paper-white base with a rose accent. Reads like a clean editorial UI.
+    id: "rose",
+    label: "Rose",
+    mode: "light",
+    preview: { bg: "#fdf8f8", surface: "#ffffff", accent: "#e04f7a", text: "#2a1a20" },
+    vars: {
+      "bg-base": "#fdf8f8",
+      "bg-surface": "#ffffff",
+      "bg-elevated": "#f5eeef",
+      "bg-subtle": "#ecdde0",
+      "border-subtle": "rgba(60,20,30,0.07)",
+      "border-default": "rgba(60,20,30,0.12)",
+      "border-strong": "rgba(60,20,30,0.22)",
+      accent: "#e04f7a",
+      "accent-hover": "#c93d68",
+      "accent-muted": "rgba(224,79,122,0.09)",
+      "accent-fg": "#ffffff",
+      "text-primary": "#2a1a20",
+      "text-secondary": "#5c404a",
+      "text-muted": "#9a7e87",
+      success: "#0f9e5e",
+      warning: "#c07c0a",
+      danger: "#d63040",
+    },
+  },
 ];
 
 export const DEFAULT_DARK_PRESET = "pilot";
-export const DEFAULT_LIGHT_PRESET = "catppuccin-latte";
+export const DEFAULT_LIGHT_PRESET = "beacon-light";
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 

@@ -5,14 +5,16 @@ import { useSeriesDetail, useSeasons, useEpisodes, useUpdateSeries, useUpdateEpi
 import { useEpisodeFiles, useLibraryScan } from "@/api/episode-files";
 import { Poster } from "@/components/Poster";
 import ManualSearchModal from "@/components/ManualSearchModal";
+import { useAutoSearch } from "@/api/releases";
 import { formatBytes } from "@/lib/utils";
+import { toast } from "sonner";
 import type { Episode, EpisodeFile, Season } from "@/types";
 
 import SeasonPills from "./SeasonPills";
 import SeasonHeader from "./SeasonHeader";
 import type { EpisodeFilter } from "./SeasonHeader";
 import EpisodeRow from "./EpisodeRow";
-import AllSeasonsView from "./AllSeasonsView";
+import AllSeasonsView, { buildSeasonSummaries } from "./AllSeasonsView";
 import type { SeasonSummary } from "./AllSeasonsView";
 import BulkActionBar from "./BulkActionBar";
 
@@ -43,11 +45,15 @@ function SeasonEpisodeList({
   season,
   fileMap,
   onSearch,
+  onAutoSearch,
+  isAutoSearching,
 }: {
   seriesId: string;
   season: Season;
   fileMap: Map<string, EpisodeFile>;
   onSearch: (target: SearchTarget) => void;
+  onAutoSearch: (target: SearchTarget) => void;
+  isAutoSearching: boolean;
 }) {
   const { data: episodes, isLoading } = useEpisodes(seriesId, season.season_number);
   const updateEpMonitored = useUpdateEpisodeMonitored(seriesId);
@@ -117,7 +123,9 @@ function SeasonEpisodeList({
         filter={filter}
         onFilterChange={setFilter}
         onToggleMonitor={() => updateSeasonMonitored.mutate({ seasonId: season.id, monitored: !season.monitored })}
-        onSearchMissing={() => onSearch({ seriesId, seasonNumber: season.season_number })}
+        onInteractiveSearch={() => onSearch({ seriesId, seasonNumber: season.season_number })}
+        onAutoSearchSeason={() => onAutoSearch({ seriesId, seasonNumber: season.season_number })}
+        isAutoSearching={isAutoSearching}
       />
 
       {filtered.length === 0 ? (
@@ -136,6 +144,7 @@ function SeasonEpisodeList({
               onToggleSelect={() => toggleSelect(ep.id)}
               onToggleMonitor={() => updateEpMonitored.mutate({ episodeId: ep.id, monitored: !ep.monitored, seasonNumber: season.season_number })}
               onSearch={() => onSearch({ seriesId, seasonNumber: season.season_number, episodeNumber: ep.episode_number })}
+              onAutoSearch={() => onAutoSearch({ seriesId, seasonNumber: season.season_number, episodeNumber: ep.episode_number })}
             />
           ))}
         </div>
@@ -169,7 +178,28 @@ export default function SeriesDetail() {
   const updateSeasonMonitored = useUpdateSeasonMonitored(id ?? "");
   const libraryScan = useLibraryScan();
   const [searchTarget, setSearchTarget] = useState<SearchTarget | null>(null);
+  const autoSearch = useAutoSearch(id ?? "");
   const [activeSeason, setActiveSeason] = useState(-1);
+
+  function handleAutoSearch(target: SearchTarget) {
+    const label = target.episodeNumber
+      ? `S${target.seasonNumber}E${String(target.episodeNumber).padStart(2, "0")}`
+      : `Season ${target.seasonNumber}`;
+    const toastId = toast.loading(`Searching releases for ${label}…`);
+    autoSearch.mutate(
+      { season: target.seasonNumber, episode: target.episodeNumber },
+      {
+        onSuccess: (data) => {
+          if (data.result === "grabbed") {
+            toast.success(`Grabbed: ${data.release_title}`, { id: toastId });
+          } else {
+            toast.info(data.reason ?? "No matching release found", { id: toastId });
+          }
+        },
+        onError: (err) => toast.error((err as Error).message, { id: toastId }),
+      }
+    );
+  }
 
   const { data: episodeFiles } = useEpisodeFiles(id ?? "");
   const fileMap = useMemo(
@@ -184,14 +214,10 @@ export default function SeriesDetail() {
 
   const episodeCounts = useMemo(() => new Map<number, { total: number; downloaded: number }>(), []);
 
-  const seasonSummaries: SeasonSummary[] = useMemo(() => {
-    return orderedSeasons.map((s) => ({
-      season: s,
-      totalEpisodes: 0,
-      downloadedEpisodes: 0,
-      totalSize: 0,
-    }));
-  }, [orderedSeasons]);
+  const seasonSummaries: SeasonSummary[] = useMemo(
+    () => buildSeasonSummaries(orderedSeasons),
+    [orderedSeasons]
+  );
 
   const selectedSeason = orderedSeasons.find((s) => s.season_number === activeSeason);
 
@@ -323,6 +349,8 @@ export default function SeriesDetail() {
               season={selectedSeason}
               fileMap={fileMap}
               onSearch={setSearchTarget}
+              onAutoSearch={handleAutoSearch}
+              isAutoSearching={autoSearch.isPending}
             />
           ) : (
             <div style={{ fontSize: 13, color: "var(--color-text-muted)", padding: 20 }}>Season not found.</div>

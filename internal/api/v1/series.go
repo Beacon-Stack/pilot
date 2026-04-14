@@ -44,10 +44,13 @@ type seriesBody struct {
 }
 
 type seasonBody struct {
-	ID           string `json:"id"             doc:"Season UUID"`
-	SeriesID     string `json:"series_id"      doc:"Parent series UUID"`
-	SeasonNumber int    `json:"season_number"  doc:"Season number (0 = specials)"`
-	Monitored    bool   `json:"monitored"      doc:"Whether this season is monitored"`
+	ID               string `json:"id"                  doc:"Season UUID"`
+	SeriesID         string `json:"series_id"           doc:"Parent series UUID"`
+	SeasonNumber     int    `json:"season_number"       doc:"Season number (0 = specials)"`
+	Monitored        bool   `json:"monitored"           doc:"Whether this season is monitored"`
+	EpisodeCount     int64  `json:"episode_count"       doc:"Total episodes in this season"`
+	EpisodeFileCount int64  `json:"episode_file_count"  doc:"Episodes with a file on disk"`
+	TotalSizeBytes   int64  `json:"total_size_bytes"    doc:"Sum of episode file sizes for this season"`
 }
 
 type episodeBody struct {
@@ -222,10 +225,13 @@ func seriesToBody(s show.Series) *seriesBody {
 
 func seasonToBody(s show.Season) *seasonBody {
 	return &seasonBody{
-		ID:           s.ID,
-		SeriesID:     s.SeriesID,
-		SeasonNumber: s.SeasonNumber,
-		Monitored:    s.Monitored,
+		ID:               s.ID,
+		SeriesID:         s.SeriesID,
+		SeasonNumber:     s.SeasonNumber,
+		EpisodeCount:     s.EpisodeCount,
+		EpisodeFileCount: s.EpisodeFileCount,
+		TotalSizeBytes:   s.TotalSizeBytes,
+		Monitored:        s.Monitored,
 	}
 }
 

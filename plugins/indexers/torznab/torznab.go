@@ -109,17 +109,26 @@ func (idx *Indexer) Capabilities(ctx context.Context) (plugin.Capabilities, erro
 // Search queries the indexer for releases matching q.
 //
 // Strategy:
-//  1. If q.TVDBID is set, try the TV search endpoint (?t=tvsearch&tvdbid=…).
-//     Not all indexers support this endpoint, so if it returns zero results we
-//     fall through to step 2.
+//  1. Try the TV search endpoint (?t=tvsearch) with season/episode params.
+//     This lets the indexer filter server-side for better results.
+//     If TVDBID is available, include it for more precise matching.
 //  2. Fall back to free-text search (?t=search&q=…) which is universally
 //     supported. The caller is expected to pass a well-formed show query in
 //     q.Query (e.g. "Breaking Bad S01E05").
 func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.Release, error) {
-	// 1. TVDB TV search — most specific, not universally supported.
-	if q.TVDBID != 0 {
+	// 1. TV search with season/episode params — lets the indexer filter server-side.
+	if q.Season > 0 || q.TVDBID != 0 {
 		params := url.Values{}
-		params.Set("tvdbid", strconv.Itoa(q.TVDBID))
+		params.Set("q", q.Query)
+		if q.TVDBID != 0 {
+			params.Set("tvdbid", strconv.Itoa(q.TVDBID))
+		}
+		if q.Season > 0 {
+			params.Set("season", strconv.Itoa(q.Season))
+		}
+		if q.Episode > 0 {
+			params.Set("ep", strconv.Itoa(q.Episode))
+		}
 		u := idx.buildURL("tvsearch", params)
 		releases, err := idx.fetchReleases(ctx, u)
 		if err == nil && len(releases) > 0 {
@@ -128,7 +137,7 @@ func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.
 		// Zero results or error — fall through to text search.
 	}
 
-	// 2. Free-text search — universally supported.
+	// 2. Free-text search — universally supported fallback.
 	params := url.Values{}
 	params.Set("q", q.Query)
 	u := idx.buildURL("search", params)

@@ -32,6 +32,6 @@ func (i *Integration) SyncHandler(indexerSvc *indexer.Service, dlSvc *downloader
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
 	}
 }

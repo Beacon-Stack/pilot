@@ -3,14 +3,17 @@ package pulse
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
-	"github.com/beacon-stack/pulse/pkg/sdk"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
+	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
+	"github.com/beacon-stack/pilot/internal/core/quality"
+	"github.com/beacon-stack/pilot/pkg/plugin"
+	"github.com/beacon-stack/pulse/pkg/sdk"
 )
 
 // SyncIndexers pulls indexers assigned to this service from Pulse
@@ -112,16 +115,26 @@ func (i *Integration) SyncIndexers(ctx context.Context, indexerSvc *indexer.Serv
 	return nil
 }
 
-// StartSyncLoop runs indexer and download client sync on a periodic interval.
-// It runs an immediate sync on start, then repeats every interval.
-func (i *Integration) StartSyncLoop(ctx context.Context, indexerSvc *indexer.Service, dlSvc *downloader.Service, interval time.Duration) {
-	// Immediate sync on startup.
-	if err := i.SyncIndexers(ctx, indexerSvc); err != nil {
-		i.logger.Warn("pulse: initial indexer sync failed", "error", err)
+// StartSyncLoop runs indexer, download client, quality profile, and shared
+// settings sync on a periodic interval. It runs an immediate sync on start,
+// then repeats every interval.
+func (i *Integration) StartSyncLoop(ctx context.Context, indexerSvc *indexer.Service, dlSvc *downloader.Service, qualitySvc *quality.Service, mmSvc *mediamanagement.Service, interval time.Duration) {
+	runOnce := func(prefix string) {
+		if err := i.SyncIndexers(ctx, indexerSvc); err != nil {
+			i.logger.Warn("pulse: "+prefix+" indexer sync failed", "error", err)
+		}
+		if err := i.SyncDownloadClients(ctx, dlSvc); err != nil {
+			i.logger.Warn("pulse: "+prefix+" download client sync failed", "error", err)
+		}
+		if err := i.SyncQualityProfiles(ctx, qualitySvc); err != nil {
+			i.logger.Warn("pulse: "+prefix+" quality profile sync failed", "error", err)
+		}
+		if err := i.SyncSharedSettings(ctx, mmSvc); err != nil {
+			i.logger.Warn("pulse: "+prefix+" shared settings sync failed", "error", err)
+		}
 	}
-	if err := i.SyncDownloadClients(ctx, dlSvc); err != nil {
-		i.logger.Warn("pulse: initial download client sync failed", "error", err)
-	}
+
+	runOnce("initial")
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -130,14 +143,70 @@ func (i *Integration) StartSyncLoop(ctx context.Context, indexerSvc *indexer.Ser
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := i.SyncIndexers(ctx, indexerSvc); err != nil {
-				i.logger.Warn("pulse: periodic indexer sync failed", "error", err)
-			}
-			if err := i.SyncDownloadClients(ctx, dlSvc); err != nil {
-				i.logger.Warn("pulse: periodic download client sync failed", "error", err)
-			}
+			runOnce("periodic")
 		}
 	}
+}
+
+// SyncSharedSettings pulls the shared media handling settings from Pulse and
+// overlays them on Pilot's local media_management row. Only the 4 shared fields
+// are touched — episode naming templates and other per-service settings are untouched.
+func (i *Integration) SyncSharedSettings(ctx context.Context, mmSvc *mediamanagement.Service) error {
+	remote, err := i.Client.MySharedSettings(ctx)
+	if err != nil {
+		return fmt.Errorf("fetching shared settings: %w", err)
+	}
+
+	local, err := mmSvc.Get(ctx)
+	if err != nil {
+		return fmt.Errorf("reading local media management: %w", err)
+	}
+
+	remoteExts := parseExtensions(remote.ExtraFileExtensions)
+
+	if local.ColonReplacement == remote.ColonReplacement &&
+		local.ImportExtraFiles == remote.ImportExtraFiles &&
+		local.RenameEpisodes == remote.RenameFiles &&
+		extensionsEqual(local.ExtraFileExtensions, remoteExts) {
+		return nil
+	}
+
+	local.ColonReplacement = remote.ColonReplacement
+	local.ImportExtraFiles = remote.ImportExtraFiles
+	local.ExtraFileExtensions = remoteExts
+	local.RenameEpisodes = remote.RenameFiles // Pulse's rename_files → Pilot's rename_episodes
+
+	if _, err := mmSvc.Update(ctx, local); err != nil {
+		return fmt.Errorf("updating local media management: %w", err)
+	}
+	i.logger.Info("pulse: shared settings synced from control plane",
+		"colon_replacement", remote.ColonReplacement,
+		"rename_files", remote.RenameFiles)
+	return nil
+}
+
+func parseExtensions(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func extensionsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // buildSettings creates the JSON settings blob that Prism's torznab/newznab
@@ -262,9 +331,9 @@ func buildDownloadClientSettings(r sdk.DownloadClient) json.RawMessage {
 	}
 
 	m := map[string]interface{}{
-		"url":          fmt.Sprintf("%s://%s:%d", scheme, r.Host, r.Port),
-		"username":     r.Username,
-		"pulse":  true, // marker so we know this was synced
+		"url":      fmt.Sprintf("%s://%s:%d", scheme, r.Host, r.Port),
+		"username": r.Username,
+		"pulse":    true, // marker so we know this was synced
 	}
 
 	if r.Category != "" {
@@ -288,7 +357,166 @@ func buildDownloadClientSettings(r sdk.DownloadClient) json.RawMessage {
 	return out
 }
 
-// logField returns a slog attribute for debug logging.
-func logField(key, value string) slog.Attr {
-	return slog.String(key, value)
+// ── Quality Profile Sync ─────────────────────────────────────────────────────
+
+// SyncQualityProfiles reconciles Pulse-managed quality profiles with the
+// local database. Same pattern as Prism's implementation:
+//   - match by ID (Pulse UUID is canonical)
+//   - create missing, update changed, delete absent
+//   - never touch managed_by_pulse=false (local shadows)
+func (i *Integration) SyncQualityProfiles(ctx context.Context, qualitySvc *quality.Service) error {
+	remote, err := i.Client.MyQualityProfiles(ctx)
+	if err != nil {
+		return fmt.Errorf("fetching quality profiles: %w", err)
+	}
+
+	managed, err := qualitySvc.ListManaged(ctx)
+	if err != nil {
+		return fmt.Errorf("listing managed quality profiles: %w", err)
+	}
+
+	managedByID := make(map[string]quality.Profile, len(managed))
+	for _, p := range managed {
+		managedByID[p.ID] = p
+	}
+
+	allLocal, err := qualitySvc.List(ctx)
+	if err != nil {
+		return fmt.Errorf("listing all quality profiles: %w", err)
+	}
+	allLocalIDs := make(map[string]bool, len(allLocal))
+	for _, p := range allLocal {
+		allLocalIDs[p.ID] = true
+	}
+
+	var created, updated, deleted, skipped, shadowed int
+	remoteIDs := make(map[string]bool, len(remote))
+
+	for _, r := range remote {
+		remoteIDs[r.ID] = true
+
+		req, err := remoteToCreateRequest(r)
+		if err != nil {
+			i.logger.Warn("pulse: failed to parse remote profile",
+				"id", r.ID, "name", r.Name, "error", err)
+			continue
+		}
+
+		if existing, ok := managedByID[r.ID]; ok {
+			if profileNeedsUpdate(existing, req) {
+				if _, err := qualitySvc.Update(ctx, r.ID, req); err != nil {
+					i.logger.Warn("pulse: failed to update managed quality profile",
+						"id", r.ID, "name", r.Name, "error", err)
+					continue
+				}
+				updated++
+			} else {
+				skipped++
+			}
+		} else if allLocalIDs[r.ID] {
+			// Local shadow — detached, do not touch.
+			shadowed++
+		} else {
+			if _, err := qualitySvc.CreateManaged(ctx, r.ID, req); err != nil {
+				i.logger.Warn("pulse: failed to create managed quality profile",
+					"id", r.ID, "name", r.Name, "error", err)
+				continue
+			}
+			created++
+		}
+	}
+
+	for _, l := range managed {
+		if remoteIDs[l.ID] {
+			continue
+		}
+		if err := qualitySvc.Delete(ctx, l.ID); err != nil {
+			if errors.Is(err, quality.ErrInUse) {
+				i.logger.Info("pulse: managed quality profile in use, skipping delete",
+					"id", l.ID, "name", l.Name)
+				continue
+			}
+			i.logger.Warn("pulse: failed to delete managed quality profile",
+				"id", l.ID, "name", l.Name, "error", err)
+			continue
+		}
+		deleted++
+	}
+
+	i.logger.Info("pulse: quality profile sync complete",
+		"remote", len(remote), "created", created, "updated", updated,
+		"skipped", skipped, "shadowed", shadowed, "deleted", deleted)
+	return nil
+}
+
+func remoteToCreateRequest(r sdk.QualityProfile) (quality.CreateRequest, error) {
+	var cutoff plugin.Quality
+	if r.CutoffJSON != "" && r.CutoffJSON != "{}" {
+		if err := json.Unmarshal([]byte(r.CutoffJSON), &cutoff); err != nil {
+			return quality.CreateRequest{}, fmt.Errorf("unmarshaling cutoff: %w", err)
+		}
+	}
+
+	var qualities []plugin.Quality
+	if r.QualitiesJSON != "" && r.QualitiesJSON != "[]" {
+		if err := json.Unmarshal([]byte(r.QualitiesJSON), &qualities); err != nil {
+			return quality.CreateRequest{}, fmt.Errorf("unmarshaling qualities: %w", err)
+		}
+	}
+
+	var upgradeUntil *plugin.Quality
+	if r.UpgradeUntilJSON != nil && *r.UpgradeUntilJSON != "" && *r.UpgradeUntilJSON != "null" {
+		var q plugin.Quality
+		if err := json.Unmarshal([]byte(*r.UpgradeUntilJSON), &q); err != nil {
+			return quality.CreateRequest{}, fmt.Errorf("unmarshaling upgrade_until: %w", err)
+		}
+		upgradeUntil = &q
+	}
+
+	return quality.CreateRequest{
+		Name:                 r.Name,
+		Cutoff:               cutoff,
+		Qualities:            qualities,
+		UpgradeAllowed:       r.UpgradeAllowed,
+		UpgradeUntil:         upgradeUntil,
+		MinCustomFormatScore: r.MinCustomFormatScore,
+		UpgradeUntilCFScore:  r.UpgradeUntilCFScore,
+	}, nil
+}
+
+func profileNeedsUpdate(local quality.Profile, remote quality.CreateRequest) bool {
+	if local.Name != remote.Name ||
+		local.UpgradeAllowed != remote.UpgradeAllowed ||
+		local.MinCustomFormatScore != remote.MinCustomFormatScore ||
+		local.UpgradeUntilCFScore != remote.UpgradeUntilCFScore {
+		return true
+	}
+	if !qualityEqual(local.Cutoff, remote.Cutoff) {
+		return true
+	}
+	if len(local.Qualities) != len(remote.Qualities) {
+		return true
+	}
+	for i := range local.Qualities {
+		if !qualityEqual(local.Qualities[i], remote.Qualities[i]) {
+			return true
+		}
+	}
+	if (local.UpgradeUntil == nil) != (remote.UpgradeUntil == nil) {
+		return true
+	}
+	if local.UpgradeUntil != nil && !qualityEqual(*local.UpgradeUntil, *remote.UpgradeUntil) {
+		return true
+	}
+	return false
+}
+
+func qualityEqual(a, b plugin.Quality) bool {
+	return a.Resolution == b.Resolution &&
+		a.Source == b.Source &&
+		a.Codec == b.Codec &&
+		a.HDR == b.HDR &&
+		a.AudioCodec == b.AudioCodec &&
+		a.AudioChannels == b.AudioChannels &&
+		a.Name == b.Name
 }

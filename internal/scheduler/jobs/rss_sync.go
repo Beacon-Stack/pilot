@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,7 +12,7 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
 )
 
@@ -20,7 +21,7 @@ import (
 // wanted episodes. Runs every 15 minutes.
 func RSSSync(
 	idxSvc *indexer.Service,
-	showQ dbsqlite.Querier,
+	showQ db.Querier,
 	dlSvc *downloader.Service,
 	logger *slog.Logger,
 ) scheduler.Job {
@@ -53,7 +54,7 @@ func RSSSync(
 func runRSSSync(
 	ctx context.Context,
 	idxSvc *indexer.Service,
-	q dbsqlite.Querier,
+	q db.Querier,
 	dlSvc *downloader.Service,
 	logger *slog.Logger,
 ) (int, error) {
@@ -77,7 +78,7 @@ func runRSSSync(
 	}
 
 	// 3. Build a map of series ID → row for quick lookup after title matching.
-	seriesByTitle := make(map[string]dbsqlite.Series, len(series))
+	seriesByTitle := make(map[string]db.Series, len(series))
 	for _, s := range series {
 		seriesByTitle[normalizeRSSTitle(s.Title)] = s
 	}
@@ -129,7 +130,7 @@ func runRSSSync(
 		}
 
 		// Only grab if episode is monitored and has no file.
-		if ep.Monitored == 0 || ep.HasFile != 0 {
+		if !ep.Monitored || ep.HasFile {
 			continue
 		}
 
@@ -151,13 +152,15 @@ func runRSSSync(
 			continue
 		}
 
-		// Record the grab in history.
+		// Record the grab in history. Source is "auto_search" so stall
+		// detection is allowed to auto-re-search on failure.
 		grab, grabErr := idxSvc.CreateGrab(ctx, indexer.GrabRequest{
 			SeriesID:     matched.ID,
 			EpisodeID:    ep.ID,
 			SeasonNumber: sn,
 			Release:      rel.Release,
 			IndexerID:    rel.IndexerID,
+			Source:       "auto_search",
 		})
 		if grabErr != nil {
 			logger.Warn("rss_sync: could not record grab history",
@@ -170,16 +173,17 @@ func runRSSSync(
 
 		// Update grab with the download client assignment if we have a grab row.
 		if grabErr == nil && (dcID != "" || itemID != "") {
-			var dcIDPtr, itemIDPtr *string
+			dcNS := sql.NullString{}
 			if dcID != "" {
-				dcIDPtr = &dcID
+				dcNS = sql.NullString{String: dcID, Valid: true}
 			}
+			itemNS := sql.NullString{}
 			if itemID != "" {
-				itemIDPtr = &itemID
+				itemNS = sql.NullString{String: itemID, Valid: true}
 			}
-			if err := idxSvc.UpdateGrabDownloadClient(ctx, dbsqlite.UpdateGrabDownloadClientParams{
-				DownloadClientID: dcIDPtr,
-				ClientItemID:     itemIDPtr,
+			if err := idxSvc.UpdateGrabDownloadClient(ctx, db.UpdateGrabDownloadClientParams{
+				DownloadClientID: dcNS,
+				ClientItemID:     itemNS,
 				ID:               grab.ID,
 			}); err != nil {
 				logger.Warn("rss_sync: could not update grab download client",
@@ -205,7 +209,7 @@ func runRSSSync(
 
 // matchSeriesTitle finds the series whose normalised title appears as a
 // word-aligned prefix of the normalised release title.
-func matchSeriesTitle(normRelease string, seriesByTitle map[string]dbsqlite.Series) (dbsqlite.Series, bool) {
+func matchSeriesTitle(normRelease string, seriesByTitle map[string]db.Series) (db.Series, bool) {
 	for normTitle, s := range seriesByTitle {
 		if normTitle == "" {
 			continue
@@ -219,17 +223,17 @@ func matchSeriesTitle(normRelease string, seriesByTitle map[string]dbsqlite.Seri
 			}
 		}
 	}
-	return dbsqlite.Series{}, false
+	return db.Series{}, false
 }
 
 // findEpisode returns the first episode matching the given season and episode number.
-func findEpisode(episodes []dbsqlite.Episode, season, episode int) (dbsqlite.Episode, bool) {
+func findEpisode(episodes []db.Episode, season, episode int) (db.Episode, bool) {
 	for _, ep := range episodes {
 		if int(ep.SeasonNumber) == season && int(ep.EpisodeNumber) == episode {
 			return ep, true
 		}
 	}
-	return dbsqlite.Episode{}, false
+	return db.Episode{}, false
 }
 
 // extractEpisodeNumbers parses the first S##E## pattern from a release title.

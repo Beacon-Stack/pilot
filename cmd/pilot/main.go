@@ -21,6 +21,7 @@ import (
 
 	// Register downloader plugins.
 	_ "github.com/beacon-stack/pilot/plugins/downloaders/deluge"
+	_ "github.com/beacon-stack/pilot/plugins/downloaders/haul"
 	_ "github.com/beacon-stack/pilot/plugins/downloaders/nzbget"
 	_ "github.com/beacon-stack/pilot/plugins/downloaders/qbittorrent"
 	_ "github.com/beacon-stack/pilot/plugins/downloaders/sabnzbd"
@@ -53,7 +54,6 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/api"
 	"github.com/beacon-stack/pilot/internal/api/ws"
-	pulseint "github.com/beacon-stack/pilot/internal/pulse"
 	"github.com/beacon-stack/pilot/internal/appinfo"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/activity"
@@ -69,12 +69,14 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
 	"github.com/beacon-stack/pilot/internal/core/show"
+	"github.com/beacon-stack/pilot/internal/core/stallwatcher"
 	"github.com/beacon-stack/pilot/internal/core/stats"
 	"github.com/beacon-stack/pilot/internal/db"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	dbgen "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 	"github.com/beacon-stack/pilot/internal/logging"
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
+	pulseint "github.com/beacon-stack/pilot/internal/pulse"
 	"github.com/beacon-stack/pilot/internal/ratelimit"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/scheduler"
@@ -189,11 +191,7 @@ func run() error {
 	}
 	defer database.Close()
 
-	if database.Driver == "sqlite" {
-		logger.Info("database connected", "driver", database.Driver, "path", cfg.Database.Path)
-	} else {
-		logger.Info("database connected", "driver", database.Driver)
-	}
+	logger.Info("database connected", "driver", database.Driver)
 
 	if err := db.Migrate(database.SQL, database.Driver); err != nil {
 		return fmt.Errorf("running migrations: %w", err)
@@ -205,7 +203,7 @@ func run() error {
 	bus := events.New(logger)
 
 	// ── Services ──────────────────────────────────────────────────────────────
-	queries := dbsqlite.New(database.SQL)
+	queries := dbgen.New(database.SQL)
 
 	qualitySvc := quality.NewService(queries, bus)
 	librarySvc := library.NewService(queries, bus)
@@ -230,6 +228,7 @@ func run() error {
 	mediaManagementSvc := mediamanagement.NewService(queries)
 	qualityDefSvc := quality.NewDefinitionService(queries)
 	queueSvc := queue.NewService(queries, downloaderSvc, bus, logger)
+	stallWatcher := stallwatcher.NewService(queries, blocklistSvc, downloaderSvc, bus, logger)
 
 	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc)
 	importerSvc.Subscribe()
@@ -307,10 +306,14 @@ func run() error {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
-	// Pulse sync — pull indexers and download clients from the control plane.
+	// Pulse sync — pull indexers, download clients, quality profiles, and shared settings from the control plane.
 	if pulseIntegration != nil {
-		go pulseIntegration.StartSyncLoop(appCtx, indexerSvc, downloaderSvc, 30*time.Second)
+		go pulseIntegration.StartSyncLoop(appCtx, indexerSvc, downloaderSvc, qualitySvc, mediaManagementSvc, 30*time.Second)
 	}
+
+	// Stall watcher — poll Haul every 60s for dead torrents and blocklist
+	// the corresponding releases. See plans/dead-torrent-phase0.md.
+	go stallWatcher.Run(appCtx)
 
 	go sched.Start(appCtx)
 

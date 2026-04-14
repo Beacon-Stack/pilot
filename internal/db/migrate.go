@@ -19,13 +19,7 @@ func Migrate(sqlDB *sql.DB, driver string) error {
 	var initErr error
 	gooseInit.Do(func() {
 		goose.SetBaseFS(migrationsFS)
-
-		dialect := driver
-		if driver == "sqlite" {
-			dialect = "sqlite3"
-		}
-
-		initErr = goose.SetDialect(dialect)
+		initErr = goose.SetDialect("postgres")
 	})
 	if initErr != nil {
 		return fmt.Errorf("setting goose dialect: %w", initErr)

@@ -72,12 +72,16 @@ func ApplyEpisodeFormat(format string, series Series, episode Episode, quality p
 		"{Original Title}", series.OriginalTitle,
 		"{Release Year}", yearStr(series.Year),
 		"{Season:00}", fmt.Sprintf("%02d", episode.SeasonNumber),
+		"{season:00}", fmt.Sprintf("%02d", episode.SeasonNumber),
 		"{Episode:00}", fmt.Sprintf("%02d", episode.EpisodeNumber),
+		"{episode:00}", fmt.Sprintf("%02d", episode.EpisodeNumber),
 		"{Absolute Episode:000}", fmt.Sprintf("%03d", episode.AbsoluteNumber),
 		"{Episode Title}", episode.Title,
 		"{Air Date}", episode.AirDate,
+		"{Air-Date}", episode.AirDate,
 		"{Quality Full}", quality.Name,
 		"{MediaInfo VideoCodec}", string(quality.Codec),
+		"{Year}", yearStr(series.Year),
 	)
 	return sanitize(r.Replace(format))
 }
@@ -91,6 +95,7 @@ func ApplyFolderFormat(format string, series Series) string {
 		"{Series CleanTitle}", CleanTitle(series.Title, ColonSpaceDash),
 		"{Original Title}", series.OriginalTitle,
 		"{Release Year}", yearStr(series.Year),
+		"{Year}", yearStr(series.Year),
 	)
 	return sanitize(r.Replace(format))
 }
@@ -101,6 +106,7 @@ func ApplyFolderFormat(format string, series Series) string {
 func ApplySeasonFolderFormat(format string, seasonNumber int) string {
 	r := strings.NewReplacer(
 		"{Season:00}", fmt.Sprintf("%02d", seasonNumber),
+		"{season:00}", fmt.Sprintf("%02d", seasonNumber),
 	)
 	return sanitize(r.Replace(format))
 }

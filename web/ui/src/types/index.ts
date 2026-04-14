@@ -40,6 +40,9 @@ export interface Season {
   series_id: string;
   season_number: number;
   monitored: boolean;
+  episode_count: number;
+  episode_file_count: number;
+  total_size_bytes: number;
 }
 
 export interface Episode {
@@ -97,6 +100,7 @@ export interface QualityProfile {
   upgrade_until?: Quality;
   min_custom_format_score: number;
   upgrade_until_cf_score: number;
+  managed_by_pulse?: boolean;
 }
 
 export interface Quality {
@@ -145,6 +149,18 @@ export interface ReleaseResult {
     hdr: string;
   };
   quality_score: number;
+  // pack_type classifies the release by what it covers. Backend values:
+  // "season" | "multi_episode" | "episode" | "" (unknown).
+  pack_type?: "season" | "multi_episode" | "episode" | "";
+  // episode_count is how many episodes the release covers. 0 for season
+  // packs (count not derivable from title) and for unknown classifications.
+  episode_count?: number;
+  multi_indexer?: boolean;
+  low_confidence?: boolean;
+  // filter_reasons is populated by the backend when a release fails a
+  // safety filter (below min_seeders, previously stalled, ...). The UI
+  // renders such rows grayed at the bottom with an "override" button.
+  filter_reasons?: string[];
 }
 
 // ── Download Clients ────────────────────────────────────────────────────────

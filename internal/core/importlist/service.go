@@ -16,7 +16,7 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/show"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/trakt"
@@ -81,7 +81,7 @@ type SyncResult struct {
 
 // Service manages import list configurations and executes syncs.
 type Service struct {
-	q           dbsqlite.Querier
+	q           db.Querier
 	reg         *registry.Registry
 	showSvc     *show.Service
 	tmdbClient  *tmdbtv.Client
@@ -93,7 +93,7 @@ type Service struct {
 // NewService creates a new import list Service.
 // tmdbClient and traktClient may be nil.
 func NewService(
-	q dbsqlite.Querier,
+	q db.Querier,
 	reg *registry.Registry,
 	showSvc *show.Service,
 	tmdbClient *tmdbtv.Client,
@@ -121,14 +121,14 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Config, error)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	row, err := s.q.CreateImportListConfig(ctx, dbsqlite.CreateImportListConfigParams{
+	row, err := s.q.CreateImportListConfig(ctx, db.CreateImportListConfigParams{
 		ID:               uuid.New().String(),
 		Name:             req.Name,
 		Kind:             req.Kind,
-		Enabled:          boolToInt(req.Enabled),
+		Enabled:          req.Enabled,
 		Settings:         string(req.Settings),
-		SearchOnAdd:      boolToInt(req.SearchOnAdd),
-		Monitor:          boolToInt(req.Monitor),
+		SearchOnAdd:      req.SearchOnAdd,
+		Monitor:          req.Monitor,
 		MonitorType:      req.MonitorType,
 		QualityProfileID: req.QualityProfileID,
 		LibraryID:        req.LibraryID,
@@ -182,13 +182,13 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Con
 		return Config{}, fmt.Errorf("validating import list settings: %w", err)
 	}
 
-	row, err := s.q.UpdateImportListConfig(ctx, dbsqlite.UpdateImportListConfigParams{
+	row, err := s.q.UpdateImportListConfig(ctx, db.UpdateImportListConfigParams{
 		Name:             req.Name,
 		Kind:             req.Kind,
-		Enabled:          boolToInt(req.Enabled),
+		Enabled:          req.Enabled,
 		Settings:         string(settings),
-		SearchOnAdd:      boolToInt(req.SearchOnAdd),
-		Monitor:          boolToInt(req.Monitor),
+		SearchOnAdd:      req.SearchOnAdd,
+		Monitor:          req.Monitor,
 		MonitorType:      req.MonitorType,
 		QualityProfileID: req.QualityProfileID,
 		LibraryID:        req.LibraryID,
@@ -271,11 +271,11 @@ func (s *Service) Preview(ctx context.Context, kind string, settings json.RawMes
 // CreateExclusion adds a series to the import exclusion list.
 func (s *Service) CreateExclusion(ctx context.Context, tmdbID int, title string, year int) (Exclusion, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	row, err := s.q.CreateImportExclusion(ctx, dbsqlite.CreateImportExclusionParams{
+	row, err := s.q.CreateImportExclusion(ctx, db.CreateImportExclusionParams{
 		ID:        uuid.New().String(),
-		TmdbID:    int64(tmdbID),
+		TmdbID:    int32(tmdbID),
 		Title:     title,
-		Year:      int64(year),
+		Year:      int32(year),
 		CreatedAt: now,
 	})
 	if err != nil {
@@ -337,7 +337,7 @@ func (s *Service) doSync(ctx context.Context, onlyID *string) SyncResult {
 	result := SyncResult{Errors: []string{}}
 
 	// Load enabled lists (or a specific one).
-	var lists []dbsqlite.ImportListConfig
+	var lists []db.ImportListConfig
 	var err error
 	if onlyID != nil {
 		row, getErr := s.q.GetImportListConfig(ctx, *onlyID)
@@ -345,7 +345,7 @@ func (s *Service) doSync(ctx context.Context, onlyID *string) SyncResult {
 			result.Errors = append(result.Errors, fmt.Sprintf("list %q: %v", *onlyID, getErr))
 			return result
 		}
-		lists = []dbsqlite.ImportListConfig{row}
+		lists = []db.ImportListConfig{row}
 	} else {
 		lists, err = s.q.ListEnabledImportLists(ctx)
 		if err != nil {
@@ -360,7 +360,7 @@ func (s *Service) doSync(ctx context.Context, onlyID *string) SyncResult {
 		result.Errors = append(result.Errors, fmt.Sprintf("loading existing tmdb ids: %v", err))
 		return result
 	}
-	existingSet := make(map[int64]bool, len(existingIDs))
+	existingSet := make(map[int32]bool, len(existingIDs))
 	for _, id := range existingIDs {
 		existingSet[id] = true
 	}
@@ -371,7 +371,7 @@ func (s *Service) doSync(ctx context.Context, onlyID *string) SyncResult {
 		result.Errors = append(result.Errors, fmt.Sprintf("loading exclusions: %v", err))
 		return result
 	}
-	excludedSet := make(map[int64]bool, len(excludedIDs))
+	excludedSet := make(map[int32]bool, len(excludedIDs))
 	for _, id := range excludedIDs {
 		excludedSet[id] = true
 	}
@@ -406,7 +406,7 @@ func (s *Service) doSync(ctx context.Context, onlyID *string) SyncResult {
 			if item.TMDbID == 0 {
 				continue
 			}
-			tmdbID := int64(item.TMDbID)
+			tmdbID := int32(item.TMDbID)
 			if existingSet[tmdbID] {
 				result.SeriesSkipped++
 				continue
@@ -461,17 +461,17 @@ func (s *Service) injectClients(pl plugin.ImportList) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func rowToConfig(r dbsqlite.ImportListConfig) Config {
+func rowToConfig(r db.ImportListConfig) Config {
 	ca, _ := time.Parse(time.RFC3339, r.CreatedAt)
 	ua, _ := time.Parse(time.RFC3339, r.UpdatedAt)
 	return Config{
 		ID:               r.ID,
 		Name:             r.Name,
 		Kind:             r.Kind,
-		Enabled:          r.Enabled == 1,
+		Enabled:          r.Enabled,
 		Settings:         json.RawMessage(r.Settings),
-		SearchOnAdd:      r.SearchOnAdd == 1,
-		Monitor:          r.Monitor == 1,
+		SearchOnAdd:      r.SearchOnAdd,
+		Monitor:          r.Monitor,
 		MonitorType:      r.MonitorType,
 		QualityProfileID: r.QualityProfileID,
 		LibraryID:        r.LibraryID,
@@ -480,7 +480,7 @@ func rowToConfig(r dbsqlite.ImportListConfig) Config {
 	}
 }
 
-func rowToExclusion(r dbsqlite.ImportExclusion) Exclusion {
+func rowToExclusion(r db.ImportExclusion) Exclusion {
 	ca, _ := time.Parse(time.RFC3339, r.CreatedAt)
 	return Exclusion{
 		ID:        r.ID,
@@ -489,11 +489,4 @@ func rowToExclusion(r dbsqlite.ImportExclusion) Exclusion {
 		Year:      int(r.Year),
 		CreatedAt: ca,
 	}
-}
-
-func boolToInt(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
 }

@@ -11,8 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/beacon-stack/pilot/internal/core/dbutil"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/registry"
 )
 
@@ -43,12 +42,12 @@ type UpdateRequest = CreateRequest
 
 // Service manages media server configurations.
 type Service struct {
-	q   dbsqlite.Querier
+	q   db.Querier
 	reg *registry.Registry
 }
 
 // NewService creates a new Service.
-func NewService(q dbsqlite.Querier, reg *registry.Registry) *Service {
+func NewService(q db.Querier, reg *registry.Registry) *Service {
 	return &Service{q: q, reg: reg}
 }
 
@@ -63,11 +62,11 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Config, error)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	row, err := s.q.CreateMediaServerConfig(ctx, dbsqlite.CreateMediaServerConfigParams{
+	row, err := s.q.CreateMediaServerConfig(ctx, db.CreateMediaServerConfigParams{
 		ID:        uuid.New().String(),
 		Name:      req.Name,
 		Kind:      req.Kind,
-		Enabled:   dbutil.BoolToInt(req.Enabled),
+		Enabled:   req.Enabled,
 		Settings:  string(settings),
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -118,11 +117,11 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Con
 		settings = json.RawMessage("{}")
 	}
 
-	row, err := s.q.UpdateMediaServerConfig(ctx, dbsqlite.UpdateMediaServerConfigParams{
+	row, err := s.q.UpdateMediaServerConfig(ctx, db.UpdateMediaServerConfigParams{
 		ID:        id,
 		Name:      req.Name,
 		Kind:      req.Kind,
-		Enabled:   dbutil.BoolToInt(req.Enabled),
+		Enabled:   req.Enabled,
 		Settings:  string(settings),
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	})
@@ -161,7 +160,7 @@ func (s *Service) Test(ctx context.Context, id string) error {
 }
 
 // rowToConfig converts a DB row into the domain Config type.
-func rowToConfig(row dbsqlite.MediaServerConfig) Config {
+func rowToConfig(row db.MediaServerConfig) Config {
 	createdAt, _ := time.Parse(time.RFC3339, row.CreatedAt)
 	updatedAt, _ := time.Parse(time.RFC3339, row.UpdatedAt)
 
@@ -169,7 +168,7 @@ func rowToConfig(row dbsqlite.MediaServerConfig) Config {
 		ID:        row.ID,
 		Name:      row.Name,
 		Kind:      row.Kind,
-		Enabled:   row.Enabled != 0,
+		Enabled:   row.Enabled,
 		Settings:  json.RawMessage(row.Settings),
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,

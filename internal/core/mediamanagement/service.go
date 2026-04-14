@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beacon-stack/pilot/internal/core/dbutil"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
 
 // Settings is the application-level view of the media_management table.
@@ -27,11 +26,11 @@ type Settings struct {
 
 // Service exposes read/write access to the single media_management row.
 type Service struct {
-	q dbsqlite.Querier
+	q db.Querier
 }
 
 // NewService creates a new Service backed by the given Querier.
-func NewService(q dbsqlite.Querier) *Service {
+func NewService(q db.Querier) *Service {
 	return &Service{q: q}
 }
 
@@ -46,17 +45,17 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 
 // Update persists new settings and returns the saved values.
 func (s *Service) Update(ctx context.Context, settings Settings) (Settings, error) {
-	row, err := s.q.UpdateMediaManagement(ctx, dbsqlite.UpdateMediaManagementParams{
-		RenameEpisodes:           dbutil.BoolToInt(settings.RenameEpisodes),
+	row, err := s.q.UpdateMediaManagement(ctx, db.UpdateMediaManagementParams{
+		RenameEpisodes:           settings.RenameEpisodes,
 		StandardEpisodeFormat:    settings.StandardEpisodeFormat,
 		DailyEpisodeFormat:       settings.DailyEpisodeFormat,
 		AnimeEpisodeFormat:       settings.AnimeEpisodeFormat,
 		SeriesFolderFormat:       settings.SeriesFolderFormat,
 		SeasonFolderFormat:       settings.SeasonFolderFormat,
 		ColonReplacement:         settings.ColonReplacement,
-		ImportExtraFiles:         dbutil.BoolToInt(settings.ImportExtraFiles),
+		ImportExtraFiles:         settings.ImportExtraFiles,
 		ExtraFileExtensions:      strings.Join(settings.ExtraFileExtensions, ","),
-		UnmonitorDeletedEpisodes: dbutil.BoolToInt(settings.UnmonitorDeletedEpisodes),
+		UnmonitorDeletedEpisodes: settings.UnmonitorDeletedEpisodes,
 	})
 	if err != nil {
 		return Settings{}, fmt.Errorf("media_management: update: %w", err)
@@ -65,18 +64,18 @@ func (s *Service) Update(ctx context.Context, settings Settings) (Settings, erro
 }
 
 // fromRow converts a DB row to a Settings value.
-func fromRow(row dbsqlite.MediaManagement) Settings {
+func fromRow(row db.MediaManagement) Settings {
 	return Settings{
-		RenameEpisodes:           row.RenameEpisodes != 0,
+		RenameEpisodes:           row.RenameEpisodes,
 		StandardEpisodeFormat:    row.StandardEpisodeFormat,
 		DailyEpisodeFormat:       row.DailyEpisodeFormat,
 		AnimeEpisodeFormat:       row.AnimeEpisodeFormat,
 		SeriesFolderFormat:       row.SeriesFolderFormat,
 		SeasonFolderFormat:       row.SeasonFolderFormat,
 		ColonReplacement:         row.ColonReplacement,
-		ImportExtraFiles:         row.ImportExtraFiles != 0,
+		ImportExtraFiles:         row.ImportExtraFiles,
 		ExtraFileExtensions:      parseExtensions(row.ExtraFileExtensions),
-		UnmonitorDeletedEpisodes: row.UnmonitorDeletedEpisodes != 0,
+		UnmonitorDeletedEpisodes: row.UnmonitorDeletedEpisodes,
 	}
 }
 

@@ -2,11 +2,12 @@ package v1
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
 
 // ── Request / response shapes ────────────────────────────────────────────────
@@ -20,8 +21,8 @@ type calendarEpisodeBody struct {
 	EpisodeID     string `json:"episode_id"     doc:"Episode UUID"`
 	SeriesID      string `json:"series_id"      doc:"Series UUID"`
 	SeriesTitle   string `json:"series_title"   doc:"Series title"`
-	SeasonNumber  int64  `json:"season_number"  doc:"Season number"`
-	EpisodeNumber int64  `json:"episode_number" doc:"Episode number within season"`
+	SeasonNumber  int32  `json:"season_number"  doc:"Season number"`
+	EpisodeNumber int32  `json:"episode_number" doc:"Episode number within season"`
 	EpisodeTitle  string `json:"episode_title"  doc:"Episode title"`
 	AirDate       string `json:"air_date"       doc:"Air date (YYYY-MM-DD)"`
 	HasFile       bool   `json:"has_file"       doc:"Whether a file is linked to this episode"`
@@ -33,7 +34,7 @@ type calendarOutput struct {
 }
 
 // RegisterCalendarRoutes registers the calendar endpoint.
-func RegisterCalendarRoutes(api huma.API, q dbsqlite.Querier) {
+func RegisterCalendarRoutes(api huma.API, q db.Querier) {
 	huma.Register(api, huma.Operation{
 		OperationID: "calendar-list",
 		Method:      http.MethodGet,
@@ -41,9 +42,9 @@ func RegisterCalendarRoutes(api huma.API, q dbsqlite.Querier) {
 		Summary:     "List episodes airing in a date range",
 		Tags:        []string{"Calendar"},
 	}, func(ctx context.Context, input *calendarInput) (*calendarOutput, error) {
-		rows, err := q.ListEpisodesByAirDateRange(ctx, dbsqlite.ListEpisodesByAirDateRangeParams{
-			AirDate:   &input.Start,
-			AirDate_2: &input.End,
+		rows, err := q.ListEpisodesByAirDateRange(ctx, db.ListEpisodesByAirDateRangeParams{
+			AirDate:   sql.NullString{String: input.Start, Valid: input.Start != ""},
+			AirDate_2: sql.NullString{String: input.End, Valid: input.End != ""},
 		})
 		if err != nil {
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to list calendar episodes", err)
@@ -51,10 +52,6 @@ func RegisterCalendarRoutes(api huma.API, q dbsqlite.Querier) {
 
 		bodies := make([]*calendarEpisodeBody, 0, len(rows))
 		for _, r := range rows {
-			airDate := ""
-			if r.AirDate != nil {
-				airDate = *r.AirDate
-			}
 			bodies = append(bodies, &calendarEpisodeBody{
 				EpisodeID:     r.ID,
 				SeriesID:      r.SeriesID,
@@ -62,9 +59,9 @@ func RegisterCalendarRoutes(api huma.API, q dbsqlite.Querier) {
 				SeasonNumber:  r.SeasonNumber,
 				EpisodeNumber: r.EpisodeNumber,
 				EpisodeTitle:  r.Title,
-				AirDate:       airDate,
-				HasFile:       r.HasFile != 0,
-				Monitored:     r.Monitored != 0,
+				AirDate:       r.AirDate.String,
+				HasFile:       r.HasFile,
+				Monitored:     r.Monitored,
 			})
 		}
 

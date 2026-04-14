@@ -22,6 +22,7 @@ type qualityProfileBody struct {
 	UpgradeUntil         *plugin.Quality  `json:"upgrade_until,omitempty"   doc:"Quality ceiling for upgrades"`
 	MinCustomFormatScore int              `json:"min_custom_format_score"   doc:"Minimum CF score to accept a release"`
 	UpgradeUntilCFScore  int              `json:"upgrade_until_cf_score"    doc:"CF score ceiling for upgrades"`
+	ManagedByPulse       bool             `json:"managed_by_pulse"          doc:"True if synced from Pulse"`
 }
 
 type qualityProfileInput struct {
@@ -77,6 +78,7 @@ func profileToBody(p quality.Profile) *qualityProfileBody {
 		UpgradeUntil:         p.UpgradeUntil,
 		MinCustomFormatScore: p.MinCustomFormatScore,
 		UpgradeUntilCFScore:  p.UpgradeUntilCFScore,
+		ManagedByPulse:       p.ManagedByPulse,
 	}
 }
 
@@ -158,13 +160,22 @@ func RegisterQualityProfileRoutes(api huma.API, qualitySvc *quality.Service) {
 	})
 
 	// PUT /api/v1/quality-profiles/{id}
+	// If the profile is managed_by_pulse, this auto-detaches it first so the
+	// local edit becomes a shadow. Future Pulse sync runs won't overwrite it.
 	huma.Register(api, huma.Operation{
 		OperationID: "update-quality-profile",
 		Method:      http.MethodPut,
 		Path:        "/api/v1/quality-profiles/{id}",
-		Summary:     "Update a quality profile",
+		Summary:     "Update a quality profile (auto-detaches from Pulse if managed)",
 		Tags:        []string{"Quality Profiles"},
 	}, func(ctx context.Context, input *qualityProfileUpdateInput) (*qualityProfileOutput, error) {
+		existing, getErr := qualitySvc.Get(ctx, input.ID)
+		if getErr == nil && existing.ManagedByPulse {
+			if err := qualitySvc.DetachFromPulse(ctx, input.ID); err != nil {
+				return nil, huma.NewError(http.StatusInternalServerError, "failed to detach from Pulse", err)
+			}
+		}
+
 		p, err := qualitySvc.Update(ctx, input.ID, inputToQualityCreateRequest(input.Body))
 		if err != nil {
 			if errors.Is(err, quality.ErrNotFound) {
@@ -173,6 +184,24 @@ func RegisterQualityProfileRoutes(api huma.API, qualitySvc *quality.Service) {
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to update quality profile", err)
 		}
 		return &qualityProfileOutput{Body: profileToBody(p)}, nil
+	})
+
+	// POST /api/v1/quality-profiles/{id}/detach
+	huma.Register(api, huma.Operation{
+		OperationID:   "detach-quality-profile",
+		Method:        http.MethodPost,
+		Path:          "/api/v1/quality-profiles/{id}/detach",
+		Summary:       "Detach a quality profile from Pulse management",
+		Tags:          []string{"Quality Profiles"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, input *qualityProfileGetInput) (*qualityProfileDeleteOutput, error) {
+		if err := qualitySvc.DetachFromPulse(ctx, input.ID); err != nil {
+			if errors.Is(err, quality.ErrNotFound) {
+				return nil, huma.Error404NotFound("quality profile not found")
+			}
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to detach quality profile", err)
+		}
+		return &qualityProfileDeleteOutput{}, nil
 	})
 
 	// DELETE /api/v1/quality-profiles/{id}

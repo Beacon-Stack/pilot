@@ -1,0 +1,62 @@
+# Beacon-stack unified build — context is the beacon/ root directory.
+# This variant copies the Pulse SDK for the local replace directive.
+
+# ── Frontend build stage ──────────────────────────────────────────────────────
+FROM node:22-alpine AS frontend
+
+WORKDIR /app/web/ui
+
+COPY pilot/web/ui/package.json pilot/web/ui/package-lock.json ./
+RUN npm ci
+
+COPY pilot/web/ui/ ./
+
+# Shared UI components (Modal, ConfirmDialog). See web-shared/README.md.
+COPY web-shared/ /web-shared/
+RUN cd /web-shared && npm install --no-audit --no-fund --loglevel=error
+
+RUN npm run build
+
+# ── Go build stage ───────────────────────────────────────────────────────────
+FROM golang:1.25-alpine AS builder
+
+ARG VERSION=dev
+ARG TMDB_API_KEY
+ARG TRAKT_CLIENT_ID
+
+WORKDIR /app
+
+# Copy Pulse SDK for local replace directive
+COPY pulse/ /pulse/
+
+# Copy all Pilot source
+COPY pilot/ .
+
+# Rewrite replace directive to point to copied Pulse SDK
+RUN sed -i 's|replace github.com/beacon-stack/pulse => .*|replace github.com/beacon-stack/pulse => /pulse|' go.mod
+
+RUN go mod download
+
+# Overwrite web/static/ with the freshly built frontend
+COPY --from=frontend /app/web/static/ ./web/static/
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags "-X github.com/beacon-stack/pilot/internal/version.Version=${VERSION} \
+                -X github.com/beacon-stack/pilot/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
+                -X github.com/beacon-stack/pilot/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
+                -s -w" \
+      -o /pilot ./cmd/pilot
+
+# ── Final stage ───────────────────────────────────────────────────────────────
+FROM alpine:3.21
+
+RUN apk add --no-cache ffmpeg ca-certificates tzdata && \
+    adduser -D -u 1000 pilot
+
+COPY --from=builder /pilot /pilot
+
+VOLUME ["/config"]
+EXPOSE 8383
+
+USER pilot
+ENTRYPOINT ["/pilot"]

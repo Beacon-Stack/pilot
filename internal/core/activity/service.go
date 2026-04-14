@@ -4,6 +4,7 @@ package activity
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 )
 
@@ -54,12 +55,12 @@ type ListResult struct {
 
 // Service records and queries activity log entries.
 type Service struct {
-	q      dbsqlite.Querier
+	q      db.Querier
 	logger *slog.Logger
 }
 
 // NewService creates a new activity service.
-func NewService(q dbsqlite.Querier, logger *slog.Logger) *Service {
+func NewService(q db.Querier, logger *slog.Logger) *Service {
 	return &Service{q: q, logger: logger}
 }
 
@@ -85,18 +86,23 @@ func (s *Service) handleEvent(ctx context.Context, e events.Event) {
 		}
 	}
 
-	var seriesID *string
+	seriesID := sql.NullString{}
 	if e.ShowID != "" {
-		seriesID = &e.ShowID
+		seriesID = sql.NullString{String: e.ShowID, Valid: true}
 	}
 
-	err := s.q.InsertActivity(ctx, dbsqlite.InsertActivityParams{
+	detailNull := sql.NullString{}
+	if detailStr != nil {
+		detailNull = sql.NullString{String: *detailStr, Valid: true}
+	}
+
+	err := s.q.InsertActivity(ctx, db.InsertActivityParams{
 		ID:        uuid.New().String(),
 		Type:      string(e.Type),
 		Category:  string(cat),
 		SeriesID:  seriesID,
 		Title:     title,
-		Detail:    detailStr,
+		Detail:    detailNull,
 		CreatedAt: e.Timestamp.UTC().Format(time.RFC3339),
 	})
 	if err != nil {
@@ -200,16 +206,16 @@ func (s *Service) List(ctx context.Context, category *string, since *string, lim
 		sinceFilter = *since
 	}
 
-	rows, err := s.q.ListActivities(ctx, dbsqlite.ListActivitiesParams{
+	rows, err := s.q.ListActivities(ctx, db.ListActivitiesParams{
 		Category: catFilter,
 		Since:    sinceFilter,
-		Limit:    limit,
+		Limit:    int32(limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing activities: %w", err)
 	}
 
-	total, err := s.q.CountActivities(ctx, dbsqlite.CountActivitiesParams{
+	total, err := s.q.CountActivities(ctx, db.CountActivitiesParams{
 		Category: catFilter,
 		Since:    sinceFilter,
 	})
@@ -219,16 +225,20 @@ func (s *Service) List(ctx context.Context, category *string, since *string, lim
 
 	activities := make([]Activity, 0, len(rows))
 	for _, r := range rows {
+		var sid *string
+		if r.SeriesID.Valid {
+			sid = &r.SeriesID.String
+		}
 		a := Activity{
 			ID:        r.ID,
 			Type:      r.Type,
 			Category:  r.Category,
-			SeriesID:  r.SeriesID,
+			SeriesID:  sid,
 			Title:     r.Title,
 			CreatedAt: r.CreatedAt,
 		}
-		if r.Detail != nil {
-			_ = json.Unmarshal([]byte(*r.Detail), &a.Detail)
+		if r.Detail.Valid {
+			_ = json.Unmarshal([]byte(r.Detail.String), &a.Detail)
 		}
 		activities = append(activities, a)
 	}

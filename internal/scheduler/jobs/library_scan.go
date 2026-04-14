@@ -16,7 +16,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/library"
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/show"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
@@ -44,7 +44,7 @@ var releaseTagsRe = regexp.MustCompile(`(?i)[\s.\[(-]*(720p|1080p|2160p|4k|blura
 // LibraryScan returns a Job that walks all library root directories, discovers
 // new shows from folder names (auto-adding via TMDB), then matches video files
 // to known series/episodes and creates episode_file records.
-func LibraryScan(libSvc *library.Service, showSvc *show.Service, q dbsqlite.Querier, logger *slog.Logger) scheduler.Job {
+func LibraryScan(libSvc *library.Service, showSvc *show.Service, q db.Querier, logger *slog.Logger) scheduler.Job {
 	return scheduler.Job{
 		Name:     "library_scan",
 		Interval: libraryScanInterval,
@@ -70,7 +70,7 @@ func LibraryScan(libSvc *library.Service, showSvc *show.Service, q dbsqlite.Quer
 }
 
 // runLibraryScan performs the actual scan work.
-func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.Service, q dbsqlite.Querier, logger *slog.Logger) error {
+func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.Service, q db.Querier, logger *slog.Logger) error {
 	libs, err := libSvc.List(ctx)
 	if err != nil {
 		return err
@@ -230,7 +230,7 @@ func scanLibraryFiles(
 	ctx context.Context,
 	lib library.Library,
 	showSvc *show.Service,
-	q dbsqlite.Querier,
+	q db.Querier,
 	known map[string]bool,
 	logger *slog.Logger,
 ) error {
@@ -276,7 +276,7 @@ func importScannedFile(
 	lib library.Library,
 	seriesByTitle map[string]show.Series,
 	showSvc *show.Service,
-	q dbsqlite.Querier,
+	q db.Querier,
 	logger *slog.Logger,
 ) error {
 	parsed := parser.Parse(filepath.Base(path))
@@ -313,7 +313,7 @@ func importScannedFile(
 	}
 
 	type epKey struct{ season, episode int }
-	epIndex := make(map[epKey]dbsqlite.Episode, len(episodes))
+	epIndex := make(map[epKey]db.Episode, len(episodes))
 	for _, ep := range episodes {
 		epIndex[epKey{int(ep.SeasonNumber), int(ep.EpisodeNumber)}] = ep
 	}
@@ -339,7 +339,7 @@ func importScannedFile(
 
 		qualityJSON, _ := json.Marshal(plugin.Quality{})
 
-		if _, err := q.CreateEpisodeFile(ctx, dbsqlite.CreateEpisodeFileParams{
+		if _, err := q.CreateEpisodeFile(ctx, db.CreateEpisodeFileParams{
 			ID:          uuid.New().String(),
 			EpisodeID:   ep.ID,
 			SeriesID:    series.ID,
@@ -358,12 +358,12 @@ func importScannedFile(
 		}
 
 		// Mark episode as having a file.
-		if _, err := q.UpdateEpisode(ctx, dbsqlite.UpdateEpisodeParams{
+		if _, err := q.UpdateEpisode(ctx, db.UpdateEpisodeParams{
 			ID:             ep.ID,
 			Title:          ep.Title,
 			Overview:       ep.Overview,
 			AirDate:        ep.AirDate,
-			HasFile:        1,
+			HasFile:        true,
 			StillPath:      ep.StillPath,
 			RuntimeMinutes: ep.RuntimeMinutes,
 		}); err != nil {

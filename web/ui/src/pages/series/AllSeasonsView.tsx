@@ -17,6 +17,15 @@ interface Props {
 
 export type { SeasonSummary };
 
+export function buildSeasonSummaries(seasons: Season[]): SeasonSummary[] {
+  return seasons.map((s) => ({
+    season: s,
+    totalEpisodes: s.episode_count,
+    downloadedEpisodes: s.episode_file_count,
+    totalSize: s.total_size_bytes,
+  }));
+}
+
 export default function AllSeasonsView({ summaries, onSelectSeason, onToggleMonitor }: Props) {
   if (!summaries.length) {
     return <div style={{ fontSize: 13, color: "var(--color-text-muted)", padding: 20 }}>No seasons.</div>;

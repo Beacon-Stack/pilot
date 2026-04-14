@@ -8,8 +8,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
+	"github.com/beacon-stack/pilot/internal/core/renamer"
 	"github.com/beacon-stack/pilot/internal/core/show"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -62,7 +64,7 @@ type renameSeriesOutput struct {
 }
 
 // RegisterEpisodeFileRoutes registers file management endpoints for a series.
-func RegisterEpisodeFileRoutes(api huma.API, svc *show.Service) {
+func RegisterEpisodeFileRoutes(api huma.API, svc *show.Service, mmSvc *mediamanagement.Service) {
 	// GET /api/v1/series/{id}/files
 	huma.Register(api, huma.Operation{
 		OperationID: "list-episode-files",
@@ -120,7 +122,17 @@ func RegisterEpisodeFileRoutes(api huma.API, svc *show.Service) {
 			}
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to get series", err)
 		}
-		items, err := svc.RenameFiles(ctx, input.ID, input.DryRun)
+		mm, mmErr := mmSvc.Get(ctx)
+		if mmErr != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to load media management settings", mmErr)
+		}
+		settings := show.RenameSettings{
+			EpisodeFormat:      mm.StandardEpisodeFormat,
+			SeriesFolderFormat: mm.SeriesFolderFormat,
+			SeasonFolderFormat: mm.SeasonFolderFormat,
+			ColonReplacement:   renamer.ColonReplacement(mm.ColonReplacement),
+		}
+		items, err := svc.RenameFiles(ctx, input.ID, settings, input.DryRun)
 		if err != nil {
 			return nil, huma.NewError(http.StatusUnprocessableEntity, "rename failed", err)
 		}
@@ -139,7 +151,7 @@ func RegisterEpisodeFileRoutes(api huma.API, svc *show.Service) {
 }
 
 // episodeFileToBody converts a DB model to the API response shape.
-func episodeFileToBody(f dbsqlite.EpisodeFile) *episodeFileBody {
+func episodeFileToBody(f db.EpisodeFile) *episodeFileBody {
 	var q plugin.Quality
 	_ = json.Unmarshal([]byte(f.QualityJson), &q)
 

@@ -18,7 +18,8 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/parser"
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	"github.com/beacon-stack/pilot/internal/core/renamer"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
@@ -40,14 +41,14 @@ var videoExtensions = map[string]bool{
 // Service subscribes to TypeDownloadDone events and imports completed files
 // into the library directory tree.
 type Service struct {
-	q      dbsqlite.Querier
+	q      db.Querier
 	bus    *events.Bus
 	logger *slog.Logger
 	mm     *mediamanagement.Service
 }
 
 // NewService creates a new Service.
-func NewService(q dbsqlite.Querier, bus *events.Bus, logger *slog.Logger, mm *mediamanagement.Service) *Service {
+func NewService(q db.Querier, bus *events.Bus, logger *slog.Logger, mm *mediamanagement.Service) *Service {
 	return &Service{q: q, bus: bus, logger: logger, mm: mm}
 }
 
@@ -98,7 +99,7 @@ func (s *Service) ImportFile(ctx context.Context, grabID, contentPath string) er
 	}
 
 	// Build a (season, episode) → Episode index for fast lookup.
-	epIndex := make(map[epKey]dbsqlite.Episode, len(episodes))
+	epIndex := make(map[epKey]db.Episode, len(episodes))
 	for _, ep := range episodes {
 		epIndex[epKey{int(ep.SeasonNumber), int(ep.EpisodeNumber)}] = ep
 	}
@@ -163,8 +164,8 @@ func (s *Service) ImportFile(ctx context.Context, grabID, contentPath string) er
 func (s *Service) importSingleFile(
 	ctx context.Context,
 	srcPath string,
-	grab dbsqlite.GrabHistory,
-	epIndex map[epKey]dbsqlite.Episode,
+	grab db.GrabHistory,
+	epIndex map[epKey]db.Episode,
 	quality plugin.Quality,
 ) error {
 	parsed := parser.Parse(filepath.Base(srcPath))
@@ -202,29 +203,74 @@ func (s *Service) importSingleFile(
 	return nil
 }
 
-// AttachFile transfers srcPath into the library (or records an existing path),
-// creates the episode_files record, and marks the episode as having a file.
-//
-// The destination path is srcPath as-is when media management renaming is
-// disabled; when renaming is enabled the caller is expected to have already
-// computed the destination (this method currently records srcPath directly —
-// the renamer integration can be layered in later without changing the
-// signature).
+// AttachFile transfers srcPath into the library, applying rename if configured.
+// Creates the episode_files record and marks the episode as having a file.
 func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath string, sizeBytes int64, quality plugin.Quality) error {
-	// Destination is currently the source path (rename is a separate step).
-	destPath := filePath
-
-	// Load media management settings to honour extra-file copying.
+	// Load media management settings.
 	mm, err := s.mm.Get(ctx)
 	if err != nil {
 		return fmt.Errorf("loading media management settings: %w", err)
 	}
 
-	// If the file is not already in the library root we need to transfer it.
-	// Detect by checking whether destPath already exists; if not, perform
-	// hardlink-with-copy-fallback.  When srcPath == destPath the file is
-	// already in place (e.g. library-scan attach path).
-	if _, statErr := os.Stat(destPath); os.IsNotExist(statErr) {
+	// Compute destination path.
+	destPath := filePath
+	if mm.RenameEpisodes {
+		// Load series and episode info for the renamer.
+		series, seriesErr := s.q.GetSeries(ctx, seriesID)
+		if seriesErr != nil {
+			return fmt.Errorf("loading series for rename: %w", seriesErr)
+		}
+		ep, epErr := s.q.GetEpisode(ctx, episodeID)
+		if epErr != nil {
+			return fmt.Errorf("loading episode for rename: %w", epErr)
+		}
+		lib, libErr := s.q.GetLibrary(ctx, series.LibraryID)
+		if libErr != nil {
+			return fmt.Errorf("loading library for rename: %w", libErr)
+		}
+
+		// Use library-level format overrides if set, else global settings.
+		episodeFormat := mm.StandardEpisodeFormat
+		if lib.NamingFormat.Valid && lib.NamingFormat.String != "" {
+			episodeFormat = lib.NamingFormat.String
+		}
+		seriesFolderFormat := mm.SeriesFolderFormat
+		seasonFolderFormat := mm.SeasonFolderFormat
+		if lib.FolderFormat.Valid && lib.FolderFormat.String != "" {
+			seriesFolderFormat = lib.FolderFormat.String
+		}
+
+		colon := renamer.ColonReplacement(mm.ColonReplacement)
+
+		destPath = renamer.DestPath(
+			lib.RootPath,
+			episodeFormat,
+			seriesFolderFormat,
+			seasonFolderFormat,
+			renamer.Series{Title: series.Title, Year: int(series.Year)},
+			renamer.Episode{
+				SeasonNumber:  int(ep.SeasonNumber),
+				EpisodeNumber: int(ep.EpisodeNumber),
+				Title:         ep.Title,
+				AirDate:       ep.AirDate.String,
+			},
+			quality, colon,
+			filepath.Ext(filePath),
+		)
+
+		s.logger.Info("rename computed",
+			"src", filePath,
+			"dest", destPath,
+		)
+	}
+
+	// Create destination directory.
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("creating destination directory: %w", err)
+	}
+
+	// Transfer: hardlink with copy fallback.
+	if destPath != filePath {
 		if err := transferFile(filePath, destPath); err != nil {
 			return fmt.Errorf("transferring %q → %q: %w", filePath, destPath, err)
 		}
@@ -242,7 +288,7 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	if _, err := s.q.CreateEpisodeFile(ctx, dbsqlite.CreateEpisodeFileParams{
+	if _, err := s.q.CreateEpisodeFile(ctx, db.CreateEpisodeFileParams{
 		ID:          uuid.New().String(),
 		EpisodeID:   episodeID,
 		SeriesID:    seriesID,
@@ -261,12 +307,12 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 	if err != nil {
 		return fmt.Errorf("fetching episode %q to update has_file: %w", episodeID, err)
 	}
-	if _, err := s.q.UpdateEpisode(ctx, dbsqlite.UpdateEpisodeParams{
+	if _, err := s.q.UpdateEpisode(ctx, db.UpdateEpisodeParams{
 		ID:             ep.ID,
 		Title:          ep.Title,
 		Overview:       ep.Overview,
 		AirDate:        ep.AirDate,
-		HasFile:        1,
+		HasFile:        true,
 		StillPath:      ep.StillPath,
 		RuntimeMinutes: ep.RuntimeMinutes,
 	}); err != nil {
@@ -283,7 +329,7 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 
 // qualityFromGrab reconstructs a plugin.Quality from the denormalized fields
 // stored in grab_history.
-func qualityFromGrab(g dbsqlite.GrabHistory) plugin.Quality {
+func qualityFromGrab(g db.GrabHistory) plugin.Quality {
 	return plugin.Quality{
 		Resolution: plugin.Resolution(g.ReleaseResolution),
 		Source:     plugin.Source(g.ReleaseSource),

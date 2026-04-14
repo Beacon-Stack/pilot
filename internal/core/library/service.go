@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 )
 
@@ -54,12 +54,12 @@ type Stats struct {
 
 // Service manages library records.
 type Service struct {
-	q   dbsqlite.Querier
+	q   db.Querier
 	bus *events.Bus
 }
 
 // NewService creates a new Service backed by the given querier and event bus.
-func NewService(q dbsqlite.Querier, bus *events.Bus) *Service {
+func NewService(q db.Querier, bus *events.Bus) *Service {
 	return &Service{q: q, bus: bus}
 }
 
@@ -71,14 +71,14 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Library, error
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	row, err := s.q.CreateLibrary(ctx, dbsqlite.CreateLibraryParams{
+	row, err := s.q.CreateLibrary(ctx, db.CreateLibraryParams{
 		ID:                      uuid.New().String(),
 		Name:                    req.Name,
 		RootPath:                req.RootPath,
 		DefaultQualityProfileID: req.DefaultQualityProfileID,
-		NamingFormat:            req.NamingFormat,
-		FolderFormat:            req.FolderFormat,
-		MinFreeSpaceGb:          int64(req.MinFreeSpaceGB),
+		NamingFormat:            ptrToNullString(req.NamingFormat),
+		FolderFormat:            ptrToNullString(req.FolderFormat),
+		MinFreeSpaceGb:          int32(req.MinFreeSpaceGB),
 		TagsJson:                tagsJSON,
 		CreatedAt:               now,
 		UpdatedAt:               now,
@@ -137,14 +137,14 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Lib
 		return Library{}, err
 	}
 
-	row, err := s.q.UpdateLibrary(ctx, dbsqlite.UpdateLibraryParams{
+	row, err := s.q.UpdateLibrary(ctx, db.UpdateLibraryParams{
 		ID:                      id,
 		Name:                    req.Name,
 		RootPath:                req.RootPath,
 		DefaultQualityProfileID: req.DefaultQualityProfileID,
-		NamingFormat:            req.NamingFormat,
-		FolderFormat:            req.FolderFormat,
-		MinFreeSpaceGb:          int64(req.MinFreeSpaceGB),
+		NamingFormat:            ptrToNullString(req.NamingFormat),
+		FolderFormat:            ptrToNullString(req.FolderFormat),
+		MinFreeSpaceGb:          int32(req.MinFreeSpaceGB),
 		TagsJson:                tagsJSON,
 		UpdatedAt:               time.Now().UTC().Format(time.RFC3339),
 	})
@@ -186,7 +186,7 @@ func (s *Service) Stats(ctx context.Context, id string) (Stats, error) {
 }
 
 // rowToLibrary converts a DB row into the domain Library type.
-func rowToLibrary(row dbsqlite.Library) (Library, error) {
+func rowToLibrary(row db.Library) (Library, error) {
 	var tags []string
 	if err := json.Unmarshal([]byte(row.TagsJson), &tags); err != nil {
 		return Library{}, fmt.Errorf("unmarshaling tags for library %q: %w", row.ID, err)
@@ -207,13 +207,27 @@ func rowToLibrary(row dbsqlite.Library) (Library, error) {
 		Name:                    row.Name,
 		RootPath:                row.RootPath,
 		DefaultQualityProfileID: row.DefaultQualityProfileID,
-		NamingFormat:            row.NamingFormat,
-		FolderFormat:            row.FolderFormat,
+		NamingFormat:            nullStringToPtr(row.NamingFormat),
+		FolderFormat:            nullStringToPtr(row.FolderFormat),
 		MinFreeSpaceGB:          int(row.MinFreeSpaceGb),
 		Tags:                    tags,
 		CreatedAt:               createdAt,
 		UpdatedAt:               updatedAt,
 	}, nil
+}
+
+func ptrToNullString(s *string) sql.NullString {
+	if s == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *s, Valid: true}
+}
+
+func nullStringToPtr(ns sql.NullString) *string {
+	if !ns.Valid {
+		return nil
+	}
+	return &ns.String
 }
 
 // marshalTags serializes a tags slice to JSON. A nil or empty slice becomes "[]".

@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -47,11 +47,11 @@ type GrowthPoint struct {
 
 // Service provides library statistics.
 type Service struct {
-	q dbsqlite.Querier
+	q db.Querier
 }
 
 // NewService creates a new statistics Service.
-func NewService(q dbsqlite.Querier) *Service {
+func NewService(q db.Querier) *Service {
 	return &Service{q: q}
 }
 
@@ -160,13 +160,13 @@ func (s *Service) Snapshot(ctx context.Context) error {
 		return fmt.Errorf("collecting storage for snapshot: %w", err)
 	}
 
-	return s.q.InsertStatsSnapshot(ctx, dbsqlite.InsertStatsSnapshotParams{
+	return s.q.InsertStatsSnapshot(ctx, db.InsertStatsSnapshotParams{
 		ID:                uuid.New().String(),
-		TotalSeries:       col.TotalSeries,
-		TotalEpisodes:     col.TotalEpisodes,
-		MonitoredEpisodes: col.Monitored,
-		WithFile:          col.WithFile,
-		Missing:           col.Missing,
+		TotalSeries:       int32(col.TotalSeries),
+		TotalEpisodes:     int32(col.TotalEpisodes),
+		MonitoredEpisodes: int32(col.Monitored),
+		WithFile:          int32(col.WithFile),
+		Missing:           int32(col.Missing),
 		TotalSizeBytes:    stor.TotalBytes,
 		SnapshotAt:        time.Now().UTC().Format(time.RFC3339),
 	})
@@ -184,9 +184,9 @@ func (s *Service) Growth(ctx context.Context) ([]GrowthPoint, error) {
 	for i, r := range rows {
 		points[len(rows)-1-i] = GrowthPoint{
 			SnapshotAt:    r.SnapshotAt,
-			TotalSeries:   r.TotalSeries,
-			TotalEpisodes: r.TotalEpisodes,
-			WithFile:      r.WithFile,
+			TotalSeries:   int64(r.TotalSeries),
+			TotalEpisodes: int64(r.TotalEpisodes),
+			WithFile:      int64(r.WithFile),
 			TotalBytes:    r.TotalSizeBytes,
 		}
 	}

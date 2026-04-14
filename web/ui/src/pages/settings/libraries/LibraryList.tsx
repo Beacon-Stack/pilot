@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Trash2, Pencil, X, FolderSync } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import { useLibraries, useCreateLibrary, useUpdateLibrary, useDeleteLibrary } from "@/api/libraries";
+import { useQualityProfiles } from "@/api/quality";
 import { useLibraryScan } from "@/api/episode-files";
 import PageHeader from "@/components/PageHeader";
-import Modal from "@/components/Modal";
+import Modal from "@beacon-shared/Modal";
 import type { Library } from "@/types";
 
 // ── Library form modal ────────────────────────────────────────────────────────
@@ -15,18 +18,43 @@ interface LibraryFormProps {
 }
 
 function LibraryForm({ initial, onClose }: LibraryFormProps) {
+  const { data: profiles } = useQualityProfiles();
   const [name, setName] = useState(initial?.name ?? "");
   const [rootPath, setRootPath] = useState(initial?.root_path ?? "");
   const [minFreeSpace, setMinFreeSpace] = useState(initial?.min_free_space_gb ?? 1);
+  const [qualityProfileId, setQualityProfileId] = useState(
+    initial?.default_quality_profile_id ?? "",
+  );
+
+  // Once profiles load, seed the dropdown to the first available profile so
+  // the state matches the option the browser is visually displaying. Without
+  // this, the initial state is "" while the <select> shows the first <option>,
+  // which means submitting without touching the dropdown fails validation.
+  useEffect(() => {
+    if (qualityProfileId) return;
+    const first = profiles?.[0]?.id;
+    if (first) setQualityProfileId(first);
+  }, [profiles, qualityProfileId]);
 
   const create = useCreateLibrary();
   const update = useUpdateLibrary(initial?.id ?? "");
 
   const isEdit = !!initial;
+  const hasProfiles = (profiles?.length ?? 0) > 0;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const body = { name, root_path: rootPath, min_free_space_gb: minFreeSpace, tags: [], default_quality_profile_id: "" };
+    if (!qualityProfileId) {
+      toast.error("Select a quality profile");
+      return;
+    }
+    const body = {
+      name,
+      root_path: rootPath,
+      min_free_space_gb: minFreeSpace,
+      tags: [],
+      default_quality_profile_id: qualityProfileId,
+    };
 
     if (isEdit) {
       update.mutate(body, {
@@ -144,6 +172,57 @@ function LibraryForm({ initial, onClose }: LibraryFormProps) {
               marginBottom: 6,
             }}
           >
+            Default Quality Profile
+          </label>
+          {hasProfiles ? (
+            <select
+              value={qualityProfileId}
+              onChange={(e) => setQualityProfileId(e.target.value)}
+              required
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                background: "var(--color-bg-elevated)",
+                border: "1px solid var(--color-border-default)",
+                borderRadius: 6,
+                fontSize: 14,
+                color: "var(--color-text-primary)",
+                outline: "none",
+              }}
+            >
+              {profiles!.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div
+              style={{
+                padding: "10px 12px",
+                background: "color-mix(in srgb, var(--color-warning) 10%, var(--color-bg-elevated))",
+                border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
+                borderRadius: 6,
+                fontSize: 12,
+                color: "var(--color-text-secondary)",
+                lineHeight: 1.5,
+              }}
+            >
+              No quality profiles exist yet. <Link to="/settings/quality-profiles" style={{ color: "var(--color-accent)", textDecoration: "underline" }}>Create one first</Link> before adding a library.
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: 12,
+              fontWeight: 500,
+              color: "var(--color-text-secondary)",
+              marginBottom: 6,
+            }}
+          >
             Minimum Free Space (GB)
           </label>
           <input
@@ -182,17 +261,17 @@ function LibraryForm({ initial, onClose }: LibraryFormProps) {
           </button>
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isPending || !hasProfiles}
             style={{
               padding: "8px 16px",
               background: "var(--color-accent)",
               border: "none",
               borderRadius: 6,
-              cursor: isPending ? "not-allowed" : "pointer",
+              cursor: (isPending || !hasProfiles) ? "not-allowed" : "pointer",
               fontSize: 13,
               fontWeight: 600,
               color: "var(--color-accent-fg)",
-              opacity: isPending ? 0.7 : 1,
+              opacity: (isPending || !hasProfiles) ? 0.7 : 1,
             }}
           >
             {isPending ? "Saving..." : isEdit ? "Save Changes" : "Add Library"}
@@ -212,8 +291,10 @@ export default function LibraryList() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Library | null>(null);
 
-  function handleDelete(lib: Library) {
-    if (!confirm(`Delete library "${lib.name}"? This will not delete any files.`)) return;
+  const confirm = useConfirm();
+
+  async function handleDelete(lib: Library) {
+    if (!await confirm({ title: "Delete Library", message: `Delete library "${lib.name}"? This will not delete any files.` })) return;
     deleteLibrary.mutate(lib.id, {
       onSuccess: () => toast.success("Library deleted"),
       onError: (err) => toast.error(err.message),

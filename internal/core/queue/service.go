@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	dbsqlite "github.com/beacon-stack/pilot/internal/db/generated/sqlite"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
@@ -38,14 +38,14 @@ type DownloaderClient interface {
 
 // Service polls download clients and keeps grab_history status up to date.
 type Service struct {
-	q          dbsqlite.Querier
+	q          db.Querier
 	downloader DownloaderClient
 	bus        *events.Bus
 	logger     *slog.Logger
 }
 
 // NewService creates a new queue Service.
-func NewService(q dbsqlite.Querier, downloader DownloaderClient, bus *events.Bus, logger *slog.Logger) *Service {
+func NewService(q db.Querier, downloader DownloaderClient, bus *events.Bus, logger *slog.Logger) *Service {
 	return &Service{q: q, downloader: downloader, bus: bus, logger: logger}
 }
 
@@ -81,16 +81,16 @@ func (s *Service) RemoveFromQueue(ctx context.Context, grabID string, deleteFile
 	if err != nil {
 		return fmt.Errorf("grab %q not found: %w", grabID, err)
 	}
-	if grab.DownloadClientID == nil || grab.ClientItemID == nil {
+	if !grab.DownloadClientID.Valid || !grab.ClientItemID.Valid {
 		return errors.New("grab has no associated download client")
 	}
 
-	client, err := s.downloader.ClientFor(ctx, *grab.DownloadClientID)
+	client, err := s.downloader.ClientFor(ctx, grab.DownloadClientID.String)
 	if err != nil {
 		return fmt.Errorf("getting download client for grab: %w", err)
 	}
 
-	if err := client.Remove(ctx, *grab.ClientItemID, deleteFiles); err != nil {
+	if err := client.Remove(ctx, grab.ClientItemID.String, deleteFiles); err != nil {
 		return fmt.Errorf("removing from download client: %w", err)
 	}
 
@@ -113,12 +113,12 @@ func (s *Service) PollAndUpdate(ctx context.Context) error {
 	}
 
 	// Group grabs by download client to minimize API calls.
-	byClient := make(map[string][]dbsqlite.GrabHistory)
+	byClient := make(map[string][]db.GrabHistory)
 	for _, g := range grabs {
-		if g.DownloadClientID == nil || g.ClientItemID == nil {
+		if !g.DownloadClientID.Valid || !g.ClientItemID.Valid {
 			continue
 		}
-		byClient[*g.DownloadClientID] = append(byClient[*g.DownloadClientID], g)
+		byClient[g.DownloadClientID.String] = append(byClient[g.DownloadClientID.String], g)
 	}
 
 	for clientID, clientGrabs := range byClient {
@@ -132,36 +132,36 @@ func (s *Service) PollAndUpdate(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) pollClient(ctx context.Context, clientID string, grabs []dbsqlite.GrabHistory) error {
+func (s *Service) pollClient(ctx context.Context, clientID string, grabs []db.GrabHistory) error {
 	client, err := s.downloader.ClientFor(ctx, clientID)
 	if err != nil {
 		return fmt.Errorf("getting client %q: %w", clientID, err)
 	}
 
 	for _, g := range grabs {
-		if g.ClientItemID == nil {
+		if !g.ClientItemID.Valid {
 			continue
 		}
 
-		item, err := client.Status(ctx, *g.ClientItemID)
+		item, err := client.Status(ctx, g.ClientItemID.String)
 		if err != nil {
 			s.logger.Debug("could not get status for item",
 				"client_id", clientID,
-				"client_item_id", *g.ClientItemID,
+				"client_item_id", g.ClientItemID.String,
 				"error", err,
 			)
 			continue
 		}
 
 		newStatus := string(item.Status)
-		if newStatus == g.DownloadStatus && item.Downloaded == g.DownloadedBytes {
+		if newStatus == g.DownloadStatus && int32(item.Downloaded) == g.DownloadedBytes {
 			continue // no change
 		}
 
-		if err := s.q.UpdateGrabStatus(ctx, dbsqlite.UpdateGrabStatusParams{
+		if err := s.q.UpdateGrabStatus(ctx, db.UpdateGrabStatusParams{
 			ID:              g.ID,
 			DownloadStatus:  newStatus,
-			DownloadedBytes: item.Downloaded,
+			DownloadedBytes: int32(item.Downloaded),
 		}); err != nil {
 			s.logger.Warn("failed to update grab status",
 				"grab_id", g.ID,
@@ -178,7 +178,7 @@ func (s *Service) pollClient(ctx context.Context, clientID string, grabs []dbsql
 	return nil
 }
 
-func (s *Service) fireTransitionEvent(ctx context.Context, g dbsqlite.GrabHistory, newStatus, contentPath string) {
+func (s *Service) fireTransitionEvent(ctx context.Context, g db.GrabHistory, newStatus, contentPath string) {
 	if s.bus == nil {
 		return
 	}
@@ -208,26 +208,26 @@ func (s *Service) fireTransitionEvent(ctx context.Context, g dbsqlite.GrabHistor
 }
 
 // grabToItem converts a GrabHistory row to a queue Item.
-func grabToItem(g dbsqlite.GrabHistory) Item {
+func grabToItem(g db.GrabHistory) Item {
 	grabbedAt, _ := time.Parse(time.RFC3339, g.GrabbedAt)
 	item := Item{
 		GrabID:          g.ID,
 		SeriesID:        g.SeriesID,
 		ReleaseTitle:    g.ReleaseTitle,
 		Protocol:        g.Protocol,
-		Size:            g.Size,
-		DownloadedBytes: g.DownloadedBytes,
+		Size:            int64(g.Size),
+		DownloadedBytes: int64(g.DownloadedBytes),
 		Status:          g.DownloadStatus,
 		GrabbedAt:       grabbedAt,
 	}
-	if g.EpisodeID != nil {
-		item.EpisodeID = *g.EpisodeID
+	if g.EpisodeID.Valid {
+		item.EpisodeID = g.EpisodeID.String
 	}
-	if g.ClientItemID != nil {
-		item.ClientItemID = *g.ClientItemID
+	if g.ClientItemID.Valid {
+		item.ClientItemID = g.ClientItemID.String
 	}
-	if g.DownloadClientID != nil {
-		item.DownloadClientID = *g.DownloadClientID
+	if g.DownloadClientID.Valid {
+		item.DownloadClientID = g.DownloadClientID.String
 	}
 	return item
 }

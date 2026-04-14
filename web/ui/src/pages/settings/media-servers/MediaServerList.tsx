@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import PageHeader from "@/components/PageHeader";
 import { DOCS_URLS } from "@/lib/docsUrls";
 import {
@@ -373,8 +374,10 @@ export default function MediaServerList() {
     });
   }
 
-  function handleDelete(id: string) {
-    if (confirm("Delete this media server?")) deleteMut.mutate(id);
+  const confirm = useConfirm();
+
+  async function handleDelete(id: string) {
+    if (await confirm({ title: "Delete Media Server", message: "Delete this media server?" })) deleteMut.mutate(id);
   }
 
   return (

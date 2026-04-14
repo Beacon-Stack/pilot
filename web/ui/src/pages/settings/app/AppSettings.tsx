@@ -478,6 +478,9 @@ export default function AppSettings() {
   const resolved = resolveMode(mode);
   const [selectedPreset, setSelectedPreset] = useState(() => getStoredPreset(resolved));
   const [tooltips, setTooltips] = useState(getTooltipsEnabled);
+  const [closeOnGrab, setCloseOnGrab] = useState(
+    () => window.localStorage.getItem("manualSearchModal.closeOnGrab") === "true",
+  );
 
   const visiblePresets = THEME_PRESETS.filter((p) => p.mode === resolved);
 
@@ -498,6 +501,11 @@ export default function AppSettings() {
   function handleTooltips(v: boolean) {
     setTooltips(v);
     setTooltipsEnabled(v);
+  }
+
+  function handleCloseOnGrab(v: boolean) {
+    setCloseOnGrab(v);
+    window.localStorage.setItem("manualSearchModal.closeOnGrab", v ? "true" : "false");
   }
 
   return (
@@ -572,6 +580,13 @@ export default function AppSettings() {
             description="Show informational tooltips when hovering over UI elements."
             checked={tooltips}
             onChange={handleTooltips}
+          />
+          <div style={{ height: 16 }} />
+          <ToggleRow
+            label="Close interactive search after grabbing"
+            description="By default, the modal stays open so you can grab additional releases. Enable this to close the modal automatically after the first grab."
+            checked={closeOnGrab}
+            onChange={handleCloseOnGrab}
           />
         </div>
 

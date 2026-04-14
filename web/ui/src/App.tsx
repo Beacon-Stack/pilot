@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import "./index.css";
 
+import { ConfirmProvider } from "@beacon-shared/ConfirmDialog";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Shell } from "@/layouts/Shell";
 import Dashboard from "@/pages/dashboard/Dashboard";
@@ -37,6 +38,7 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <ConfirmProvider>
       <BrowserRouter>
         <ErrorBoundary>
         <Routes>
@@ -74,6 +76,7 @@ export default function App() {
         </Routes>
         </ErrorBoundary>
       </BrowserRouter>
+      </ConfirmProvider>
       <Toaster
         theme="dark"
         position="bottom-right"

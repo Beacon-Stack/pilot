@@ -1,0 +1,9 @@
+# Pilot — TODO
+
+## Quality System
+
+- [ ] **Quality groups in the profile gate (critical)** — `applyQualityProfile` in `internal/api/v1/releases.go` currently gates releases by resolution only (integer-divides `Quality.Score()` by 100 to isolate the resolution digit). A proper implementation needs quality *groups* like Sonarr/Radarr: the profile lists named buckets (e.g. "Bluray-1080p", "WEB-1080p") that each contain a set of source+codec+HDR combinations treated as interchangeable, and the gate checks membership in any enabled bucket plus the cutoff-or-better rule. Reason it's critical: the current resolution-only gate silently accepts 1080p WEBDL even for users who set a "Bluray-only" cutoff, and it can't distinguish "prefer Bluray but accept WEBRip as a fallback" from "reject WEBRip entirely". Touches `internal/core/quality/profile.go` (add `QualityGroup` type, replace `isAllowed` flat-list membership check) and the profile CRUD API + UI so users can actually edit the groups.
+
+## Release Search & Ranking
+
+- [ ] **Season-pack custom format bonus** — The indexer sort already has an Episode Count tier that lifts season packs above individual episodes within the same quality tier (`effectiveEpisodeCount` in `internal/core/indexer/service.go`). Sonarr + TRaSH Guides also recommend a "Season Pack" custom format that adds a flat score to any parsed season pack, which lets a pack edge ahead of an individual episode even across slightly different quality tiers. Pilot has no custom-format system yet, so the minimum-viable version is a hardcoded additive bonus: when `PackType == PackTypeSeason`, bump `QualityScore` by a small constant (say +10) before sorting. Tiny change to the comparator, no data model. Consider this after shipping full custom formats — then it becomes one of the built-in formats and the hardcoded bonus can be deleted.

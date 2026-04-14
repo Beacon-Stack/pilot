@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
+import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import PageHeader from "@/components/PageHeader";
 import { DOCS_URLS } from "@/lib/docsUrls";
 import { useBlocklist, useDeleteBlocklistEntry, useClearBlocklist } from "@/api/blocklist";
@@ -23,8 +24,10 @@ export default function BlocklistPage() {
     }
   }
 
+  const confirm = useConfirm();
+
   async function handleClear() {
-    if (!confirm("Remove all entries from the blocklist?")) return;
+    if (!await confirm({ title: "Clear Blocklist", message: "Remove all entries from the blocklist?" })) return;
     try {
       await clearMutation.mutateAsync();
       setPage(1);

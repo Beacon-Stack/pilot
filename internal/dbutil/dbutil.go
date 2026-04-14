@@ -3,14 +3,6 @@ package dbutil
 
 import "encoding/json"
 
-// BoolToInt converts a bool to an int64 (1 or 0) for SQLite storage.
-func BoolToInt(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // MergeSettings returns newSettings with any keys absent from newSettings
 // filled in from existing. Keys present in newSettings always win.
 // This preserves secret fields (passwords, API keys) when the frontend

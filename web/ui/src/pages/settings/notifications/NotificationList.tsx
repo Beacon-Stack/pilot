@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Modal from "@/components/Modal";
+import Modal from "@beacon-shared/Modal";
 import PageHeader from "@/components/PageHeader";
 import { DOCS_URLS } from "@/lib/docsUrls";
 import {

@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Search } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, Search, Zap } from "lucide-react";
 import type { Season } from "@/types";
 
 type EpisodeFilter = "all" | "downloaded" | "missing" | "unaired" | "unmonitored";
@@ -11,7 +11,9 @@ interface Props {
   filter: EpisodeFilter;
   onFilterChange: (filter: EpisodeFilter) => void;
   onToggleMonitor: () => void;
-  onSearchMissing: () => void;
+  onInteractiveSearch: () => void;
+  onAutoSearchSeason: () => void;
+  isAutoSearching?: boolean;
 }
 
 const FILTERS: { value: EpisodeFilter; label: string }[] = [
@@ -26,7 +28,8 @@ export type { EpisodeFilter };
 
 export default function SeasonHeader({
   season, episodeCount, downloadedCount, totalSize,
-  filter, onFilterChange, onToggleMonitor, onSearchMissing,
+  filter, onFilterChange, onToggleMonitor, onInteractiveSearch, onAutoSearchSeason,
+  isAutoSearching = false,
 }: Props) {
   const label = season.season_number === 0 ? "Specials" : `Season ${season.season_number}`;
   const progress = episodeCount > 0 ? (downloadedCount / episodeCount) * 100 : 0;
@@ -43,18 +46,41 @@ export default function SeasonHeader({
         </span>
         <div style={{ flex: 1 }} />
 
-        {/* Search Missing */}
+        {/* Interactive Search — opens a modal showing all releases for the season */}
         <button
-          onClick={onSearchMissing}
+          onClick={onInteractiveSearch}
+          title="Browse and pick a release for this season"
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "4px 10px", borderRadius: 6,
+            border: "1px solid var(--color-accent)",
+            background: "var(--color-accent-muted)", cursor: "pointer",
+            fontSize: 12, fontWeight: 500, color: "var(--color-accent)",
+          }}
+        >
+          <Search size={13} /> Interactive Search
+        </button>
+
+        {/* Auto Search — grabs the best matching release without prompting */}
+        <button
+          onClick={onAutoSearchSeason}
+          disabled={isAutoSearching}
+          title="Automatically grab the best-scored season pack"
           style={{
             display: "flex", alignItems: "center", gap: 5,
             padding: "4px 10px", borderRadius: 6,
             border: "1px solid var(--color-border-default)",
-            background: "none", cursor: "pointer",
-            fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)",
+            background: "none",
+            cursor: isAutoSearching ? "wait" : "pointer",
+            fontSize: 12, fontWeight: 500,
+            color: "var(--color-text-secondary)",
+            opacity: isAutoSearching ? 0.6 : 1,
           }}
         >
-          <Search size={13} /> Search Missing
+          {isAutoSearching
+            ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
+            : <Zap size={13} />}
+          {isAutoSearching ? "Searching…" : "Auto Search"}
         </button>
 
         {/* Monitor toggle */}
