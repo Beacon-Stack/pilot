@@ -17,14 +17,14 @@ Pilot is a self-hosted TV series manager with a React web UI and a REST API. It 
 
 ## Is this for you?
 
-Pilot is built to be approachable by default and capable when you want it to be. The out-of-the-box defaults take you from `docker run` to a fully monitored library in a few minutes: sensible quality profiles, automatic RSS sync, reliable rename-on-import, and a one-click migration from an existing Sonarr install. The deeper features — custom format regex, per-series indexer routing, interactive search with full scoring breakdowns, season-pack preference tuning, and Pulse-managed shared config — are all there when you want them, and stay out of your way until you do.
+Pilot is designed to feel familiar if you're coming from Sonarr but sharper in the places Sonarr has long needed sharpening. The one-click Sonarr import pulls your entire setup — libraries, quality profiles, indexers, download clients, monitored series — in about thirty seconds, so there's nothing to rebuild from scratch. Once it's running, the UI stays out of your way for the day-to-day (dashboard, calendar, wanted list, queue) but the parts that have always been painful are genuinely better: interactive release search has proper pack-type filters and Sonarr-parity Episode Count ranking so season packs actually float to the top, the stallwatcher auto-blocklists dead torrents so you stop re-grabbing the same broken release, and custom formats come with sensible defaults so you're not stuck doing a weekend of tutorials before anything works.
 
 You'll probably like Pilot if you:
 
-- Run a home media server and want a TV manager with a modern, fast UI
-- Already use Sonarr and want something lighter, faster, and in active development
-- Want reliable release filtering and dead-torrent handling without manually babysitting grabs
-- Appreciate sensible defaults now and the option to grow into advanced features later
+- Already use Sonarr and want a drop-in upgrade with zero reconfiguration
+- Have been frustrated by Sonarr's interactive search not surfacing season packs clearly
+- Have wasted a retry budget on dead torrents and want that handled automatically
+- Want your TV manager to be in active development rather than maintenance mode
 
 ## Features
 
