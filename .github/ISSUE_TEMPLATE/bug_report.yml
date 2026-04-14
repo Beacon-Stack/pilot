@@ -21,7 +21,7 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Go to Settings > Indexers
+        1. Go to Settings → Indexers
         2. Click "Add"
         3. Fill in fields and click Save
         4. See error
@@ -39,7 +39,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Screenarr version
+      label: Pilot version
       placeholder: "e.g. 0.1.0 or git commit hash"
     validations:
       required: true
@@ -69,11 +69,11 @@ body:
     id: logs
     attributes:
       label: Relevant log output
-      description: Run with `log.level = debug` (or `SCREENARR_LOG_LEVEL=debug`) and paste relevant lines. Logs are safe to share. Credentials are redacted as `***`.
+      description: Run with `log.level = debug` (or `PILOT_LOG_LEVEL=debug`) and paste relevant lines. Logs are safe to share — credentials are redacted as `***`.
       render: text
 
   - type: textarea
     id: context
     attributes:
       label: Additional context
-      description: Anything else that might be relevant. Browser console errors, network tab, config snippets (omit credentials).
+      description: Anything else that might be relevant — browser console errors, network tab, config snippets (omit credentials).

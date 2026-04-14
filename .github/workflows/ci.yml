@@ -99,18 +99,18 @@ jobs:
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           CGO_ENABLED=0 go build \
-            -ldflags "-X github.com/screenarr/screenarr/internal/version.Version=${VERSION} \
-                      -X github.com/screenarr/screenarr/internal/version.BuildTime=${BUILD_TIME} \
-                      -X github.com/screenarr/screenarr/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
-                      -X github.com/screenarr/screenarr/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
+            -ldflags "-X github.com/beacon-stack/pilot/internal/version.Version=${VERSION} \
+                      -X github.com/beacon-stack/pilot/internal/version.BuildTime=${BUILD_TIME} \
+                      -X github.com/beacon-stack/pilot/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
+                      -X github.com/beacon-stack/pilot/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
                       -s -w" \
-            -o bin/screenarr ./cmd/screenarr
+            -o bin/pilot ./cmd/pilot
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: screenarr-linux-amd64
-          path: bin/screenarr
+          name: pilot-linux-amd64
+          path: bin/pilot
           retention-days: 7
 
   docker:
@@ -133,6 +133,9 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
+          # GHCR_TOKEN is a classic PAT with write:packages scope.
+          # GITHUB_TOKEN consistently 403s on blob HEAD checks for new packages.
+          # Token expires ~2026-06-01 — renew and update secret before then.
           password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Extract metadata
@@ -145,7 +148,7 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push (latest)
+      - name: Build and push (latest — alpine with ffprobe)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -163,7 +166,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           provenance: false
 
-      - name: Build and push (minimal)
+      - name: Build and push (minimal — scratch, no ffprobe)
         uses: docker/build-push-action@v5
         with:
           context: .
