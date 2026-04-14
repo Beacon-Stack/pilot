@@ -1,6 +1,6 @@
 <p align="center">
   <h1 align="center">Pilot</h1>
-  <p align="center">A self-hosted TV series manager built for simplicity.</p>
+  <p align="center">A self-hosted TV series manager for home servers and the Beacon media stack.</p>
 </p>
 <p align="center">
   <a href="https://github.com/beacon-stack/pilot/blob/main/LICENSE"><img src="https://img.shields.io/github/license/beacon-stack/pilot" alt="License"></a>
@@ -13,91 +13,76 @@
 
 ---
 
-**Pilot** monitors your TV series library, searches indexers, and automatically grabs the best available release for each episode. It is written in Go and React, starts in under a second, and idles under 60 MB of RAM.
+Pilot is a self-hosted TV series manager with a React web UI and a REST API. It does what Sonarr does — monitors a library, searches indexers, grabs the best available release for each episode, imports completed downloads, talks to your media server — but in a single Go binary with a modern UI and sensible defaults. It runs standalone or slots into the Beacon stack alongside [Prism](https://github.com/beacon-stack/prism) (movies), [Haul](https://github.com/beacon-stack/haul) (BitTorrent), and [Pulse](https://github.com/beacon-stack/pulse) (control plane).
 
-Pilot is part of the [Beacon](https://beaconstack.io) media stack — it runs alongside [Prism](https://github.com/beacon-stack/prism) (movies), [Haul](https://github.com/beacon-stack/haul) (BitTorrent downloader), and [Pulse](https://github.com/beacon-stack/pulse) (control plane) — but it also runs standalone if you only want a TV manager.
+## Is this for you?
 
-If you are coming from Sonarr, Pilot can import your quality profiles, libraries, indexers, download clients, and series list in one step.
+Pilot is built to be approachable by default and capable when you want it to be. The out-of-the-box defaults take you from `docker run` to a fully monitored library in a few minutes: sensible quality profiles, automatic RSS sync, reliable rename-on-import, and a one-click migration from an existing Sonarr install. The deeper features — custom format regex, per-series indexer routing, interactive search with full scoring breakdowns, season-pack preference tuning, and Pulse-managed shared config — are all there when you want them, and stay out of your way until you do.
+
+You'll probably like Pilot if you:
+
+- Run a home media server and want a TV manager with a modern, fast UI
+- Already use Sonarr and want something lighter, faster, and in active development
+- Want reliable release filtering and dead-torrent handling without manually babysitting grabs
+- Appreciate sensible defaults now and the option to grow into advanced features later
 
 ## Features
 
 **Library management**
 
-- Full TMDB integration for TV series search, metadata, posters, and episode tracking
-- Per-series monitoring with configurable monitor types (all, future, missing, none)
-- Season and episode level monitoring controls
-- Season detail view with per-season episode counts + total size
-- Interactive release search with pack-type filtering (Season Pack / Episodes / All) and Sonarr-parity Episode Count ranking so season packs surface at the top
-- Strict title-match filter — the "Breaking Bad Bulgaria" class of wrong-torrent bug is blocked at the filter stage
-- Wanted page showing missing episodes and cutoff-unmet upgrades
+- Full TMDB integration for search, metadata, posters, episode tracking
+- Per-series monitoring with configurable monitor types (all, future episodes, missing, none)
+- Season and episode-level monitoring controls
+- Season detail view with per-season episode counts and total size
+- Wanted page covering missing episodes and cutoff-unmet upgrades
 - Calendar view of upcoming and recently aired episodes
-- Library statistics with breakdowns by quality, genre, network, and storage trends
+- Library stats with breakdowns by quality, genre, network, and storage trends
 
-**Quality and release handling**
+**Release handling**
 
 - Quality profiles with resolution, source, codec, and HDR dimensions
-- Quality definitions with configurable size limits per quality tier
-- Custom formats with regex-based release matching and weighted scoring
-- Built-in quality parser that extracts resolution, source, codec, HDR, and audio from release titles
+- Custom formats with regex matching and weighted scoring
+- Strict title matching in the release filter — Pilot won't grab "Breaking Bad Bulgaria" when you asked for "Breaking Bad"
+- Interactive search modal with pack-type filters (Season Pack / Episodes / All), quality badges, and a Sonarr-parity ranking that surfaces season packs at the top within each quality tier
+- Automatic dead-torrent detection and blocklisting — Pilot's stallwatcher polls Haul (or your download client) for stalled torrents and blocklists them with a per-episode circuit breaker so you don't retry the same bad release forever
 - Manual search across all indexers with per-release scoring breakdown
-- Dead-torrent detection and blocklisting — Pilot's stallwatcher polls Haul for stalled torrents and blocklists them automatically, with a three-strikes circuit breaker per episode to prevent infinite retry loops
 
 **Automation**
 
 - Automatic RSS sync on a configurable schedule
-- Auto-search across all indexers, scoring against your quality profile and custom formats
-- Auto-import of completed downloads into your library with rename support
-- Configurable episode naming formats (standard, daily, anime)
+- Auto-search scored against your quality profile and custom formats
+- Auto-import of completed downloads with rename support
+- Configurable episode naming (standard, daily, anime)
 - Season folder organization
-- Import lists from TMDB Popular, TMDB Trending, Trakt Popular, Trakt Trending, Trakt Custom Lists, Plex Watchlist, and custom URL lists
-- Activity log pruning (older than 30 days, runs daily)
+- Import lists from TMDB, Trakt, Plex Watchlist, and custom URL lists
+- Activity log pruning
 
 **Integrations**
 
-Indexers:
-- Newznab (NZBgeek, NZBFinder, etc.)
-- Torznab (Prowlarr, Jackett)
-- [Pulse](https://github.com/beacon-stack/pulse) — centrally managed indexers pushed from the Pulse control plane
-
-Download clients:
-- [Haul](https://github.com/beacon-stack/haul) — first-class integration with the Beacon torrent client
-- qBittorrent, Deluge, Transmission
-- SABnzbd, NZBGet
-
-Media servers:
-- Plex, Jellyfin, Emby
-
-Notifications:
-- Discord, Slack, Telegram, Pushover, Gotify, ntfy
-- Email (SMTP with STARTTLS/TLS)
-- Webhook (generic HTTP)
-- Custom command/script execution
+- **Indexers:** Newznab (NZBgeek, NZBFinder), Torznab (Prowlarr, Jackett), Pulse-managed indexers
+- **Download clients:** [Haul](https://github.com/beacon-stack/haul), qBittorrent, Deluge, Transmission, SABnzbd, NZBGet
+- **Media servers:** Plex, Jellyfin, Emby
+- **Notifications:** Discord, Slack, Telegram, Pushover, Gotify, ntfy, email, webhook, custom command
 
 **UI**
 
 - Command palette (Cmd/Ctrl+K) with fuzzy search for pages, series, and actions
-- Interactive release search modal with pack-type filters, quality badges, seed-count column, and "override" button for blocklisted rows
-- Theme system with dark and light modes, 10+ presets shared across the Beacon services
-- Directory browser for selecting library root paths
-- WebSocket live updates for queue progress
+- Dark and light themes with 10+ presets shared across the Beacon services
+- Live queue updates over WebSocket — no polling
 - OpenAPI documentation at `/api/docs`
 
 **Operations**
 
-- Single static binary, no runtime dependencies
+- Single static Go binary, no runtime dependencies
 - Postgres backend
 - Zero telemetry, no analytics, no crash reporting, no phoning home
 - Auto-generated API key on first run
-- SSRF protection on all outbound connections (notification plugins, download clients)
+- SSRF protection on outbound connections
 - Graceful shutdown with drain timeout
 
 ## Getting started
 
-### Docker Compose (recommended, as part of the Beacon stack)
-
-The easiest way to run Pilot is as part of the full Beacon stack — see [`beacon-stack/stack`](https://github.com/beacon-stack/stack) for the full docker-compose setup with Postgres, Pulse, Pilot, Prism, and Haul behind a VPN container.
-
-### Standalone Docker
+### Docker
 
 ```bash
 docker run -d \
@@ -108,11 +93,15 @@ docker run -d \
   ghcr.io/beacon-stack/pilot:latest
 ```
 
-Open `http://localhost:8383`. No configuration required to get started.
+Open `http://localhost:8383`. Pilot generates an API key on first run — find it in Settings → App Settings.
+
+### Docker Compose (with the rest of the stack)
+
+The full Beacon stack — Postgres, Pulse, Pilot, Prism, Haul, and a VPN container — is wired up in [`beacon-stack/stack`](https://github.com/beacon-stack/stack). Point it at a media directory and go.
 
 ### Build from source
 
-Requires Go 1.25+ and Node.js 22+.
+Requires Go 1.25+ and Node 22+. The default Docker image includes ffmpeg/ffprobe for media scanning; install it separately if you build locally and want that feature.
 
 ```bash
 git clone https://github.com/beacon-stack/pilot
@@ -122,39 +111,30 @@ make build
 ./bin/pilot
 ```
 
-The default Docker image includes ffmpeg/ffprobe for media file analysis. When building from source, install ffmpeg separately if you want media scanning.
-
-> **Running Sonarr too?** Pilot uses port 8383 so you can run both side by side during migration.
+> **Running Sonarr too?** Pilot uses port 8383, so you can run both side by side during migration.
 
 ## Configuration
 
-Pilot works with zero configuration. All settings are editable through the web UI or via environment variables.
-
-### Key environment variables
+Most settings live in the web UI. For the ones you'll want at container-start time, use environment variables or a YAML config file at `/config/config.yaml` (also searched at `~/.config/pilot/config.yaml` and `./config.yaml`).
 
 | Variable | Default | Description |
 |---|---|---|
-| `PILOT_SERVER_HOST` | `0.0.0.0` | Bind address |
-| `PILOT_SERVER_PORT` | `8383` | HTTP port |
-| `PILOT_DATABASE_DSN` | | Postgres connection string |
-| `PILOT_AUTH_API_KEY` | auto-generated | API key for external access |
-| `PILOT_PULSE_URL` | | Pulse control-plane URL (optional) |
+| `PILOT_SERVER_PORT` | `8383` | Web UI and API port |
+| `PILOT_DATABASE_DSN` | — | Postgres DSN (required) |
+| `PILOT_AUTH_API_KEY` | auto | API key; autogenerated on first run if unset |
+| `PILOT_PULSE_URL` | — | Pulse control-plane URL (optional) |
 | `PILOT_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `PILOT_LOG_FORMAT` | `json` | `json` or `text` |
 
-### Config file
-
-Pilot looks for `config.yaml` in `/config/config.yaml`, `~/.config/pilot/config.yaml`, `/etc/pilot/config.yaml`, or `./config.yaml` (in that order).
-
 ## Sonarr migration
 
-Pilot can import from a running Sonarr instance. Go to Settings → Import, enter your Sonarr URL and API key, preview what will be imported, and select which categories to bring over. Supported imports:
+Pilot imports from a running Sonarr instance in one step. Open Settings → Import, enter your Sonarr URL and API key, preview what will be brought over, and pick which categories to import. Supported:
 
 - Quality profiles
 - Libraries (root folders)
 - Indexers
 - Download clients
-- Series (with monitoring state)
+- Series with monitoring state
 
 ## Where Pilot fits in the Beacon stack
 
@@ -173,50 +153,43 @@ Pilot can import from a running Sonarr instance. Go to Settings → Import, ente
                                    └─────────┘
 ```
 
-Pilot is fine standalone — Pulse and Haul are optional dependencies. If you run the full stack, Pilot pulls its indexers and quality profiles from Pulse, sends torrent grabs through Haul, and polls Haul's `/api/v1/stalls` endpoint to automatically blocklist dead torrents.
+Pilot runs fine standalone — Pulse and Haul are optional. If you run the full stack, Pilot pulls shared indexers and quality profiles from Pulse, sends torrent grabs through Haul, and polls Haul's `/api/v1/stalls` endpoint to automatically blocklist dead torrents before they waste another retry.
+
+## Power user notes
+
+**Strict title matching.** The release filter runs every parsed title through a strict matcher (`internal/core/parser/parser.go`) that blocks false positives like "Breaking Bad Bulgaria" when you're searching for "Breaking Bad." The matcher handles year suffixes, bracketed edition tags, and common release-group stylings. If a legitimate release is getting rejected, the matcher is where to start.
+
+**Stallwatcher.** `internal/core/stallwatcher/service.go` polls Haul's stall endpoint on a configurable interval and classifies stalled torrents by reason. A per-episode circuit breaker limits auto-blocklist events to three strikes in 24 hours so that even a misconfigured indexer can't cause a retry storm. Comprehensive regression tests live alongside.
+
+**Interactive search.** The season-level interactive search is built around Sonarr's DownloadDecisionComparer ranking: Quality → Custom Format Score → Protocol → Episode Count. Season packs naturally surface at the top within each quality tier via the Episode Count tier — no custom formats required. Filter pills (Season Pack / Episodes / All) default to Season Pack when the search is season-scoped so the UI matches intent.
+
+**Regression suite.** Pilot has a hard-won test suite covering the dead-torrent, wrong-torrent, and quality-profile failure modes it's shipped in the past. `make test` runs it in about two seconds. See [CLAUDE.md](CLAUDE.md) for the guarded files and the rationale behind each.
+
+**API surface.** Everything the UI does is available through the REST API — OpenAPI docs at `/api/docs`.
 
 ## Privacy
 
-Pilot makes outbound connections only to services you explicitly configure: TMDB (for metadata), your indexers, your download clients, your media servers, and your notification targets. No telemetry, no analytics, no crash reporting, no update checks. Credentials are stored locally and never written to logs.
+Pilot makes outbound connections only to services you explicitly configure: TMDB for metadata, your indexers, your download clients, your media servers, and your notification targets. No telemetry, no analytics, no crash reporting, no update checks. Credentials are stored locally and never written to logs.
 
-## Project structure
+## Built with Claude
 
-```
-cmd/pilot/          Entry point
-internal/
-  api/              HTTP router, middleware, v1 handlers
-  config/           Configuration loading
-  core/             Domain services (show, quality, library, queue, stallwatcher, etc.)
-  db/               Database migrations and generated query code (sqlc)
-  parser/           Release title parser (quality, episode, language, title-match)
-  pulse/            Pulse control-plane integration
-  scheduler/        Background job scheduler
-plugins/
-  downloaders/      Haul, qBittorrent, Deluge, Transmission, SABnzbd, NZBGet
-  importlists/      TMDB, Trakt, Plex watchlist, custom list
-  indexers/         Newznab, Torznab
-  mediaservers/     Plex, Jellyfin, Emby
-  notifications/    Discord, Slack, Telegram, Pushover, Gotify, ntfy, email, webhook, command
-web/ui/             React 19 + TypeScript + Vite frontend
-```
+Pilot was built by one person with extensive help from [Claude](https://claude.ai) (Anthropic). Architecture, design decisions, bug triage, and this README are mine. Many of the keystrokes are not. If something in the code or the docs doesn't make sense, that's a bug worth reporting — [open an issue](https://github.com/beacon-stack/pilot/issues).
 
 ## Development
 
 ```bash
-make build         # compile binary to bin/pilot
-make run           # build + run
-make dev           # hot reload with air
-make test          # go test ./...
-make check         # golangci-lint + tsc --noEmit
-make sqlc          # regenerate SQLC code
+make build    # compile to bin/pilot
+make run      # build + run
+make dev      # hot reload (requires air)
+make test     # go test ./...
+make check    # golangci-lint + tsc --noEmit
+make sqlc     # regenerate sqlc code
 ```
-
-The project has a regression suite that runs in under 2 seconds and locks in the dead-torrent failure modes that have regressed in the past — see [CLAUDE.md](CLAUDE.md) for the guarded files.
 
 ## Contributing
 
-Bug reports, feature requests, and pull requests are welcome. Please open an issue before starting large changes.
+Bug reports, feature requests, and pull requests are welcome. Please open an issue before starting anything large.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
