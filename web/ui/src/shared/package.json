@@ -1,0 +1,10 @@
+{
+  "name": "@beacon/web-shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared React components used by every Beacon service frontend (Pilot, Prism, Haul, Pulse). Resolved via Vite alias + tsconfig paths — NOT installed as a package. This package.json exists only so TypeScript can find react's type definitions when type-checking files in this directory (the module-resolution walk-up finds web-shared/node_modules/@types/react). Nothing else uses it.",
+  "devDependencies": {
+    "react": "^19.0.0",
+    "@types/react": "^19.0.0"
+  }
+}
