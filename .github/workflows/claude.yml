@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 jobs:
-  # Auto-triage new issues — no @claude needed.
+  # Auto-triage new issues.
   claude-issue-triage:
     if: github.event_name == 'issues' && github.event.action == 'opened'
     runs-on: ubuntu-latest
