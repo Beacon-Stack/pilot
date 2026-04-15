@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@beacon-shared/*": ["../../../web-shared/*"]
+      "@beacon-shared/*": ["./src/shared/*"]
     },
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -24,6 +24,6 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "../../../web-shared/**/*"],
+  "include": ["src"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts", "src/**/*.spec.tsx"]
 }
