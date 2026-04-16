@@ -89,7 +89,7 @@ Open `http://localhost:8383`. Pilot generates an API key on first run — find i
 
 ### Docker Compose (with the rest of the stack)
 
-The full Beacon stack — Postgres, Pulse, Pilot, Prism, Haul, and a VPN container — is wired up in [`beacon-stack/stack`](https://github.com/beacon-stack/stack). Point it at a media directory and go.
+The full Beacon stack — Postgres, Pulse, Pilot, Prism, Haul, and a VPN container — is wired up in [`beacon-stack/deploy`](https://github.com/beacon-stack/deploy). Point it at a media directory and go.
 
 ### Build from source
 
