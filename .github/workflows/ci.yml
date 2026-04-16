@@ -172,7 +172,10 @@ jobs:
           context: .
           file: docker/Dockerfile.minimal
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest-minimal
+          # ghcr.io image names must be lowercase. github.repository preserves
+          # the org casing ("Beacon-Stack/pilot"), which GHCR rejects, so we
+          # spell the repo out explicitly instead of using the expression.
+          tags: ghcr.io/beacon-stack/pilot:latest-minimal
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ github.sha }}
