@@ -61,7 +61,7 @@ func New(cfg config.PulseConfig, serverHost string, serverPort int, logger *slog
 		healthURL = apiURL + "/health"
 	}
 
-	client, err := sdk.New(sdk.Config{
+	client, err := sdk.NewWithRetry(sdk.Config{
 		PulseURL:    cfg.URL,
 		APIKey:      apiKey,
 		ServiceName: "pilot",
@@ -80,7 +80,10 @@ func New(cfg config.PulseConfig, serverHost string, serverPort int, logger *slog
 		Logger: logger,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("pulse registration failed: %w", err)
+		return nil, err
+	}
+	if client == nil {
+		return nil, nil
 	}
 
 	return &Integration{Client: client, logger: logger}, nil
