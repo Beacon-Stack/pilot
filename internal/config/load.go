@@ -11,6 +11,8 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
+
+	"github.com/beacon-stack/pulse/pkg/secretfile"
 )
 
 const (
@@ -67,6 +69,7 @@ func Load(cfgFile string) (*Config, error) {
 	_ = v.BindEnv("trakt.client_id", "PILOT_TRAKT_CLIENT_ID")
 	_ = v.BindEnv("database.path", "PILOT_DATABASE_PATH")
 	_ = v.BindEnv("database.dsn", "PILOT_DATABASE_DSN")
+	_ = v.BindEnv("database.password_file", "PILOT_DATABASE_PASSWORD_FILE")
 	_ = v.BindEnv("pulse.url", "PILOT_PULSE_URL")
 	_ = v.BindEnv("pulse.api_key", "PILOT_PULSE_API_KEY")
 
@@ -87,6 +90,14 @@ func Load(cfgFile string) (*Config, error) {
 		),
 	)); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+
+	if cfg.Database.PasswordFile != "" {
+		merged, err := secretfile.OverrideDSNPassword(cfg.Database.DSN.Value(), cfg.Database.PasswordFile)
+		if err != nil {
+			return nil, fmt.Errorf("applying database password file: %w", err)
+		}
+		cfg.Database.DSN = Secret(merged)
 	}
 
 	// Default SQLite path: if /config exists (Docker volume), use it;
