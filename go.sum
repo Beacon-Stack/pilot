@@ -4,6 +4,8 @@ github.com/andybalholm/cascadia v1.3.3 h1:AG2YHrzJIm4BZ19iwJ/DAua6Btl3IwJX+VI4kk
 github.com/andybalholm/cascadia v1.3.3/go.mod h1:xNd9bqTn98Ln4DwST8/nG+H0yuB8Hmgu1YHNnWw0GeA=
 github.com/beacon-stack/pulse v0.2.0 h1:S0ncxtQvP2MJF5Swz81TSCDFw6lez7wXKJXuLbK1bps=
 github.com/beacon-stack/pulse v0.2.0/go.mod h1:LyTlxljRmkoi7JOhLvtm6XnvYThcQn8eTk5l4a3Y4ko=
+github.com/beacon-stack/pulse v0.3.0 h1:TuOrbbIR0FG/OUycYLK4RLum9Pg6D4Tk7/gi6NSdKDs=
+github.com/beacon-stack/pulse v0.3.0/go.mod h1:LyTlxljRmkoi7JOhLvtm6XnvYThcQn8eTk5l4a3Y4ko=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/danielgtaylor/huma/v2 v2.37.3 h1:6Av0Vj45Vk5lDxRVfoO2iPlEdvCvwLc7pl5nbqGOkYM=
