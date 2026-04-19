@@ -21,6 +21,10 @@ type Config struct {
 type PulseConfig struct {
 	URL    string `mapstructure:"url"`
 	APIKey Secret `mapstructure:"api_key"`
+	// APIKeyFile points at a file (typically /run/secrets/*) containing
+	// Pulse's API key. When non-empty, its contents replace APIKey at
+	// load time.
+	APIKeyFile string `mapstructure:"api_key_file"`
 }
 
 // ServerConfig controls the HTTP server.

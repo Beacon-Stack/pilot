@@ -68,3 +68,32 @@ func TestLoad_InvalidPasswordFilePath_Errors(t *testing.T) {
 		t.Fatal("expected error when password file path is invalid")
 	}
 }
+
+func TestLoad_PulseAPIKeyFileOverridesInlineKey(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeFixture(t, dir, "config.yaml", testFixture)
+	keyFile := writeFixture(t, dir, "pulse.txt", "secret-key\n")
+
+	t.Setenv("PILOT_PULSE_API_KEY", "inline-loses")
+	t.Setenv("PILOT_PULSE_API_KEY_FILE", keyFile)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := cfg.Pulse.APIKey.Value(); got != "secret-key" {
+		t.Fatalf("Pulse.APIKey = %q; want secret-key (file must override the inline env value)", got)
+	}
+}
+
+func TestLoad_InvalidPulseAPIKeyFilePath_Errors(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := writeFixture(t, dir, "config.yaml", testFixture)
+
+	t.Setenv("PILOT_PULSE_API_KEY_FILE", "/nonexistent/pulse-api-key")
+
+	if _, err := Load(cfgPath); err == nil {
+		t.Fatal("expected error when pulse api_key_file path is invalid")
+	}
+}
