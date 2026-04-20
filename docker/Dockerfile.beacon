@@ -40,10 +40,17 @@ RUN go mod download
 # Overwrite web/static/ with the freshly built frontend
 COPY --from=frontend /app/web/static/ ./web/static/
 
-RUN CGO_ENABLED=0 GOOS=linux go build \
+# XOR-obfuscate the provider keys before baking them into the binary.
+# Emitting the raw TMDB/Trakt secrets as -X ldflag values would leave
+# recognizable strings in the binary that `strings pilot | grep` can
+# find. ./tools/obfuscate produces two base64 chunks (ciphertext + XOR
+# key); the runtime getter de-obfuscates on demand.
+RUN TMDB_LDFLAGS="$(go run ./tools/obfuscate obfuscatedTMDBKey tmdbKeyXORKey "${TMDB_API_KEY}")" && \
+    TRAKT_LDFLAGS="$(go run ./tools/obfuscate obfuscatedTraktClientID traktClientIDXORKey "${TRAKT_CLIENT_ID}")" && \
+    CGO_ENABLED=0 GOOS=linux go build \
       -ldflags "-X github.com/beacon-stack/pilot/internal/version.Version=${VERSION} \
-                -X github.com/beacon-stack/pilot/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
-                -X github.com/beacon-stack/pilot/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
+                ${TMDB_LDFLAGS} \
+                ${TRAKT_LDFLAGS} \
                 -s -w" \
       -o /pilot ./cmd/pilot
 

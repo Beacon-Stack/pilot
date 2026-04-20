@@ -70,10 +70,7 @@ type TraktConfig struct {
 	ClientID Secret `mapstructure:"client_id"`
 }
 
-// DefaultTMDBKey is set at build time via ldflags. Users can override
-// it with the PILOT_TVDB_API_KEY env var or tvdb.api_key in config.yaml.
-var DefaultTMDBKey string
-
-// DefaultTraktClientID is set at build time via ldflags. Users can override
-// it with the PILOT_TRAKT_CLIENT_ID env var or trakt.client_id in config.yaml.
-var DefaultTraktClientID string
+// DefaultTMDBKey and DefaultTraktClientID are implemented as accessor
+// functions (see defaults.go) that de-obfuscate XOR-masked ldflag
+// values at call time. The raw bytes are never accessible by name;
+// the public surface is the getter functions only.

@@ -98,11 +98,13 @@ jobs:
         run: |
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          TMDB_LDFLAGS=$(go run ./tools/obfuscate obfuscatedTMDBKey tmdbKeyXORKey "${TMDB_API_KEY}")
+          TRAKT_LDFLAGS=$(go run ./tools/obfuscate obfuscatedTraktClientID traktClientIDXORKey "${TRAKT_CLIENT_ID}")
           CGO_ENABLED=0 go build \
             -ldflags "-X github.com/beacon-stack/pilot/internal/version.Version=${VERSION} \
                       -X github.com/beacon-stack/pilot/internal/version.BuildTime=${BUILD_TIME} \
-                      -X github.com/beacon-stack/pilot/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
-                      -X github.com/beacon-stack/pilot/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
+                      ${TMDB_LDFLAGS} \
+                      ${TRAKT_LDFLAGS} \
                       -s -w" \
             -o bin/pilot ./cmd/pilot
 

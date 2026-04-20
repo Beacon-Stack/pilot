@@ -122,11 +122,18 @@ func Load(cfgFile string) (*Config, error) {
 	}
 
 	// Apply build-time default keys when no user-provided key is present.
-	if cfg.TVDB.APIKey.IsEmpty() && DefaultTMDBKey != "" {
-		cfg.TVDB.APIKey = Secret(DefaultTMDBKey)
+	// DefaultTMDBKey / DefaultTraktClientID de-obfuscate the XOR-masked
+	// ldflag vars on demand; empty-string return means the image wasn't
+	// built with a default.
+	if cfg.TVDB.APIKey.IsEmpty() {
+		if baked := DefaultTMDBKey(); baked != "" {
+			cfg.TVDB.APIKey = Secret(baked)
+		}
 	}
-	if cfg.Trakt.ClientID.IsEmpty() && DefaultTraktClientID != "" {
-		cfg.Trakt.ClientID = Secret(DefaultTraktClientID)
+	if cfg.Trakt.ClientID.IsEmpty() {
+		if baked := DefaultTraktClientID(); baked != "" {
+			cfg.Trakt.ClientID = Secret(baked)
+		}
 	}
 
 	cfg.ConfigFile = configFileUsed
