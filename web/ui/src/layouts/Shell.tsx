@@ -29,6 +29,7 @@ import {
   ListPlus,
   Film,
   Compass,
+  KeyRound,
 } from "lucide-react";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
@@ -65,6 +66,7 @@ const settingsNav: NavItem[] = [
   { to: "/settings/import-lists",        icon: ListPlus,          label: "Import Lists" },
   { to: "/settings/blocklist",           icon: Ban,               label: "Blocklist" },
   { to: "/settings/import",              icon: ArrowDownToLine,   label: "Import" },
+  { to: "/settings/providers",           icon: KeyRound,          label: "Providers" },
   { to: "/settings/system",              icon: Server,            label: "System" },
   { to: "/settings/app",                 icon: Paintbrush,        label: "App Settings" },
 ];

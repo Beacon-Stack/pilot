@@ -13,6 +13,7 @@ import QualityProfileList from "@/pages/settings/quality-profiles/QualityProfile
 import IndexerList from "@/pages/settings/indexers/IndexerList";
 import SystemSettings from "@/pages/settings/system/SystemSettings";
 import AppSettings from "@/pages/settings/app/AppSettings";
+import ProvidersSettings from "@/pages/settings/providers/ProvidersSettings";
 import DownloadClientList from "@/pages/settings/download-clients/DownloadClientList";
 import NotificationList from "@/pages/settings/notifications/NotificationList";
 import MediaServerList from "@/pages/settings/media-servers/MediaServerList";
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="settings/import" element={<ImportPage />} />
             <Route path="settings/system" element={<SystemSettings />} />
             <Route path="settings/app" element={<AppSettings />} />
+            <Route path="settings/providers" element={<ProvidersSettings />} />
           </Route>
         </Routes>
         </ErrorBoundary>
