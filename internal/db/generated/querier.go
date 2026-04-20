@@ -59,6 +59,7 @@ type Querier interface {
 	DeleteQualityProfile(ctx context.Context, id string) error
 	DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error
 	DeleteSeries(ctx context.Context, id string) error
+	DeleteSetting(ctx context.Context, key string) error
 	DetachQualityProfileFromPulse(ctx context.Context, id string) error
 	GetDownloadClientConfig(ctx context.Context, id string) (DownloadClientConfig, error)
 	GetEpisode(ctx context.Context, id string) (Episode, error)
@@ -78,6 +79,7 @@ type Querier interface {
 	GetSeason(ctx context.Context, id string) (Season, error)
 	GetSeries(ctx context.Context, id string) (Series, error)
 	GetSeriesByTMDBID(ctx context.Context, tmdbID int32) (Series, error)
+	GetSetting(ctx context.Context, key string) (string, error)
 	InsertActivity(ctx context.Context, arg InsertActivityParams) error
 	InsertStatsSnapshot(ctx context.Context, arg InsertStatsSnapshotParams) error
 	IsBlocklisted(ctx context.Context, releaseGuid string) (int64, error)
@@ -128,6 +130,7 @@ type Querier interface {
 	MarkGrabRemoved(ctx context.Context, id string) error
 	PruneActivities(ctx context.Context, createdAt string) error
 	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (bool, error)
+	SetSetting(ctx context.Context, arg SetSettingParams) error
 	SumEpisodeFileSize(ctx context.Context) (interface{}, error)
 	UpdateDownloadClientConfig(ctx context.Context, arg UpdateDownloadClientConfigParams) (DownloadClientConfig, error)
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (Episode, error)

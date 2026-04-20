@@ -240,6 +240,12 @@ type Series struct {
 	MetadataRefreshedAt sql.NullString `json:"metadataRefreshedAt"`
 }
 
+type Setting struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
 type StatsSnapshot struct {
 	ID                string `json:"id"`
 	TotalSeries       int32  `json:"totalSeries"`
