@@ -66,6 +66,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/mediaserver"
 	"github.com/beacon-stack/pilot/internal/core/notification"
+	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
 	"github.com/beacon-stack/pilot/internal/core/show"
@@ -208,9 +209,23 @@ func run() error {
 	qualitySvc := quality.NewService(queries, bus)
 	librarySvc := library.NewService(queries, bus)
 
+	// Resolve the effective TVDB key: Settings-UI override wins over the
+	// baked default. Changes made in the UI take effect at next Pilot
+	// restart (the tmdbtv client caches the key at construction).
+	providerResolver := provider.NewResolver(queries)
+	effectiveTVDBKey, source, err := providerResolver.EffectiveKey(context.Background(), provider.TVDB)
+	if err != nil {
+		logger.Error("failed to resolve TVDB key", "error", err)
+		os.Exit(1)
+	}
+
 	var tmdbClient *tmdbtv.Client
-	if !cfg.TVDB.APIKey.IsEmpty() {
-		tmdbClient = tmdbtv.New(cfg.TVDB.APIKey.Value(), logger)
+	if effectiveTVDBKey != "" {
+		tmdbClient = tmdbtv.New(effectiveTVDBKey, logger)
+		logger.Info("TVDB metadata client configured", "source", source)
+	} else {
+		logger.Warn("TVDB metadata client disabled — no baked default and no Settings override",
+			"hint", "set one in Settings \u2192 Providers or rebuild the image with TMDB_API_KEY")
 	}
 	var showMeta show.MetadataProvider
 	if tmdbClient != nil {
@@ -297,6 +312,7 @@ func run() error {
 		StatsService:           statsSvc,
 		ImportListService:      importListSvc,
 		SonarrImportService:    sonarrImportSvc,
+		ProviderResolver:       providerResolver,
 		WSHub:                  wsHub,
 		Scheduler:              sched,
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),

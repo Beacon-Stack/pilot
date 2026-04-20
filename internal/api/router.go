@@ -27,6 +27,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/mediaserver"
 	"github.com/beacon-stack/pilot/internal/core/notification"
+	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
 	"github.com/beacon-stack/pilot/internal/core/show"
@@ -66,6 +67,7 @@ type RouterConfig struct {
 	StatsService           *stats.Service
 	ImportListService      *importlist.Service
 	SonarrImportService    *sonarrimport.Service
+	ProviderResolver       *provider.Resolver
 	WSHub                  *ws.Hub
 	Scheduler              *scheduler.Scheduler
 	PulseSyncHandler       http.HandlerFunc
@@ -236,6 +238,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.SonarrImportService != nil {
 		v1.RegisterImportRoutes(humaAPI, cfg.SonarrImportService)
+	}
+
+	if cfg.ProviderResolver != nil {
+		v1.RegisterProviderRoutes(humaAPI, cfg.ProviderResolver)
 	}
 
 	// Serve the embedded React SPA — must come after all API routes.
