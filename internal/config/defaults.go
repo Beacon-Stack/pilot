@@ -14,10 +14,10 @@ import "encoding/base64"
 // recover the plaintext; the goal here is casual-attacker deterrence,
 // not real confidentiality.
 var (
-	obfuscatedTMDBKey        string
-	tmdbKeyXORKey            string
-	obfuscatedTraktClientID  string
-	traktClientIDXORKey      string
+	obfuscatedTMDBKey       string
+	tmdbKeyXORKey           string
+	obfuscatedTraktClientID string
+	traktClientIDXORKey     string
 )
 
 // DefaultTMDBKey returns the baked-in TMDB API key (de-obfuscated) or

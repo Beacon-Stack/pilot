@@ -27,11 +27,11 @@ type providerStatusOutput struct {
 }
 
 type providerStatusBody struct {
-	Name       string `json:"name"`
-	Source     string `json:"source"  doc:"Where the effective key came from: default (baked) or override (UI-set)"`
-	Preview    string `json:"preview" doc:"Redacted key (last 3 characters visible) or empty string if unconfigured"`
-	HasDefault bool   `json:"hasDefault" doc:"True if the image was built with a baked default for this provider"`
-	HasOverride bool  `json:"hasOverride" doc:"True if a Settings-UI override is currently stored"`
+	Name        string `json:"name"`
+	Source      string `json:"source"  doc:"Where the effective key came from: default (baked) or override (UI-set)"`
+	Preview     string `json:"preview" doc:"Redacted key (last 3 characters visible) or empty string if unconfigured"`
+	HasDefault  bool   `json:"hasDefault" doc:"True if the image was built with a baked default for this provider"`
+	HasOverride bool   `json:"hasOverride" doc:"True if a Settings-UI override is currently stored"`
 }
 
 type setProviderOverrideInput struct {
