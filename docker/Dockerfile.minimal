@@ -14,12 +14,14 @@ RUN go mod download
 
 COPY . .
 
-# modernc/sqlite is pure Go - CGO_ENABLED=0 produces a fully static binary.
-RUN CGO_ENABLED=0 GOOS=linux go build \
-      -ldflags "-X github.com/pilot/pilot/internal/version.Version=${VERSION} \
-                -X github.com/pilot/pilot/internal/version.BuildTime=${BUILD_TIME} \
-                -X github.com/pilot/pilot/internal/config.DefaultTMDBKey=${TMDB_API_KEY} \
-                -X github.com/pilot/pilot/internal/config.DefaultTraktClientID=${TRAKT_CLIENT_ID} \
+# XOR-obfuscate provider keys (see docker/Dockerfile for rationale).
+RUN TMDB_LDFLAGS="$(go run ./tools/obfuscate obfuscatedTMDBKey tmdbKeyXORKey "${TMDB_API_KEY}")" && \
+    TRAKT_LDFLAGS="$(go run ./tools/obfuscate obfuscatedTraktClientID traktClientIDXORKey "${TRAKT_CLIENT_ID}")" && \
+    CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags "-X github.com/beacon-stack/pilot/internal/version.Version=${VERSION} \
+                -X github.com/beacon-stack/pilot/internal/version.BuildTime=${BUILD_TIME} \
+                ${TMDB_LDFLAGS} \
+                ${TRAKT_LDFLAGS} \
                 -s -w" \
       -o /pilot ./cmd/pilot
 
