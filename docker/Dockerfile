@@ -58,6 +58,19 @@ RUN apk add --no-cache ffmpeg ca-certificates tzdata && \
 # The binary
 COPY --from=builder /pilot /pilot
 
+# Beacon-stack-shaped defaults — the published image expects to land in a
+# compose with services named `postgres` and (optionally) `pulse`. For
+# standalone use, override these via the container's `environment:` block;
+# env always beats Dockerfile ENV. See docker/docker-compose.yml for the
+# standalone recipe.
+ENV PILOT_DATABASE_DRIVER=postgres \
+    PILOT_DATABASE_DSN="postgres://pilot@postgres:5432/pilot_db?sslmode=disable" \
+    PILOT_DATABASE_PASSWORD_FILE=/run/secrets/pilot.txt \
+    PILOT_PULSE_URL=http://pulse:9696 \
+    PILOT_PULSE_API_KEY_FILE=/run/secrets/pulse-api-key.txt \
+    PILOT_LOG_LEVEL=info \
+    TZ=UTC
+
 # Default data directory (mount a volume here in production)
 VOLUME ["/config"]
 

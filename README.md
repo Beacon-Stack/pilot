@@ -15,7 +15,7 @@
 
 Pilot is a self-hosted TV series manager with a React web UI and a REST API. It tracks a TV library, polls indexers for new episodes, grabs them through your download client, and files the finished downloads into season folders. It runs as a single Go binary, stores state in Postgres, and is configured from the UI or through environment variables.
 
-Pilot is part of the Beacon media stack and runs alongside [Prism](https://github.com/beacon-stack/prism) (movies), [Haul](https://github.com/beacon-stack/haul) (BitTorrent), and [Pulse](https://github.com/beacon-stack/pulse) (control plane). Each of those is optional — Pilot works on its own too.
+Pilot stands on its own as a Sonarr alternative. It comes into its own as part of the [Beacon Stack](https://beaconstack.io) — alongside [Pulse](https://github.com/beacon-stack/pulse) (centralized indexers + quality profiles), [Prism](https://github.com/beacon-stack/prism) (movies), and [Haul](https://github.com/beacon-stack/haul) (BitTorrent client) — where Pulse-managed indexers, cross-service quality profiles, and stall-aware torrent blocklisting all light up.
 
 ## Features
 
@@ -74,22 +74,19 @@ Pilot is part of the Beacon media stack and runs alongside [Prism](https://githu
 
 ## Getting started
 
-### Docker
+### Standalone
+
+A single-service compose that runs Pilot with its own dedicated Postgres lives at [`docker/docker-compose.yml`](docker/docker-compose.yml). Edit the `/path/to/...` lines and the placeholder password, then:
 
 ```bash
-docker run -d \
-  --name pilot \
-  -p 8383:8383 \
-  -v /path/to/config:/config \
-  -v /path/to/tv:/tv \
-  ghcr.io/beacon-stack/pilot:latest
+docker compose -f docker/docker-compose.yml up -d
 ```
 
-Open `http://localhost:8383`. Pilot generates an API key on first run — find it in Settings → App Settings.
+The web UI is at `http://localhost:8383`. Pilot generates an API key on first run; find it in Settings → App Settings.
 
-### Docker Compose (with the rest of the stack)
+### As part of the Beacon Stack
 
-The full Beacon stack — Postgres, Pulse, Pilot, Prism, Haul, and a VPN container — is wired up in [`beacon-stack/deploy`](https://github.com/beacon-stack/deploy). Point it at a media directory and go.
+For the full setup — Pulse + Pilot + Prism + Haul + VPN — see [`beacon-stack/deploy`](https://github.com/beacon-stack/deploy). Standalone Pilot works on its own; running with the stack adds shared indexers, cross-service quality profiles, and stall-aware torrent blocklisting through Haul.
 
 ### Build from source
 

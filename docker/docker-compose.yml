@@ -1,16 +1,63 @@
+# ============================================================================
+# Pilot — standalone deployment
+#
+# Runs Pilot on its own with a dedicated Postgres. No Pulse — indexers,
+# download clients, and quality profiles are managed inside Pilot's own
+# Settings UI rather than synced from Pulse.
+#
+# For the full Beacon Stack (Pulse + Pilot + Prism + Haul + VPN), see
+# https://github.com/beacon-stack/deploy
+#
+# Quick start:
+#   1. Edit the /path/to/... lines and the password below.
+#   2. docker compose -f docker/docker-compose.yml up -d
+#   3. Visit http://localhost:8383. Find your API key in Settings → System.
+# ============================================================================
+
 services:
+
+  pilot-postgres:
+    image: postgres:17-alpine
+    container_name: pilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pilot
+      POSTGRES_PASSWORD: change-me-please
+      POSTGRES_DB: pilot_db
+    volumes:
+      - pilot-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pilot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   pilot:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: pilot:local
+    image: ghcr.io/beacon-stack/pilot:latest
     container_name: pilot
     restart: unless-stopped
+    depends_on:
+      pilot-postgres:
+        condition: service_healthy
+    environment:
+      # Override the beacon-stack defaults baked into the image.
+      PILOT_DATABASE_DSN: "postgres://pilot:change-me-please@pilot-postgres:5432/pilot_db?sslmode=disable"
+      PILOT_DATABASE_PASSWORD_FILE: ""
+      PILOT_PULSE_URL: ""
+      PILOT_PULSE_API_KEY_FILE: ""
+    volumes:
+      - /path/to/config:/config
+      - /path/to/tv:/tv
+      - /path/to/downloads:/downloads
     ports:
       - "8383:8383"
-    volumes:
-      - ${HOME}/.config/pilot:/config
-      # Mount your TV library directory. The container path (/tv) must match
-      # the root path you configure in Settings > Libraries.
-      # Add additional lines for each root folder you want accessible.
-      - /path/to/tv:/tv
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8383/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  pilot-pgdata:
