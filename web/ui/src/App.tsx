@@ -82,6 +82,7 @@ export default function App() {
       <Toaster
         theme="dark"
         position="bottom-right"
+        expand
         toastOptions={{
           style: {
             background: "var(--color-bg-elevated)",
