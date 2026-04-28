@@ -237,6 +237,8 @@ func (f fakeAnimeLookup) TVDBSeasonToAbsolute(_, _, _ int) (int, bool) {
 	return 0, false
 }
 
+func (f fakeAnimeLookup) CourBounds(_ int) []CourBound { return nil }
+
 // ── RefreshMetadata ──────────────────────────────────────────────────────────
 
 // refreshMetadataMock implements just the queries RefreshMetadata calls.
@@ -596,7 +598,8 @@ type recordingAnimeLookup struct {
 	returnOk                       bool
 }
 
-func (r *recordingAnimeLookup) IsAnime(int) bool { return false }
+func (r *recordingAnimeLookup) IsAnime(int) bool           { return false }
+func (r *recordingAnimeLookup) CourBounds(int) []CourBound { return nil }
 func (r *recordingAnimeLookup) TVDBSeasonToAbsolute(tmdbID, season, episode int) (int, bool) {
 	r.gotTMDB, r.gotSeason, r.gotEpisode = tmdbID, season, episode
 	return r.returnAbs, r.returnOk

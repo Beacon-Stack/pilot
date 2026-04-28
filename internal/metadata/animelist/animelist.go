@@ -30,6 +30,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -180,6 +181,33 @@ func (s *Service) Lookup(tmdbID int) (*Mapping, bool) {
 func (s *Service) IsAnime(tmdbID int) bool {
 	_, ok := s.Lookup(tmdbID)
 	return ok
+}
+
+// Mappings returns every AniDB cour entry sharing the given TMDB tv id,
+// sorted ascending by tvdb_season. Multi-cour anime have one entry per
+// cour (Jujutsu Kaisen 95479: tvdbseason=1/2/3, with offsets 0/24/47);
+// the cour-shaped Series Detail view buckets episodes by these
+// (start, end, offset) tuples. Returns an empty slice when the TMDB id
+// is unknown — callers fall back to a single-cour view.
+//
+// The returned slice is a defensive copy; callers may sort or filter
+// without mutating the service's index.
+func (s *Service) Mappings(tmdbID int) []*Mapping {
+	if tmdbID == 0 {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	src := s.allByTMDBID[tmdbID]
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]*Mapping, len(src))
+	copy(out, src)
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].DefaultTVDBSeason < out[j].DefaultTVDBSeason
+	})
+	return out
 }
 
 // LastLoaded reports the wall-clock time of the most recent successful

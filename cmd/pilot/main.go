@@ -245,7 +245,10 @@ func run() error {
 		logger,
 	)
 
-	showSvc := show.NewService(queries, showMeta, animeListSvc, bus, logger)
+	// Adapter: animelist.Service exposes its native Mapping type; the
+	// show.AnimeLookup interface uses show.CourBound (kept local to
+	// avoid show importing animelist). Convert at the boundary.
+	showSvc := show.NewService(queries, showMeta, animeLookupAdapter{animeListSvc}, bus, logger)
 
 	indexerRL := ratelimit.New()
 	indexerSvc := indexer.NewService(queries, registry.Default, bus, indexerRL, logger)
@@ -411,4 +414,30 @@ func pulseSyncHandler(integration *pulseint.Integration, indexerSvc *indexer.Ser
 		return nil
 	}
 	return integration.SyncHandler(indexerSvc, dlSvc)
+}
+
+// animeLookupAdapter satisfies show.AnimeLookup by wrapping
+// animelist.Service. The IsAnime and TVDBSeasonToAbsolute methods are
+// promoted directly from the embedded *Service; only CourBounds needs
+// a real conversion because the interface uses the show-package's
+// CourBound type while animelist exposes its own native Mapping.
+type animeLookupAdapter struct {
+	*animelist.Service
+}
+
+func (a animeLookupAdapter) CourBounds(tmdbID int) []show.CourBound {
+	mappings := a.Service.Mappings(tmdbID)
+	if len(mappings) == 0 {
+		return nil
+	}
+	out := make([]show.CourBound, len(mappings))
+	for i, m := range mappings {
+		out[i] = show.CourBound{
+			TVDBSeason: m.DefaultTVDBSeason,
+			TMDBSeason: m.TMDBSeason,
+			TMDBOffset: m.TMDBOffset,
+			Name:       m.Name,
+		}
+	}
+	return out
 }

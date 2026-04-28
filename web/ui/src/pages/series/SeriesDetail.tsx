@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Tv, CheckCircle2, RefreshCw } from "lucide-react";
-import { useSeriesDetail, useSeasons, useEpisodes, useUpdateSeries, useUpdateEpisodeMonitored, useUpdateSeasonMonitored } from "@/api/series";
+import { useSeriesDetail, useSeasons, useCours, useUpdateCourMonitored, useEpisodes, useUpdateSeries, useUpdateEpisodeMonitored, useUpdateSeasonMonitored, useRefreshSeriesMetadata } from "@/api/series";
 import { useEpisodeFiles, useLibraryScan } from "@/api/episode-files";
 import { Poster } from "@/components/Poster";
 import ManualSearchModal from "@/components/ManualSearchModal";
@@ -47,6 +47,9 @@ function SeasonEpisodeList({
   onSearch,
   onAutoSearch,
   isAutoSearching,
+  fetchSeasonNumber,
+  filterEpisodeIDs,
+  onMonitorOverride,
 }: {
   seriesId: string;
   season: Season;
@@ -54,8 +57,26 @@ function SeasonEpisodeList({
   onSearch: (target: SearchTarget) => void;
   onAutoSearch: (target: SearchTarget) => void;
   isAutoSearching: boolean;
+  // fetchSeasonNumber overrides which TMDB season to fetch episodes
+  // from. Cours have season.season_number = the cour identifier (e.g. 3
+  // for "Season 3"), but the underlying episodes live in TMDB Season 1.
+  // Defaults to season.season_number when omitted (non-anime path).
+  fetchSeasonNumber?: number;
+  // filterEpisodeIDs, when provided, narrows the rendered episode list
+  // to just those IDs. Used for cour mode to slice the TMDB season's
+  // full episode list down to the cour's window.
+  filterEpisodeIDs?: Set<string>;
+  // onMonitorOverride replaces the default season-monitor mutation.
+  // For cours we hit the cour endpoint instead of the season endpoint.
+  onMonitorOverride?: (monitored: boolean) => void;
 }) {
-  const { data: episodes, isLoading } = useEpisodes(seriesId, season.season_number);
+  const fetchSeason = fetchSeasonNumber ?? season.season_number;
+  const { data: episodesAll, isLoading } = useEpisodes(seriesId, fetchSeason);
+  const episodes = useMemo(() => {
+    if (!episodesAll) return undefined;
+    if (!filterEpisodeIDs) return episodesAll;
+    return episodesAll.filter((ep: Episode) => filterEpisodeIDs.has(ep.id));
+  }, [episodesAll, filterEpisodeIDs]);
   const updateEpMonitored = useUpdateEpisodeMonitored(seriesId);
   const updateSeasonMonitored = useUpdateSeasonMonitored(seriesId);
   const [filter, setFilter] = useState<EpisodeFilter>("all");
@@ -122,7 +143,13 @@ function SeasonEpisodeList({
         totalSize={totalSize > 0 ? formatBytes(totalSize) : ""}
         filter={filter}
         onFilterChange={setFilter}
-        onToggleMonitor={() => updateSeasonMonitored.mutate({ seasonId: season.id, monitored: !season.monitored })}
+        onToggleMonitor={() => {
+          if (onMonitorOverride) {
+            onMonitorOverride(!season.monitored);
+          } else {
+            updateSeasonMonitored.mutate({ seasonId: season.id, monitored: !season.monitored });
+          }
+        }}
         onInteractiveSearch={() => onSearch({ seriesId, seasonNumber: season.season_number })}
         onAutoSearchSeason={() => onAutoSearch({ seriesId, seasonNumber: season.season_number })}
         isAutoSearching={isAutoSearching}
@@ -174,8 +201,12 @@ export default function SeriesDetail() {
   const navigate = useNavigate();
   const { data: series, isLoading, isError } = useSeriesDetail(id ?? "");
   const { data: seasons } = useSeasons(id ?? "");
+  const isAnime = series?.series_type === "anime";
+  const { data: cours } = useCours(id ?? "", isAnime);
   const updateSeries = useUpdateSeries(id ?? "");
+  const refreshMetadata = useRefreshSeriesMetadata(id ?? "");
   const updateSeasonMonitored = useUpdateSeasonMonitored(id ?? "");
+  const updateCourMonitored = useUpdateCourMonitored(id ?? "");
   const libraryScan = useLibraryScan();
   const [searchTarget, setSearchTarget] = useState<SearchTarget | null>(null);
   const autoSearch = useAutoSearch(id ?? "");
@@ -207,7 +238,34 @@ export default function SeriesDetail() {
     [episodeFiles]
   );
 
-  const allSeasons = seasons ?? [];
+  // For anime series with an Anime-Lists mapping, the cours[] response
+  // is non-empty and we project each cour into a Season-shaped object
+  // for the existing UI components to consume. The synthetic id starts
+  // with "cour-" so SeasonEpisodeList can detect cour mode and use the
+  // alternate fetch+filter+monitor paths. Each cour maps to TMDB
+  // Season 1's episodes via a precomputed episode-id set.
+  const useCourMode = isAnime && (cours?.length ?? 0) > 0;
+  const allSeasons: Season[] = useMemo(() => {
+    if (useCourMode && cours) {
+      return cours.map((c) => ({
+        id: `cour-${c.tvdb_season}`,
+        series_id: id ?? "",
+        season_number: c.tvdb_season,
+        monitored: c.monitored,
+        episode_count: c.episode_count,
+        episode_file_count: c.episode_file_count,
+        total_size_bytes: c.total_size_bytes,
+      }));
+    }
+    return seasons ?? [];
+  }, [seasons, cours, useCourMode, id]);
+
+  const courEpisodeIDsByCour = useMemo(() => {
+    const m = new Map<number, Set<string>>();
+    for (const c of cours ?? []) m.set(c.tvdb_season, new Set(c.episode_ids));
+    return m;
+  }, [cours]);
+
   const regularSeasons = allSeasons.filter((s) => s.season_number > 0);
   const specials = allSeasons.filter((s) => s.season_number === 0);
   const orderedSeasons = [...regularSeasons, ...specials];
@@ -307,6 +365,27 @@ export default function SeriesDetail() {
                   <RefreshCw size={15} style={{ animation: libraryScan.isPending ? "spin 1s linear infinite" : "none" }} />
                   Scan Library
                 </button>
+                <button
+                  onClick={() => {
+                    refreshMetadata.mutate(undefined, {
+                      onSuccess: (s) => toast.success(
+                        `Metadata refreshed${(s.alternate_titles?.length ?? 0) > 0 ? ` · ${s.alternate_titles!.length} alternate title${s.alternate_titles!.length === 1 ? "" : "s"}` : ""}`
+                      ),
+                      onError: (e) => toast.error((e as Error).message),
+                    });
+                  }}
+                  disabled={refreshMetadata.isPending}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px",
+                    border: "1px solid var(--color-border-default)", borderRadius: 6,
+                    background: "none", cursor: "pointer", fontSize: 13, fontWeight: 500,
+                    color: "var(--color-text-secondary)", opacity: refreshMetadata.isPending ? 0.6 : 1,
+                  }}
+                  title="Re-fetch series metadata from TMDB (incl. alternate titles)"
+                >
+                  <RefreshCw size={15} style={{ animation: refreshMetadata.isPending ? "spin 1s linear infinite" : "none" }} />
+                  Refresh Metadata
+                </button>
               </div>
             </div>
           </div>
@@ -341,7 +420,17 @@ export default function SeriesDetail() {
             <AllSeasonsView
               summaries={seasonSummaries}
               onSelectSeason={setActiveSeason}
-              onToggleMonitor={(seasonId, monitored) => updateSeasonMonitored.mutate({ seasonId, monitored })}
+              onToggleMonitor={(seasonId, monitored) => {
+                // Synthetic cour ids start with "cour-" — route the
+                // monitor toggle to the cour endpoint instead of the
+                // per-season-row update.
+                if (useCourMode && seasonId.startsWith("cour-")) {
+                  const tvdbSeason = parseInt(seasonId.slice(5), 10);
+                  updateCourMonitored.mutate({ tvdbSeason, monitored });
+                } else {
+                  updateSeasonMonitored.mutate({ seasonId, monitored });
+                }
+              }}
             />
           ) : selectedSeason ? (
             <SeasonEpisodeList
@@ -351,6 +440,13 @@ export default function SeriesDetail() {
               onSearch={setSearchTarget}
               onAutoSearch={handleAutoSearch}
               isAutoSearching={autoSearch.isPending}
+              // Cour mode: fetch the underlying TMDB Season 1 episodes
+              // and filter to the cour's window. The cour's tvdb_season
+              // is what the user sees, but episode data lives under
+              // TMDB Season 1.
+              fetchSeasonNumber={useCourMode ? 1 : undefined}
+              filterEpisodeIDs={useCourMode ? courEpisodeIDsByCour.get(selectedSeason.season_number) : undefined}
+              onMonitorOverride={useCourMode ? (monitored) => updateCourMonitored.mutate({ tvdbSeason: selectedSeason.season_number, monitored }) : undefined}
             />
           ) : (
             <div style={{ fontSize: 13, color: "var(--color-text-muted)", padding: 20 }}>Season not found.</div>

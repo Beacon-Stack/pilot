@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import type { Series, Season, Episode, SeriesListResponse } from "@/types";
+import type { Series, Season, Cour, Episode, SeriesListResponse } from "@/types";
 
 // ── Series list & detail ─────────────────────────────────────────────────────
 
@@ -103,6 +103,17 @@ export function useDeleteSeries() {
   });
 }
 
+export function useRefreshSeriesMetadata(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Series>(`/series/${id}/refresh`, { method: "POST" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["series", id] });
+    },
+  });
+}
+
 // ── Seasons ──────────────────────────────────────────────────────────────────
 
 export function useSeasons(seriesId: string) {
@@ -123,6 +134,34 @@ export function useUpdateSeasonMonitored(seriesId: string) {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["series", seriesId, "seasons"] });
+    },
+  });
+}
+
+// ── Cours (anime) ────────────────────────────────────────────────────────────
+
+// useCours returns the cour-shaped projection for an anime series.
+// The backend returns an empty array for non-anime or unmapped series;
+// the SeriesDetail component checks length to decide whether to fall
+// back to useSeasons.
+export function useCours(seriesId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["series", seriesId, "cours"],
+    queryFn: () => apiFetch<Cour[]>(`/series/${seriesId}/cours`),
+    enabled: !!seriesId && enabled,
+  });
+}
+
+export function useUpdateCourMonitored(seriesId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tvdbSeason, monitored }: { tvdbSeason: number; monitored: boolean }) =>
+      apiFetch<Cour>(`/series/${seriesId}/cours/${tvdbSeason}/monitored`, {
+        method: "PUT",
+        body: JSON.stringify({ monitored }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["series", seriesId, "cours"] });
     },
   });
 }

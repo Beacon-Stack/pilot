@@ -44,6 +44,7 @@ type Querier interface {
 	CreateQualityProfile(ctx context.Context, arg CreateQualityProfileParams) (QualityProfile, error)
 	CreateSeason(ctx context.Context, arg CreateSeasonParams) (Season, error)
 	CreateSeries(ctx context.Context, arg CreateSeriesParams) (Series, error)
+	DeleteAnimeCourMonitoredBySeriesID(ctx context.Context, seriesID string) error
 	DeleteBlocklistEntry(ctx context.Context, id string) error
 	DeleteBlocklistEntryByGUID(ctx context.Context, releaseGuid string) error
 	DeleteDownloadClientConfig(ctx context.Context, id string) error
@@ -94,6 +95,7 @@ type Querier interface {
 	ListActivities(ctx context.Context, arg ListActivitiesParams) ([]ActivityLog, error)
 	ListAllEpisodeFilePaths(ctx context.Context) ([]string, error)
 	ListAllTMDBIDs(ctx context.Context) ([]int32, error)
+	ListAnimeCourMonitored(ctx context.Context, seriesID string) ([]AnimeCourMonitored, error)
 	ListBlocklist(ctx context.Context, arg ListBlocklistParams) ([]ListBlocklistRow, error)
 	ListDownloadClientConfigs(ctx context.Context) ([]DownloadClientConfig, error)
 	ListEnabledDownloadClients(ctx context.Context) ([]DownloadClientConfig, error)
@@ -155,6 +157,7 @@ type Querier interface {
 	UpdateSeasonMonitored(ctx context.Context, arg UpdateSeasonMonitoredParams) error
 	UpdateSeries(ctx context.Context, arg UpdateSeriesParams) (Series, error)
 	UpdateSeriesMetadata(ctx context.Context, arg UpdateSeriesMetadataParams) (Series, error)
+	UpsertAnimeCourMonitored(ctx context.Context, arg UpsertAnimeCourMonitoredParams) error
 }
 
 var _ Querier = (*Queries)(nil)

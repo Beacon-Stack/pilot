@@ -67,9 +67,29 @@ type MetadataProvider interface {
 // tagged "Show S03E01" as the user's TMDB-relative S01E48. Returns
 // (0, false) when conversion isn't possible (non-anime tmdb id,
 // unmapped season, etc).
+//
+// CourBounds returns every cour the show is split into per the
+// Anime-Lists XML, sorted ascending by tvdb_season. The result drives
+// the cour-shaped Series Detail view for anime — TMDB serves multi-cour
+// shows like Jujutsu Kaisen as a single "Season 1" with 59 episodes,
+// but the user expects three seasons. Returns an empty slice when the
+// series has no Anime-Lists mapping; callers fall back to the regular
+// TMDB-shape view.
 type AnimeLookup interface {
 	IsAnime(tmdbID int) bool
 	TVDBSeasonToAbsolute(tmdbID, tvdbSeason, tvdbEpisode int) (int, bool)
+	CourBounds(tmdbID int) []CourBound
+}
+
+// CourBound describes a single cour's slot within the show's TMDB
+// layout. (tmdb_season, tmdb_offset+1) is the first TMDB-relative
+// episode of the cour; the cour ends at the start of the next cour
+// in tvdb_season order, or at the end of the season for the last cour.
+type CourBound struct {
+	TVDBSeason int    // cour identifier (1, 2, 3, …) — matches Anime-Lists' defaulttvdbseason
+	TMDBSeason int    // which TMDB season this cour falls inside (almost always 1)
+	TMDBOffset int    // count of TMDB episodes in earlier cours of the same TMDB season
+	Name       string // AniDB-supplied cour name, e.g. "Jujutsu Kaisen Season 2"
 }
 
 // Series is the domain representation of a TV series record.

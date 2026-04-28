@@ -33,6 +33,8 @@ export interface Series {
   updated_at: string;
   episode_count: number;
   episode_file_count: number;
+  /** Alternate marketing/translated names from TMDB used for release-title matching. */
+  alternate_titles?: string[];
 }
 
 export interface Season {
@@ -43,6 +45,20 @@ export interface Season {
   episode_count: number;
   episode_file_count: number;
   total_size_bytes: number;
+}
+
+// Cour is the anime presentation projection — multi-cour shows like
+// Jujutsu Kaisen have one Season row in TMDB but multiple cours per
+// the Anime-Lists XML. The backend computes cours at read time; the
+// UI renders them as if they were seasons.
+export interface Cour {
+  tvdb_season: number;
+  name: string;
+  monitored: boolean;
+  episode_count: number;
+  episode_file_count: number;
+  total_size_bytes: number;
+  episode_ids: string[];
 }
 
 export interface Episode {

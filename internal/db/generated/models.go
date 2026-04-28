@@ -6,6 +6,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 )
 
@@ -17,6 +18,13 @@ type ActivityLog struct {
 	Title     string         `json:"title"`
 	Detail    sql.NullString `json:"detail"`
 	CreatedAt string         `json:"createdAt"`
+}
+
+type AnimeCourMonitored struct {
+	SeriesID   string    `json:"seriesId"`
+	TvdbSeason int32     `json:"tvdbSeason"`
+	Monitored  bool      `json:"monitored"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 type Blocklist struct {
@@ -214,30 +222,31 @@ type Season struct {
 }
 
 type Series struct {
-	ID                  string         `json:"id"`
-	TmdbID              int32          `json:"tmdbId"`
-	ImdbID              sql.NullString `json:"imdbId"`
-	Title               string         `json:"title"`
-	SortTitle           string         `json:"sortTitle"`
-	Year                int32          `json:"year"`
-	Overview            string         `json:"overview"`
-	RuntimeMinutes      sql.NullInt32  `json:"runtimeMinutes"`
-	GenresJson          string         `json:"genresJson"`
-	PosterUrl           sql.NullString `json:"posterUrl"`
-	FanartUrl           sql.NullString `json:"fanartUrl"`
-	Status              string         `json:"status"`
-	SeriesType          string         `json:"seriesType"`
-	MonitorType         string         `json:"monitorType"`
-	Network             sql.NullString `json:"network"`
-	AirTime             sql.NullString `json:"airTime"`
-	Certification       sql.NullString `json:"certification"`
-	Monitored           bool           `json:"monitored"`
-	LibraryID           string         `json:"libraryId"`
-	QualityProfileID    string         `json:"qualityProfileId"`
-	Path                sql.NullString `json:"path"`
-	AddedAt             string         `json:"addedAt"`
-	UpdatedAt           string         `json:"updatedAt"`
-	MetadataRefreshedAt sql.NullString `json:"metadataRefreshedAt"`
+	ID                  string          `json:"id"`
+	TmdbID              int32           `json:"tmdbId"`
+	ImdbID              sql.NullString  `json:"imdbId"`
+	Title               string          `json:"title"`
+	SortTitle           string          `json:"sortTitle"`
+	Year                int32           `json:"year"`
+	Overview            string          `json:"overview"`
+	RuntimeMinutes      sql.NullInt32   `json:"runtimeMinutes"`
+	GenresJson          string          `json:"genresJson"`
+	PosterUrl           sql.NullString  `json:"posterUrl"`
+	FanartUrl           sql.NullString  `json:"fanartUrl"`
+	Status              string          `json:"status"`
+	SeriesType          string          `json:"seriesType"`
+	MonitorType         string          `json:"monitorType"`
+	Network             sql.NullString  `json:"network"`
+	AirTime             sql.NullString  `json:"airTime"`
+	Certification       sql.NullString  `json:"certification"`
+	Monitored           bool            `json:"monitored"`
+	LibraryID           string          `json:"libraryId"`
+	QualityProfileID    string          `json:"qualityProfileId"`
+	Path                sql.NullString  `json:"path"`
+	AddedAt             string          `json:"addedAt"`
+	UpdatedAt           string          `json:"updatedAt"`
+	MetadataRefreshedAt sql.NullString  `json:"metadataRefreshedAt"`
+	AlternateTitles     json.RawMessage `json:"alternateTitles"`
 }
 
 type Setting struct {

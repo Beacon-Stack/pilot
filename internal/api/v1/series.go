@@ -41,6 +41,7 @@ type seriesBody struct {
 	AddedAt             time.Time  `json:"added_at"                         doc:"When the series was added"`
 	UpdatedAt           time.Time  `json:"updated_at"                       doc:"When the record was last changed"`
 	MetadataRefreshedAt *time.Time `json:"metadata_refreshed_at,omitempty"  doc:"When metadata was last refreshed"`
+	AlternateTitles     []string   `json:"alternate_titles,omitempty"       doc:"Alternate marketing/translated titles from TMDB used for release-title matching"`
 }
 
 type seasonBody struct {
@@ -190,6 +191,39 @@ type updateSeasonInput struct {
 	}
 }
 
+// courBody is the API representation of an anime cour — a multi-cour
+// anime "season" projected from the Anime-Lists XML rather than from
+// the underlying TMDB-shape DB rows. See show.Cour for semantics.
+type courBody struct {
+	TVDBSeason       int      `json:"tvdb_season"        doc:"Cour identifier; renders as the season number in the UI (0 = specials)"`
+	Name             string   `json:"name"               doc:"Cour name from AniDB; empty for specials"`
+	Monitored        bool     `json:"monitored"          doc:"Effective monitored bit (override > parent season > true)"`
+	EpisodeCount     int64    `json:"episode_count"      doc:"Episodes belonging to this cour"`
+	EpisodeFileCount int64    `json:"episode_file_count" doc:"Episodes in this cour with a file on disk"`
+	TotalSizeBytes   int64    `json:"total_size_bytes"   doc:"Sum of episode-file sizes for this cour"`
+	EpisodeIDs       []string `json:"episode_ids"      doc:"Episode UUIDs in TMDB-relative episode order"`
+}
+
+type courListOutput struct {
+	Body []*courBody
+}
+
+type getCourListInput struct {
+	ID string `path:"id"`
+}
+
+type updateCourMonitoredInput struct {
+	ID         string `path:"id"`
+	TVDBSeason int    `path:"tvdbSeason"`
+	Body       struct {
+		Monitored bool `json:"monitored" doc:"Whether this cour is monitored"`
+	}
+}
+
+type courMonitoredOutput struct {
+	Body *courBody
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func seriesToBody(s show.Series) *seriesBody {
@@ -220,6 +254,19 @@ func seriesToBody(s show.Series) *seriesBody {
 		AddedAt:             s.AddedAt,
 		UpdatedAt:           s.UpdatedAt,
 		MetadataRefreshedAt: s.MetadataRefreshedAt,
+		AlternateTitles:     s.AlternateTitles,
+	}
+}
+
+func courToBody(c show.Cour) *courBody {
+	return &courBody{
+		TVDBSeason:       c.TVDBSeason,
+		Name:             c.Name,
+		Monitored:        c.Monitored,
+		EpisodeCount:     c.EpisodeCount,
+		EpisodeFileCount: c.EpisodeFileCount,
+		TotalSizeBytes:   c.TotalSizeBytes,
+		EpisodeIDs:       c.EpisodeIDs,
 	}
 }
 
@@ -275,7 +322,7 @@ func mapShowError(err error, entityName string) error {
 	case errors.Is(err, show.ErrAlreadyExists):
 		return huma.Error409Conflict(entityName + " already in library")
 	case errors.Is(err, show.ErrMetadataNotConfigured):
-		return huma.NewError(http.StatusServiceUnavailable, "metadata provider not configured — set tvdb.api_key in config")
+		return huma.NewError(http.StatusServiceUnavailable, "metadata provider not configured — set tmdb.api_key in config")
 	default:
 		return huma.NewError(http.StatusInternalServerError, "unexpected error", err)
 	}
@@ -416,6 +463,25 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 		return &seriesOutput{Body: seriesToBody(s)}, nil
 	})
 
+	// POST /api/v1/series/{id}/refresh — re-fetch series-level metadata
+	// (including alternate titles) from TMDB. Used by the UI's "Refresh
+	// metadata" button to backfill alternates on series added before the
+	// alternates feature shipped, or to pick up newly-added TMDB
+	// alternates after the series has aged in the library.
+	huma.Register(api, huma.Operation{
+		OperationID: "refresh-series-metadata",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/series/{id}/refresh",
+		Summary:     "Refresh series metadata from TMDB (incl. alternate titles)",
+		Tags:        []string{"Series"},
+	}, func(ctx context.Context, input *getSeriesInput) (*seriesOutput, error) {
+		s, err := showSvc.RefreshMetadata(ctx, input.ID)
+		if err != nil {
+			return nil, mapShowError(err, "series")
+		}
+		return &seriesOutput{Body: seriesToBody(s)}, nil
+	})
+
 	// DELETE /api/v1/series/{id}
 	huma.Register(api, huma.Operation{
 		OperationID:   "delete-series",
@@ -512,5 +578,53 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to update season", err)
 		}
 		return &seasonOutput{Body: &seasonBody{ID: input.ID, Monitored: input.Body.Monitored}}, nil
+	})
+
+	// GET /api/v1/series/{id}/cours
+	//
+	// Cour-shaped projection of an anime series. Returns an empty list
+	// for non-anime series (or anime series without an Anime-Lists
+	// mapping) — the frontend treats that as "fall back to /seasons".
+	huma.Register(api, huma.Operation{
+		OperationID: "list-cours",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/series/{id}/cours",
+		Summary:     "List anime cours for a series (multi-cour shows split by Anime-Lists)",
+		Tags:        []string{"Series"},
+	}, func(ctx context.Context, input *getCourListInput) (*courListOutput, error) {
+		cours, err := showSvc.GetCours(ctx, input.ID)
+		if err != nil {
+			if errors.Is(err, show.ErrNotFound) {
+				return nil, huma.Error404NotFound("series not found")
+			}
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to list cours", err)
+		}
+		bodies := make([]*courBody, len(cours))
+		for i, c := range cours {
+			bodies[i] = courToBody(c)
+		}
+		return &courListOutput{Body: bodies}, nil
+	})
+
+	// PUT /api/v1/series/{id}/cours/{tvdbSeason}/monitored
+	//
+	// Sets the user's explicit cour-monitor override. Subsequent
+	// GetCours calls return this value regardless of the parent TMDB
+	// season's monitored bit. Episode-level monitoring is unaffected
+	// (cour membership is a presentation concept, not stored).
+	huma.Register(api, huma.Operation{
+		OperationID: "update-cour-monitored",
+		Method:      http.MethodPut,
+		Path:        "/api/v1/series/{id}/cours/{tvdbSeason}/monitored",
+		Summary:     "Set monitored state for a single anime cour",
+		Tags:        []string{"Series"},
+	}, func(ctx context.Context, input *updateCourMonitoredInput) (*courMonitoredOutput, error) {
+		if err := showSvc.SetCourMonitored(ctx, input.ID, input.TVDBSeason, input.Body.Monitored); err != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to update cour monitored", err)
+		}
+		return &courMonitoredOutput{Body: &courBody{
+			TVDBSeason: input.TVDBSeason,
+			Monitored:  input.Body.Monitored,
+		}}, nil
 	})
 }
