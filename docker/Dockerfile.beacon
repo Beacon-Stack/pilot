@@ -62,6 +62,17 @@ RUN apk add --no-cache ffmpeg ca-certificates tzdata && \
 
 COPY --from=builder /pilot /pilot
 
+# Beacon-stack-shaped defaults — match docker/Dockerfile so the local
+# dev image is interchangeable with the published ghcr.io/beacon-stack
+# image. compose `environment:` overrides still win.
+ENV PILOT_DATABASE_DRIVER=postgres \
+    PILOT_DATABASE_DSN="postgres://pilot@postgres:5432/pilot_db?sslmode=disable" \
+    PILOT_DATABASE_PASSWORD_FILE=/run/secrets/pilot.txt \
+    PILOT_PULSE_URL=http://pulse:9696 \
+    PILOT_PULSE_API_KEY_FILE=/run/secrets/pulse-api-key.txt \
+    PILOT_LOG_LEVEL=info \
+    TZ=UTC
+
 VOLUME ["/config"]
 EXPOSE 8383
 
