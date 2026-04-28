@@ -458,6 +458,23 @@ func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (E
 	return i, err
 }
 
+const updateEpisodeAbsoluteNumber = `-- name: UpdateEpisodeAbsoluteNumber :exec
+UPDATE episodes SET absolute_number = $1 WHERE id = $2
+`
+
+type UpdateEpisodeAbsoluteNumberParams struct {
+	AbsoluteNumber sql.NullInt32 `json:"absoluteNumber"`
+	ID             string        `json:"id"`
+}
+
+// Backfill or correct the absolute episode number. Used by the refresh
+// path when a series is newly flagged as anime — its existing rows have
+// absolute_number = NULL and need to be filled in retroactively.
+func (q *Queries) UpdateEpisodeAbsoluteNumber(ctx context.Context, arg UpdateEpisodeAbsoluteNumberParams) error {
+	_, err := q.db.ExecContext(ctx, updateEpisodeAbsoluteNumber, arg.AbsoluteNumber, arg.ID)
+	return err
+}
+
 const updateEpisodeMonitored = `-- name: UpdateEpisodeMonitored :exec
 UPDATE episodes SET monitored = $1 WHERE id = $2
 `

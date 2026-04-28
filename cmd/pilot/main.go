@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -76,6 +77,7 @@ import (
 	dbgen "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 	"github.com/beacon-stack/pilot/internal/logging"
+	"github.com/beacon-stack/pilot/internal/metadata/animelist"
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
 	pulseint "github.com/beacon-stack/pilot/internal/pulse"
 	"github.com/beacon-stack/pilot/internal/ratelimit"
@@ -209,32 +211,44 @@ func run() error {
 	qualitySvc := quality.NewService(queries, bus)
 	librarySvc := library.NewService(queries, bus)
 
-	// Resolve the effective TVDB key: Settings-UI override wins over the
+	// Resolve the effective TMDB key: Settings-UI override wins over the
 	// baked default. Changes made in the UI take effect at next Pilot
 	// restart (the tmdbtv client caches the key at construction).
 	providerResolver := provider.NewResolver(queries)
-	effectiveTVDBKey, source, err := providerResolver.EffectiveKey(context.Background(), provider.TVDB)
+	effectiveTMDBKey, source, err := providerResolver.EffectiveKey(context.Background(), provider.TMDB)
 	if err != nil {
-		logger.Error("failed to resolve TVDB key", "error", err)
+		logger.Error("failed to resolve TMDB key", "error", err)
 		os.Exit(1)
 	}
 
 	var tmdbClient *tmdbtv.Client
-	if effectiveTVDBKey != "" {
-		tmdbClient = tmdbtv.New(effectiveTVDBKey, logger)
-		logger.Info("TVDB metadata client configured", "source", source)
+	if effectiveTMDBKey != "" {
+		tmdbClient = tmdbtv.New(effectiveTMDBKey, logger)
+		logger.Info("TMDB metadata client configured", "source", source)
 	} else {
-		logger.Warn("TVDB metadata client disabled — no baked default and no Settings override",
+		logger.Warn("TMDB metadata client disabled — no baked default and no Settings override",
 			"hint", "set one in Settings \u2192 Providers or rebuild the image with TMDB_API_KEY")
 	}
 	var showMeta show.MetadataProvider
 	if tmdbClient != nil {
 		showMeta = tmdbClient
 	}
-	showSvc := show.NewService(queries, showMeta, bus, logger)
+
+	// Anime-Lists XML lookup — auto-flags Japanese animation series and
+	// drives the absolute-episode-number population on add/refresh, which
+	// in turn makes anime-aware indexer queries possible. Caches the XML
+	// alongside config.yaml so a missing GitHub doesn't break series add
+	// after first run. Started below alongside the rest of the app
+	// lifecycle. Pre-start lookups return false safely (empty index).
+	animeListSvc := animelist.New(
+		filepath.Join(filepath.Dir(cfg.ConfigFile), "anime-list.xml"),
+		logger,
+	)
+
+	showSvc := show.NewService(queries, showMeta, animeListSvc, bus, logger)
 
 	indexerRL := ratelimit.New()
-	indexerSvc := indexer.NewService(queries, registry.Default, bus, indexerRL)
+	indexerSvc := indexer.NewService(queries, registry.Default, bus, indexerRL, logger)
 
 	downloaderSvc := downloader.NewService(queries, registry.Default, bus)
 	notificationSvc := notification.NewService(queries, registry.Default)
@@ -294,6 +308,8 @@ func run() error {
 		DBType:                 database.Driver,
 		DBPath:                 cfg.Database.Path,
 		ConfigFile:             cfg.ConfigFile,
+		TMDBKeyConfigured:      !cfg.TMDB.APIKey.IsEmpty(),
+		TMDBKeyIsDefault:       cfg.TMDBKeyIsDefault,
 		LogBuffer:              logBuffer,
 		Queries:                queries,
 		ShowService:            showSvc,
@@ -321,6 +337,19 @@ func run() error {
 	// ── Background services ───────────────────────────────────────────────────
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
+
+	// Anime-Lists XML — fetch + daily refresh. Disk fallback means
+	// startup is fast; the network fetch happens asynchronously.
+	animeListSvc.Start(appCtx)
+
+	// One-shot anime backfill sweep — catches series added before anime
+	// detection existed and upgrades their series_type + populates
+	// absolute_number on episodes. Idempotent; safe to run on every
+	// startup. Runs in a goroutine so it doesn't block HTTP server
+	// readiness; the disk-cached XML is loaded synchronously at New()
+	// so the lookup is already populated even if the network fetch is
+	// still in flight.
+	go showSvc.BackfillAnimeForAllSeries(appCtx)
 
 	// Pulse sync — pull indexers, download clients, quality profiles, and shared settings from the control plane.
 	if pulseIntegration != nil {

@@ -33,6 +33,12 @@ RETURNING *;
 -- name: UpdateEpisodeMonitored :exec
 UPDATE episodes SET monitored = $1 WHERE id = $2;
 
+-- name: UpdateEpisodeAbsoluteNumber :exec
+-- Backfill or correct the absolute episode number. Used by the refresh
+-- path when a series is newly flagged as anime — its existing rows have
+-- absolute_number = NULL and need to be filled in retroactively.
+UPDATE episodes SET absolute_number = $1 WHERE id = $2;
+
 -- name: UpdateEpisodesMonitoredBySeason :exec
 UPDATE episodes SET monitored = $1 WHERE season_id = $2;
 

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -51,6 +52,16 @@ type MetadataProvider interface {
 	SearchSeries(ctx context.Context, query string, year int) ([]tmdbtv.SearchResult, error)
 	GetSeries(ctx context.Context, tmdbID int) (*tmdbtv.SeriesDetail, error)
 	GetSeasonEpisodes(ctx context.Context, tmdbID int, seasonNum int) ([]tmdbtv.EpisodeDetail, error)
+	GetAlternativeTitles(ctx context.Context, tmdbID int) ([]string, error)
+}
+
+// AnimeLookup answers "is this TMDB tv id an anime entry?" — used to
+// auto-flag SeriesType=anime and to drive absolute-episode-number
+// population during series add/refresh. The interface decouples the
+// show service from the animelist package's concrete Service so unit
+// tests can stub in a fake without touching the network.
+type AnimeLookup interface {
+	IsAnime(tmdbID int) bool
 }
 
 // Series is the domain representation of a TV series record.
@@ -81,6 +92,11 @@ type Series struct {
 	MetadataRefreshedAt *time.Time
 	EpisodeCount        int64
 	EpisodeFileCount    int64
+	// AlternateTitles are alternate marketing/translated names for the
+	// series (e.g. "Star Wars: Andor" for "Andor"), fetched from TMDB.
+	// Used by parser.TitleMatchesAny so indexer responses with non-
+	// canonical names aren't dropped by the strict series-title gate.
+	AlternateTitles []string
 }
 
 // Season is the domain representation of a season record.
@@ -165,16 +181,20 @@ type seasonEntry struct {
 type Service struct {
 	q      db.Querier
 	meta   MetadataProvider
+	anime  AnimeLookup
 	bus    *events.Bus
 	logger *slog.Logger
 }
 
 // NewService creates a new Service. meta may be nil; methods that require it
-// will return ErrMetadataNotConfigured.
-func NewService(q db.Querier, meta MetadataProvider, bus *events.Bus, logger *slog.Logger) *Service {
+// will return ErrMetadataNotConfigured. anime may be nil; when nil, no anime
+// auto-detection happens (series add/refresh leaves SeriesType as the
+// caller specified and absolute_number unset).
+func NewService(q db.Querier, meta MetadataProvider, anime AnimeLookup, bus *events.Bus, logger *slog.Logger) *Service {
 	return &Service{
 		q:      q,
 		meta:   meta,
+		anime:  anime,
 		bus:    bus,
 		logger: logger,
 	}
@@ -202,6 +222,22 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 		return Series{}, fmt.Errorf("fetch series metadata: %w", err)
 	}
 
+	// Fetch alternate titles best-effort. Failure here doesn't abort the
+	// add — the series still works, just with stricter title matching
+	// until a refresh-metadata call succeeds. Most TMDB shows have at
+	// least one alternate (regional/marketing name); for series that
+	// don't, the empty list is fine.
+	altTitles, altErr := s.meta.GetAlternativeTitles(ctx, req.TMDBID)
+	if altErr != nil {
+		s.logger.Warn("series add: alternate titles fetch failed (continuing)",
+			"tmdb_id", req.TMDBID, "error", altErr)
+		altTitles = nil
+	}
+	altTitlesJSON, err := json.Marshal(altTitles)
+	if err != nil || altTitles == nil {
+		altTitlesJSON = []byte("[]")
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	nowTime := time.Now().UTC()
 	metaNow := nowTime.Format(time.RFC3339)
@@ -220,6 +256,17 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 	seriesType := req.SeriesType
 	if seriesType == "" {
 		seriesType = "standard"
+	}
+	// Auto-flag anime when the show appears in the Anime-Lists XML.
+	// Caller-supplied "anime" or "daily" is preserved (explicit > inferred);
+	// only the default "standard" is upgraded. This is what powers the
+	// anime-aware search-query expansion downstream — without it, episode
+	// search for shows whose fansub releases use absolute numbering
+	// ("Show - 48") returns zero results because we'd only emit S01E48.
+	if seriesType == "standard" && s.anime != nil && s.anime.IsAnime(req.TMDBID) {
+		seriesType = "anime"
+		s.logger.Info("series add: auto-detected as anime via anime-list",
+			"tmdb_id", req.TMDBID, "title", detail.Title)
 	}
 
 	runtimeMinutes := sql.NullInt32{}
@@ -256,6 +303,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 		AddedAt:             now,
 		UpdatedAt:           now,
 		MetadataRefreshedAt: sql.NullString{String: metaNow, Valid: true},
+		AlternateTitles:     altTitlesJSON,
 	})
 	if err != nil {
 		return Series{}, fmt.Errorf("create series: %w", err)
@@ -265,7 +313,21 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 	// We track season rows by season_number so we can apply monitor_type later.
 	seasonMap := make(map[int]seasonEntry, len(detail.Seasons))
 
-	for _, ss := range detail.Seasons {
+	// Anime needs absolute episode numbering for indexer queries — fansub
+	// releases tag episodes as "Show - 48" rather than "S01E48". Iterate
+	// seasons in numerical order and accumulate a running absolute counter
+	// across non-zero seasons. Season 0 (specials) doesn't participate.
+	// For shows TMDB serves as one big season (Jujutsu Kaisen) this just
+	// makes absolute = episode_number; for split shows it produces the
+	// correct cumulative count.
+	sortedSeasons := append([]tmdbtv.SeasonSummary(nil), detail.Seasons...)
+	sort.Slice(sortedSeasons, func(i, j int) bool {
+		return sortedSeasons[i].SeasonNumber < sortedSeasons[j].SeasonNumber
+	})
+	isAnime := seriesType == "anime"
+	absoluteCounter := 0
+
+	for _, ss := range sortedSeasons {
 		seasonID := uuid.NewString()
 		seasonRow, err := s.q.CreateSeason(ctx, db.CreateSeasonParams{
 			ID:           seasonID,
@@ -288,17 +350,29 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 			epDetails = nil
 		}
 
+		// Sort episodes within the season by episode_number so the
+		// running absolute counter accumulates in the right order even
+		// if TMDB returns them out-of-order.
+		sort.SliceStable(epDetails, func(i, j int) bool {
+			return epDetails[i].EpisodeNumber < epDetails[j].EpisodeNumber
+		})
+
 		var episodeRows []db.Episode
 		for _, ep := range epDetails {
 			epID := uuid.NewString()
 			airDate := toNullString(ep.AirDate)
+			absolute := sql.NullInt32{}
+			if isAnime && ep.SeasonNumber > 0 {
+				absoluteCounter++
+				absolute = sql.NullInt32{Int32: int32(absoluteCounter), Valid: true}
+			}
 			epRow, err := s.q.CreateEpisode(ctx, db.CreateEpisodeParams{
 				ID:             epID,
 				SeriesID:       seriesID,
 				SeasonID:       seasonID,
 				SeasonNumber:   int32(ep.SeasonNumber),
 				EpisodeNumber:  int32(ep.EpisodeNumber),
-				AbsoluteNumber: sql.NullInt32{},
+				AbsoluteNumber: absolute,
 				AirDate:        airDate,
 				Title:          ep.Title,
 				Overview:       ep.Overview,
@@ -744,6 +818,16 @@ func rowToSeries(row db.Series) (Series, error) {
 		}
 	}
 
+	var alternateTitles []string
+	if len(row.AlternateTitles) > 0 && string(row.AlternateTitles) != "null" {
+		if err := json.Unmarshal(row.AlternateTitles, &alternateTitles); err != nil {
+			// Don't fail series fetch on bad alternates JSON — just log
+			// and proceed with empty list. The strict-title gate will
+			// still match against the canonical title.
+			alternateTitles = nil
+		}
+	}
+
 	addedAt, err := time.Parse(time.RFC3339, row.AddedAt)
 	if err != nil {
 		addedAt = time.Time{}
@@ -791,6 +875,7 @@ func rowToSeries(row db.Series) (Series, error) {
 		AddedAt:             addedAt,
 		UpdatedAt:           updatedAt,
 		MetadataRefreshedAt: metaRefreshed,
+		AlternateTitles:     alternateTitles,
 	}, nil
 }
 
@@ -826,6 +911,247 @@ func rowToEpisode(row db.Episode) Episode {
 		StillPath:      row.StillPath,
 		RuntimeMinutes: int(row.RuntimeMinutes),
 	}
+}
+
+// RefreshMetadata re-fetches series-level metadata from TMDB (including
+// alternate titles) and updates the row. Episode metadata is NOT
+// refreshed here — call RefreshEpisodeMetadata for that.
+//
+// Used to backfill alternate_titles for series that were added before
+// the alternates feature shipped (the column starts as []), and to pick
+// up alternate-title additions on TMDB after a series has aged in the
+// library.
+func (s *Service) RefreshMetadata(ctx context.Context, seriesID string) (Series, error) {
+	if s.meta == nil {
+		return Series{}, ErrMetadataNotConfigured
+	}
+
+	row, err := s.q.GetSeries(ctx, seriesID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Series{}, ErrNotFound
+		}
+		return Series{}, fmt.Errorf("get series: %w", err)
+	}
+
+	detail, err := s.meta.GetSeries(ctx, int(row.TmdbID))
+	if err != nil {
+		return Series{}, fmt.Errorf("fetch series metadata: %w", err)
+	}
+
+	altTitles, altErr := s.meta.GetAlternativeTitles(ctx, int(row.TmdbID))
+	if altErr != nil {
+		s.logger.Warn("refresh metadata: alternate titles fetch failed (continuing)",
+			"series_id", seriesID, "tmdb_id", row.TmdbID, "error", altErr)
+		altTitles = nil
+	}
+	altTitlesJSON, err := json.Marshal(altTitles)
+	if err != nil || altTitles == nil {
+		altTitlesJSON = []byte("[]")
+	}
+
+	genresJSON, err := json.Marshal(detail.Genres)
+	if err != nil {
+		return Series{}, fmt.Errorf("marshal genres: %w", err)
+	}
+
+	runtimeMinutes := sql.NullInt32{}
+	if detail.RuntimeMinutes > 0 {
+		runtimeMinutes = sql.NullInt32{Int32: int32(detail.RuntimeMinutes), Valid: true}
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	updated, err := s.q.UpdateSeriesMetadata(ctx, db.UpdateSeriesMetadataParams{
+		ImdbID:              row.ImdbID,
+		Title:               detail.Title,
+		SortTitle:           sortTitle(detail.Title),
+		Year:                int32(detail.Year),
+		Overview:            detail.Overview,
+		RuntimeMinutes:      runtimeMinutes,
+		GenresJson:          string(genresJSON),
+		PosterUrl:           toNullString(detail.PosterPath),
+		FanartUrl:           toNullString(detail.BackdropPath),
+		Status:              detail.Status,
+		Network:             toNullString(detail.Network),
+		AirTime:             row.AirTime,
+		Certification:       row.Certification,
+		MetadataRefreshedAt: sql.NullString{String: now, Valid: true},
+		UpdatedAt:           now,
+		AlternateTitles:     altTitlesJSON,
+		ID:                  seriesID,
+	})
+	if err != nil {
+		return Series{}, fmt.Errorf("update series metadata: %w", err)
+	}
+
+	if s.BackfillAnimeIfNeeded(ctx, seriesID, int(row.TmdbID), row.SeriesType) {
+		updated.SeriesType = "anime"
+	}
+
+	s.logger.Info("series metadata refreshed",
+		"series_id", seriesID,
+		"tmdb_id", row.TmdbID,
+		"alternate_titles_count", len(altTitles))
+
+	return rowToSeries(updated)
+}
+
+// BackfillAnimeIfNeeded is the standalone anime-detection + backfill
+// helper, factored out of RefreshMetadata so it can run independently
+// of the (sometimes-unreachable) TMDB metadata refresh path. Returns
+// true when the series was upgraded to anime — caller can use this to
+// update its in-memory representation; the DB write has already
+// happened.
+//
+// Idempotent: safe to call repeatedly. Skips when:
+//   - anime lookup is disabled (s.anime == nil)
+//   - the series is already non-standard (anime/daily — caller's
+//     explicit choice wins)
+//   - the TMDB id isn't in the Anime-Lists XML
+//
+// Logs all decisions at info level so the startup scan produces an
+// auditable trail.
+func (s *Service) BackfillAnimeIfNeeded(ctx context.Context, seriesID string, tmdbID int, currentSeriesType string) bool {
+	if s.anime == nil || currentSeriesType != "standard" || !s.anime.IsAnime(tmdbID) {
+		return false
+	}
+	// Use the existing UpdateSeries query — it sets series_type along
+	// with a few other fields. Re-load the row so we preserve the
+	// non-affected ones (title, library, quality profile, monitored,
+	// path) verbatim and only flip series_type.
+	row, err := s.q.GetSeries(ctx, seriesID)
+	if err != nil {
+		s.logger.Warn("anime backfill: failed to load series for upgrade",
+			"series_id", seriesID, "tmdb_id", tmdbID, "error", err)
+		return false
+	}
+	if _, err := s.q.UpdateSeries(ctx, db.UpdateSeriesParams{
+		ID:               seriesID,
+		Title:            row.Title,
+		Monitored:        row.Monitored,
+		LibraryID:        row.LibraryID,
+		QualityProfileID: row.QualityProfileID,
+		SeriesType:       "anime",
+		Path:             row.Path,
+		UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		s.logger.Warn("anime backfill: failed to upgrade series_type",
+			"series_id", seriesID, "tmdb_id", tmdbID, "error", err)
+		return false
+	}
+	s.logger.Info("series upgraded to anime via anime-list",
+		"series_id", seriesID, "tmdb_id", tmdbID)
+	if err := s.populateAbsoluteNumbers(ctx, seriesID); err != nil {
+		s.logger.Warn("anime backfill: absolute_number population failed",
+			"series_id", seriesID, "error", err)
+	}
+	return true
+}
+
+// BackfillAnimeForAllSeries iterates every standard-typed series in the
+// library and runs BackfillAnimeIfNeeded against each. Intended as a
+// one-shot startup task: catches series added before anime detection
+// existed without requiring the user to manually refresh each one.
+//
+// Designed to be safe to call concurrently with other Service methods —
+// each row is processed independently. Errors on individual rows are
+// logged and skipped, never returned (one bad row shouldn't abort the
+// whole sweep).
+func (s *Service) BackfillAnimeForAllSeries(ctx context.Context) {
+	if s.anime == nil {
+		return
+	}
+	// Page through ListSeries to avoid loading the entire library at
+	// once — small libraries fit in one page, larger ones don't.
+	const pageSize = 200
+	scanned, upgraded := 0, 0
+	for offset := int32(0); ; offset += pageSize {
+		if ctx.Err() != nil {
+			return
+		}
+		rows, err := s.q.ListSeries(ctx, db.ListSeriesParams{Limit: pageSize, Offset: offset})
+		if err != nil {
+			s.logger.Warn("anime backfill sweep: list series failed", "offset", offset, "error", err)
+			return
+		}
+		if len(rows) == 0 {
+			break
+		}
+		for _, row := range rows {
+			scanned++
+			if row.SeriesType != "standard" {
+				continue
+			}
+			if s.BackfillAnimeIfNeeded(ctx, row.ID, int(row.TmdbID), row.SeriesType) {
+				upgraded++
+			}
+		}
+		if len(rows) < pageSize {
+			break
+		}
+	}
+	if upgraded > 0 {
+		s.logger.Info("anime backfill sweep complete",
+			"scanned", scanned, "upgraded", upgraded)
+	}
+}
+
+// GetEpisodeAbsoluteNumber returns the absolute episode number for a
+// given (seriesID, season, episode) tuple. Returns (0, nil) when the
+// episode exists but has no absolute number set (the common case for
+// non-anime series), or when the episode isn't found at all. Used by
+// the search-query builder to emit anime-style queries
+// ("Show - 48", "Show 48") in addition to "S01E48".
+func (s *Service) GetEpisodeAbsoluteNumber(ctx context.Context, seriesID string, season, episode int) (int, error) {
+	episodes, err := s.q.ListEpisodesBySeriesID(ctx, seriesID)
+	if err != nil {
+		return 0, err
+	}
+	for _, e := range episodes {
+		if int(e.SeasonNumber) == season && int(e.EpisodeNumber) == episode {
+			if e.AbsoluteNumber.Valid {
+				return int(e.AbsoluteNumber.Int32), nil
+			}
+			return 0, nil
+		}
+	}
+	return 0, nil
+}
+
+// populateAbsoluteNumbers fills in episode.absolute_number for every
+// non-special episode of the given series, using the same running-counter
+// rule as the Add() path. Idempotent; safe to call repeatedly.
+func (s *Service) populateAbsoluteNumbers(ctx context.Context, seriesID string) error {
+	episodes, err := s.q.ListEpisodesBySeriesID(ctx, seriesID)
+	if err != nil {
+		return fmt.Errorf("list episodes for absolute backfill: %w", err)
+	}
+	// ListEpisodesBySeriesID is already ordered by season_number,
+	// episode_number — the running counter accumulates correctly.
+	counter := 0
+	updated := 0
+	for _, ep := range episodes {
+		if ep.SeasonNumber == 0 {
+			continue // specials don't get absolute numbers
+		}
+		counter++
+		want := int32(counter)
+		if ep.AbsoluteNumber.Valid && ep.AbsoluteNumber.Int32 == want {
+			continue // already correct, skip the write
+		}
+		if err := s.q.UpdateEpisodeAbsoluteNumber(ctx, db.UpdateEpisodeAbsoluteNumberParams{
+			AbsoluteNumber: sql.NullInt32{Int32: want, Valid: true},
+			ID:             ep.ID,
+		}); err != nil {
+			return fmt.Errorf("update absolute_number for episode %s: %w", ep.ID, err)
+		}
+		updated++
+	}
+	if updated > 0 {
+		s.logger.Info("absolute_number backfill complete",
+			"series_id", seriesID, "updated", updated, "total", len(episodes))
+	}
+	return nil
 }
 
 // RefreshEpisodeMetadata re-fetches episode details from TMDB for the given

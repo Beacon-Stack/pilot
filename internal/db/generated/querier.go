@@ -134,6 +134,10 @@ type Querier interface {
 	SumEpisodeFileSize(ctx context.Context) (interface{}, error)
 	UpdateDownloadClientConfig(ctx context.Context, arg UpdateDownloadClientConfigParams) (DownloadClientConfig, error)
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (Episode, error)
+	// Backfill or correct the absolute episode number. Used by the refresh
+	// path when a series is newly flagged as anime — its existing rows have
+	// absolute_number = NULL and need to be filled in retroactively.
+	UpdateEpisodeAbsoluteNumber(ctx context.Context, arg UpdateEpisodeAbsoluteNumberParams) error
 	UpdateEpisodeFilePath(ctx context.Context, arg UpdateEpisodeFilePathParams) error
 	UpdateEpisodeMonitored(ctx context.Context, arg UpdateEpisodeMonitoredParams) error
 	UpdateEpisodesMonitoredBySeason(ctx context.Context, arg UpdateEpisodesMonitoredBySeasonParams) error
