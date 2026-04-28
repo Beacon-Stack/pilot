@@ -81,6 +81,11 @@ type Mapping struct {
 	// AniDB cours (rare but happens, e.g. Jujutsu Kaisen 95479 has
 	// entries for both tmdbseason=1 and tmdbseason=2).
 	TMDBSeason int
+	// TMDBOffset is added to the cour-relative episode number to get
+	// the TMDB-relative episode number. For the JJK incident: cour 3
+	// (tvdbseason=3) maps to TMDB season=1 with tmdboffset=47, so
+	// TVDB S03E01 → TMDB S01E48 → absolute 48.
+	TMDBOffset int
 	// Name is the AniDB name for this anime. Surfaced in logs only.
 	Name string
 }
@@ -92,9 +97,15 @@ type Service struct {
 	cachePath  string
 	httpClient *http.Client
 
-	mu         sync.RWMutex
-	byTMDBID   map[int]*Mapping
-	lastLoaded time.Time
+	mu sync.RWMutex
+	// byTMDBID points at the FIRST mapping per tmdb id — used by the
+	// cheap IsAnime / Lookup detection path.
+	byTMDBID map[int]*Mapping
+	// allByTMDBID retains every entry per tmdb id. Multi-cour anime
+	// have multiple entries (one per AniDB cour) sharing the same
+	// tmdb id; the TVDB-season conversion path needs the full set.
+	allByTMDBID map[int][]*Mapping
+	lastLoaded  time.Time
 }
 
 // New constructs a Service. cachePath is where we persist the most
@@ -105,10 +116,11 @@ func New(cachePath string, logger *slog.Logger) *Service {
 		logger = slog.Default()
 	}
 	return &Service{
-		logger:     logger,
-		cachePath:  cachePath,
-		httpClient: &http.Client{Timeout: fetchTimeout},
-		byTMDBID:   make(map[int]*Mapping),
+		logger:      logger,
+		cachePath:   cachePath,
+		httpClient:  &http.Client{Timeout: fetchTimeout},
+		byTMDBID:    make(map[int]*Mapping),
+		allByTMDBID: make(map[int][]*Mapping),
 	}
 }
 
@@ -238,28 +250,74 @@ func (s *Service) loadFromBytes(body []byte) error {
 		return err
 	}
 	idx := make(map[int]*Mapping, len(mappings))
+	allIdx := make(map[int][]*Mapping, len(mappings))
 	for i := range mappings {
 		m := &mappings[i]
 		if m.TMDBTV == 0 {
 			continue // can't index without a TMDB id
 		}
-		// Keep the FIRST entry seen for each tmdbtv id. The XML lists
-		// multiple AniDB cours sharing one TMDB id (e.g. Jujutsu Kaisen
-		// 95479 has tmdbseason=1 and tmdbseason=2 entries pointing at
-		// different AniDB ids). The first one is typically the original
-		// cour, which is what most callers want for "is this anime?"
-		// detection. More nuanced per-episode mapping would scan the
-		// whole list at lookup time — out of scope for v1.
-		if _, exists := idx[m.TMDBTV]; exists {
-			continue
+		// FIRST-wins for the cheap detection map — typically the
+		// original cour, which is what callers want for "is this
+		// anime?" lookups.
+		if _, exists := idx[m.TMDBTV]; !exists {
+			idx[m.TMDBTV] = m
 		}
-		idx[m.TMDBTV] = m
+		// Keep ALL entries in allByTMDBID for the TVDB-season-to-
+		// absolute conversion path: multi-cour anime have one entry
+		// per cour (Jujutsu Kaisen has three: tvdbseason=1/2/3 each
+		// with their own tmdboffset).
+		allIdx[m.TMDBTV] = append(allIdx[m.TMDBTV], m)
 	}
 	s.mu.Lock()
 	s.byTMDBID = idx
+	s.allByTMDBID = allIdx
 	s.lastLoaded = time.Now()
 	s.mu.Unlock()
 	return nil
+}
+
+// TVDBSeasonToAbsolute converts a TVDB-style (season, episode) to the
+// show's absolute episode number using the Anime-Lists mapping data.
+// Returns (absolute, true) when conversion succeeded; (0, false) when
+// the tmdb id isn't anime, or when no entry covers the requested
+// tvdbSeason, or when the entry lacks a tmdboffset (no cumulative
+// data to compute from).
+//
+// This is what unblocks fansub releases tagged "Show S03E01" for an
+// anime where TMDB collapses everything into a single S01: the
+// Anime-Lists XML has an entry like
+//
+//	<anime tmdbtv="95479" defaulttvdbseason="3" tmdbseason="1" tmdboffset="47">
+//
+// telling us TVDB S03E01 corresponds to TMDB S01E48 (i.e. absolute 48).
+// Without this lookup, filterByEpisode would drop the release as
+// wrong-season because parsed_season=3 != requested_season=1.
+//
+// Limitation (intentional): only handles entries where tmdboffset is
+// non-zero AND the corresponding tmdbseason is 1. The few anime with
+// genuine multi-TMDB-season layouts (rare) need separate logic that
+// inspects the full mapping-list XML elements — out of scope for now.
+func (s *Service) TVDBSeasonToAbsolute(tmdbID, tvdbSeason, tvdbEpisode int) (int, bool) {
+	if tmdbID == 0 || tvdbEpisode <= 0 {
+		return 0, false
+	}
+	s.mu.RLock()
+	entries := s.allByTMDBID[tmdbID]
+	s.mu.RUnlock()
+	for _, m := range entries {
+		if m.DefaultTVDBSeason != tvdbSeason {
+			continue
+		}
+		// Only the "TMDB collapses cours into one season" case is
+		// covered. For shows where TMDB also splits into multiple
+		// seasons, we'd need cumulative episode counts per TMDB
+		// season — a future enhancement.
+		if m.TMDBSeason != 1 {
+			continue
+		}
+		return tvdbEpisode + m.TMDBOffset, true
+	}
+	return 0, false
 }
 
 func (s *Service) size() int {
@@ -282,6 +340,7 @@ type rawAnime struct {
 	EpisodeOffset     string   `xml:"episodeoffset,attr"`
 	TMDBTV            string   `xml:"tmdbtv,attr"`
 	TMDBSeason        string   `xml:"tmdbseason,attr"`
+	TMDBOffset        string   `xml:"tmdboffset,attr"`
 	Name              string   `xml:"name"`
 }
 
@@ -319,6 +378,7 @@ func toMapping(r rawAnime) (Mapping, bool) {
 	tmdbtv, _ := atoiSafe(r.TMDBTV)
 	tmdbseason, _ := atoiSafe(r.TMDBSeason)
 	episodeOffset, _ := atoiSafe(r.EpisodeOffset)
+	tmdbOffset, _ := atoiSafe(r.TMDBOffset)
 
 	defSeason := -1 // sentinel for "a"/absolute
 	if r.DefaultTVDBSeason != "a" && r.DefaultTVDBSeason != "" {
@@ -330,6 +390,7 @@ func toMapping(r rawAnime) (Mapping, bool) {
 		TMDBTV:            tmdbtv,
 		TMDBSeason:        tmdbseason,
 		EpisodeOffset:     episodeOffset,
+		TMDBOffset:        tmdbOffset,
 		DefaultTVDBSeason: defSeason,
 		Name:              r.Name,
 	}, true

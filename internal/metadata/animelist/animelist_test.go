@@ -12,9 +12,9 @@ import (
 // fixtureXML is a tiny slice of the real anime-list-master.xml — three
 // representative entries pulled verbatim from the upstream file:
 //
-//   - Jujutsu Kaisen S1 (the headline test case for this whole feature)
-//   - Jujutsu Kaisen S2 (same tmdbtv id, tmdbseason=2 — proves we keep
-//     the FIRST mapping when multiple share a tmdbtv id)
+//   - Jujutsu Kaisen cours 1, 2, and 3 (all share tmdbtv=95479).
+//     Cour 3's entry has tmdboffset="47" — that's what powers the
+//     TVDB-S03E01 → absolute-48 conversion the search filter needs.
 //   - Cowboy Bebop (defaulttvdbseason="1", a reference well-known case)
 //   - 86 (2021) — has an episodeoffset, exercises non-zero offset path
 //   - "movie" entry — non-numeric tvdbid, must be skipped without panic
@@ -29,6 +29,9 @@ const fixtureXML = `<?xml version="1.0" encoding="utf-8"?>
   </anime>
   <anime anidbid="17196" tvdbid="377543" defaulttvdbseason="2" episodeoffset="" tmdbtv="95479" tmdbseason="2" tmdboffset="" tmdbid="" imdbid="">
     <name>Jujutsu Kaisen (2023)</name>
+  </anime>
+  <anime anidbid="18363" tvdbid="377543" defaulttvdbseason="3" episodeoffset="" tmdbtv="95479" tmdbseason="1" tmdboffset="47" tmdbid="" imdbid="">
+    <name>Jujutsu Kaisen Shibuya Incident</name>
   </anime>
   <anime anidbid="23" tvdbid="76885" defaulttvdbseason="1" episodeoffset="" tmdbtv="30991" tmdbseason="1" tmdboffset="" tmdbid="" imdbid="">
     <name>Cowboy Bebop</name>
@@ -87,8 +90,9 @@ func TestIsAnime(t *testing.T) {
 }
 
 // FIRST-wins rule — when the XML has multiple entries sharing one
-// tmdbtv id (Jujutsu Kaisen has cours 1 and 2), Lookup returns the one
-// indexed first. Verifies we don't accidentally swap to last-write-wins.
+// tmdbtv id (Jujutsu Kaisen has cours 1, 2, and 3), Lookup returns
+// the one indexed first. Verifies we don't accidentally swap to
+// last-write-wins.
 func TestLookup_FirstWinsWhenMultipleEntriesShareTMDBID(t *testing.T) {
 	s := New("", nil)
 	_ = s.loadFromBytes([]byte(fixtureXML))
@@ -96,6 +100,98 @@ func TestLookup_FirstWinsWhenMultipleEntriesShareTMDBID(t *testing.T) {
 	m, _ := s.Lookup(95479)
 	if m.TMDBSeason != 1 {
 		t.Errorf("expected first (tmdbseason=1) entry to win, got %d", m.TMDBSeason)
+	}
+	if m.DefaultTVDBSeason != 1 {
+		t.Errorf("expected first cour (DefaultTVDBSeason=1), got %d", m.DefaultTVDBSeason)
+	}
+}
+
+// ── TVDBSeasonToAbsolute (the JJK incident path) ───────────────────────────
+
+// Headline: Jujutsu Kaisen tagged in TVDB-style as S03E01 should
+// resolve to absolute episode 48 — that's the user's TMDB-relative
+// S01E48. Without this, fansub releases tagged TVDB-style get
+// dropped by filterByEpisode as wrong-season.
+func TestTVDBSeasonToAbsolute_JujutsuKaisenS03E01Resolves48(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+
+	abs, ok := s.TVDBSeasonToAbsolute(95479, 3, 1)
+	if !ok {
+		t.Fatal("expected TVDB S03E01 → absolute conversion to succeed for JJK")
+	}
+	if abs != 48 {
+		t.Errorf("absolute: got %d, want 48 (1 + offset 47)", abs)
+	}
+}
+
+// Multi-episode arithmetic — TVDB S03E05 → absolute 52.
+func TestTVDBSeasonToAbsolute_OffsetAddsCorrectly(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	abs, _ := s.TVDBSeasonToAbsolute(95479, 3, 5)
+	if abs != 52 {
+		t.Errorf("S03E05: got %d, want 52", abs)
+	}
+}
+
+// Cour 1 of JJK has tmdboffset="" (empty/0) → S01E05 still resolves
+// because offset 0 means TVDB and TMDB agree on numbering. Confirms
+// the empty-offset case doesn't get rejected as "no mapping."
+func TestTVDBSeasonToAbsolute_ZeroOffsetStillWorks(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	abs, ok := s.TVDBSeasonToAbsolute(95479, 1, 5)
+	if !ok {
+		t.Error("expected zero-offset cour 1 to still resolve")
+	}
+	if abs != 5 {
+		t.Errorf("zero offset: got %d, want 5", abs)
+	}
+}
+
+// JJK cour 2 has tmdbseason=2 — TMDB has split it into a real S2 in
+// the XML's view (even if pilot's actual TMDB DB collapsed it). This
+// case is intentionally OUT of scope for v1 — we only handle the
+// "TMDB collapsed everything into season 1" case. Verify we cleanly
+// return (0, false) rather than silently producing wrong numbers.
+func TestTVDBSeasonToAbsolute_TMDBSplitSeasonReturnsFalse(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	_, ok := s.TVDBSeasonToAbsolute(95479, 2, 1) // tmdbseason=2 entry
+	if ok {
+		t.Error("TMDB-split-into-S2 case should NOT resolve (out of scope for v1)")
+	}
+}
+
+// Unknown TVDB season → (0, false), not a panic and not a guess.
+func TestTVDBSeasonToAbsolute_UnknownSeasonReturnsFalse(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	if _, ok := s.TVDBSeasonToAbsolute(95479, 99, 1); ok {
+		t.Error("unknown TVDB season must return (_, false)")
+	}
+}
+
+// Non-anime tmdb id → (0, false). Avoids accidentally feeding fake
+// absolutes into the search-filter for non-anime series.
+func TestTVDBSeasonToAbsolute_NonAnimeReturnsFalse(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	if _, ok := s.TVDBSeasonToAbsolute(99999999, 1, 1); ok {
+		t.Error("non-anime tmdb id must return (_, false)")
+	}
+}
+
+// Defensive: zero/negative episode numbers fail without panic.
+func TestTVDBSeasonToAbsolute_RejectsZeroEpisode(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	if _, ok := s.TVDBSeasonToAbsolute(95479, 1, 0); ok {
+		t.Error("episode=0 must return (_, false)")
+	}
+	if _, ok := s.TVDBSeasonToAbsolute(95479, 1, -1); ok {
+		t.Error("episode=-1 must return (_, false)")
 	}
 }
 
