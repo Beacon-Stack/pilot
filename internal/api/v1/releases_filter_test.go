@@ -39,7 +39,7 @@ func TestFilterByEpisode_DropsUnrelatedSeasonPacks(t *testing.T) {
 		"Completely.Unrelated.Show.S01.1080p", // ✗
 	)
 
-	got := filterByEpisode(results, "Breaking Bad", nil, 1, 0, 0)
+	got := filterByEpisode(results, "Breaking Bad", nil, 1, 0, 0, nil)
 
 	wantTitles := map[string]bool{
 		"Breaking.Bad.S01.1080p.BluRay.x264": true,
@@ -65,7 +65,7 @@ func TestFilterByEpisode_EpisodeLevel(t *testing.T) {
 		"The.Office.S01E05.1080p",   // ✗ unrelated show
 	)
 
-	got := filterByEpisode(results, "Breaking Bad", nil, 1, 5, 0)
+	got := filterByEpisode(results, "Breaking Bad", nil, 1, 5, 0, nil)
 
 	want := []string{
 		"Breaking.Bad.S01E05.1080p",
@@ -86,7 +86,7 @@ func TestFilterByEpisode_SeasonZeroKeepsTitleMatch(t *testing.T) {
 		"Breaking.Bad.S02E03.720p",
 		"Totally.Different.S01.1080p",
 	)
-	got := filterByEpisode(results, "Breaking Bad", nil, 0, 0, 0)
+	got := filterByEpisode(results, "Breaking Bad", nil, 0, 0, 0, nil)
 	if len(got) != 2 {
 		t.Fatalf("season=0 filter: got %d, want 2 — %v", len(got), titles(got))
 	}
@@ -98,7 +98,7 @@ func TestFilterByEpisode_SeasonZeroKeepsTitleMatch(t *testing.T) {
 }
 
 func TestFilterByEpisode_WrongSeasonDropped(t *testing.T) {
-	got := filterByEpisode(mkResults("Breaking.Bad.S03.1080p"), "Breaking Bad", nil, 1, 0, 0)
+	got := filterByEpisode(mkResults("Breaking.Bad.S03.1080p"), "Breaking Bad", nil, 1, 0, 0, nil)
 	if len(got) != 0 {
 		t.Errorf("wrong season: got %v, want empty", titles(got))
 	}
@@ -255,19 +255,19 @@ func TestApplyQualityProfile_ResolutionFloor(t *testing.T) {
 // those names as alternates (from TMDB), they must pass the title gate.
 func TestFilterByEpisode_AlternateTitleUnlocksReleases(t *testing.T) {
 	results := mkResults(
-		"Star.Wars.Andor.S01.1080p.BluRay",  // ✓ via alternate
-		"Andor.S01.1080p.BluRay",            // ✓ canonical
-		"Andor.A.Star.Wars.Story.S01.720p",  // ✓ via alternate
-		"Mandor.S01.1080p",                  // ✗ different show
+		"Star.Wars.Andor.S01.1080p.BluRay", // ✓ via alternate
+		"Andor.S01.1080p.BluRay",           // ✓ canonical
+		"Andor.A.Star.Wars.Story.S01.720p", // ✓ via alternate
+		"Mandor.S01.1080p",                 // ✗ different show
 	)
 	alts := []string{"Star Wars: Andor", "Andor: A Star Wars Story"}
 
-	got := filterByEpisode(results, "Andor", alts, 1, 0, 0)
+	got := filterByEpisode(results, "Andor", alts, 1, 0, 0, nil)
 
 	want := map[string]bool{
-		"Star.Wars.Andor.S01.1080p.BluRay":   true,
-		"Andor.S01.1080p.BluRay":             true,
-		"Andor.A.Star.Wars.Story.S01.720p":   true,
+		"Star.Wars.Andor.S01.1080p.BluRay": true,
+		"Andor.S01.1080p.BluRay":           true,
+		"Andor.A.Star.Wars.Story.S01.720p": true,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d, want %d — %v", len(got), len(want), titles(got))
@@ -284,9 +284,9 @@ func TestFilterByEpisode_AlternateTitleUnlocksReleases(t *testing.T) {
 func TestFilterByEpisode_NoAlternatesPreservesStrictness(t *testing.T) {
 	results := mkResults(
 		"Star.Wars.Andor.S01.1080p", // strict-rule reject — no alt
-		"Andor.S01.1080p",            // canonical, accept
+		"Andor.S01.1080p",           // canonical, accept
 	)
-	got := filterByEpisode(results, "Andor", nil, 1, 0, 0)
+	got := filterByEpisode(results, "Andor", nil, 1, 0, 0, nil)
 
 	if len(got) != 1 || got[0].Title != "Andor.S01.1080p" {
 		t.Errorf("strict mode kept wrong set: %v", titles(got))
@@ -298,8 +298,8 @@ func TestFilterByEpisode_NoAlternatesPreservesStrictness(t *testing.T) {
 // empty-slice handling differs from nil.
 func TestFilterByEpisode_EmptyAlternateListSameAsNil(t *testing.T) {
 	results := mkResults("Star.Wars.Andor.S01.1080p")
-	gotNil := filterByEpisode(results, "Andor", nil, 1, 0, 0)
-	gotEmpty := filterByEpisode(results, "Andor", []string{}, 1, 0, 0)
+	gotNil := filterByEpisode(results, "Andor", nil, 1, 0, 0, nil)
+	gotEmpty := filterByEpisode(results, "Andor", []string{}, 1, 0, 0, nil)
 	if len(gotNil) != len(gotEmpty) {
 		t.Errorf("nil alts and []string{} produced different results: %d vs %d",
 			len(gotNil), len(gotEmpty))
@@ -313,7 +313,7 @@ func TestFilterByEpisode_AlternateTitleRespectsSeasonGate(t *testing.T) {
 		"Star.Wars.Andor.S01.1080p", // ✓ via alt, S01 matches
 		"Star.Wars.Andor.S02.1080p", // ✗ via alt but wrong season
 	)
-	got := filterByEpisode(results, "Andor", []string{"Star Wars: Andor"}, 1, 0, 0)
+	got := filterByEpisode(results, "Andor", []string{"Star Wars: Andor"}, 1, 0, 0, nil)
 	if len(got) != 1 || got[0].Title != "Star.Wars.Andor.S01.1080p" {
 		t.Errorf("season gate didn't fire on alternate-title match: %v", titles(got))
 	}
@@ -323,9 +323,68 @@ func TestFilterByEpisode_AlternateTitleRespectsSeasonGate(t *testing.T) {
 // the canonical to the alt list too) should not double-match or break.
 func TestFilterByEpisode_AlternateContainingCanonicalIsHarmless(t *testing.T) {
 	results := mkResults("Andor.S01.1080p")
-	got := filterByEpisode(results, "Andor", []string{"Andor", "Star Wars: Andor"}, 1, 0, 0)
+	got := filterByEpisode(results, "Andor", []string{"Andor", "Star Wars: Andor"}, 1, 0, 0, nil)
 	if len(got) != 1 {
 		t.Errorf("dedup behavior off: got %d results, want 1 (%v)", len(got), titles(got))
+	}
+}
+
+// ── TVDB → absolute conversion path ─────────────────────────────────────────
+
+// Headline regression: when TMDB structures Jujutsu Kaisen as a single
+// season but TVDB tags releases by "true" cour seasons, a release named
+// "Jujutsu Kaisen S03E01" must pass when the user asks for absolute 48
+// (TMDB's S01E48). The converter is what bridges the two layouts.
+func TestFilterByEpisode_TVDBSeasonReleaseAcceptedViaConverter(t *testing.T) {
+	results := mkResults(
+		"Jujutsu.Kaisen.S03E01.1080p.WEB-DL", // TVDB-tagged cour 3
+		"Jujutsu.Kaisen.S03E02.1080p.WEB-DL", // TVDB-tagged but wrong abs
+	)
+	tvdbToAbs := func(season, episode int) int {
+		// JJK XML offset for cour 3 is 47; S03E01 → 48, S03E02 → 49.
+		if season == 3 {
+			return 47 + episode
+		}
+		return 0
+	}
+	got := filterByEpisode(results, "Jujutsu Kaisen", nil, 1, 48, 48, tvdbToAbs)
+	if len(got) != 1 || got[0].Title != "Jujutsu.Kaisen.S03E01.1080p.WEB-DL" {
+		t.Fatalf("TVDB→absolute path failed: got %v, want [Jujutsu.Kaisen.S03E01.1080p.WEB-DL]", titles(got))
+	}
+}
+
+// Converter that returns 0 (no mapping) must not unlock a wrong-season
+// release. Guards against a misbehaving converter accepting everything.
+func TestFilterByEpisode_TVDBConverterMissDoesNotAccept(t *testing.T) {
+	results := mkResults("Jujutsu.Kaisen.S03E01.1080p.WEB-DL")
+	tvdbToAbs := func(_, _ int) int { return 0 }
+	got := filterByEpisode(results, "Jujutsu Kaisen", nil, 1, 48, 48, tvdbToAbs)
+	if len(got) != 0 {
+		t.Errorf("missing converter mapping should drop release; got %v", titles(got))
+	}
+}
+
+// When `absolute=0` (non-anime / unknown), the TVDB converter branch
+// must stay dormant even if a converter is supplied — otherwise random
+// converter hits would leak unrelated releases through.
+func TestFilterByEpisode_TVDBConverterIgnoredWhenAbsoluteZero(t *testing.T) {
+	results := mkResults("Jujutsu.Kaisen.S03E01.1080p.WEB-DL")
+	tvdbToAbs := func(_, _ int) int { return 48 }
+	got := filterByEpisode(results, "Jujutsu Kaisen", nil, 1, 1, 0, tvdbToAbs)
+	if len(got) != 0 {
+		t.Errorf("absolute=0 must disable converter path; got %v", titles(got))
+	}
+}
+
+// Direct absolute-numbered release ("Jujutsu Kaisen - 48") must still
+// pass even when a converter is provided — the AbsoluteEpisode path
+// runs first.
+func TestFilterByEpisode_DirectAbsoluteStillAcceptedWithConverter(t *testing.T) {
+	results := mkResults("[SubsPlease] Jujutsu Kaisen - 48 (1080p) [ABCD1234].mkv")
+	tvdbToAbs := func(_, _ int) int { return 0 }
+	got := filterByEpisode(results, "Jujutsu Kaisen", nil, 1, 48, 48, tvdbToAbs)
+	if len(got) != 1 {
+		t.Errorf("direct absolute path broken: got %v", titles(got))
 	}
 }
 

@@ -303,9 +303,15 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		// searches). Skipping this lookup for non-anime series saves a DB
 		// hit on every manual search.
 		var absoluteEp int
+		var tvdbToAbs func(int, int) int
 		isAnime := series.SeriesType == "anime"
 		if isAnime && input.Season > 0 && input.Episode > 0 {
 			absoluteEp, _ = showSvc.GetEpisodeAbsoluteNumber(ctx, input.SeriesID, input.Season, input.Episode)
+			tmdbID := series.TMDBID
+			tvdbToAbs = func(s, e int) int {
+				abs, _ := showSvc.TVDBSeasonToAbsolute(tmdbID, s, e)
+				return abs
+			}
 		}
 		queries := buildEpisodeQueries(series.Title, input.Season, input.Episode, absoluteEp, isAnime)
 
@@ -322,7 +328,7 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		results, searchErr := searchAllQueries(searchCtx, indexerSvc, queries, input.Season, input.Episode)
 
 		// Filter results to only include the requested series and season/episode.
-		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Season, input.Episode, absoluteEp)
+		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Season, input.Episode, absoluteEp, tvdbToAbs)
 
 		// Tag releases outside the series' quality profile so the UI greys
 		// them with an "override and grab anyway" button (same UX as the
@@ -539,15 +545,21 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		// only fetch absolute number when the series is anime AND a
 		// specific episode is being searched.
 		var absoluteEp int
+		var tvdbToAbs func(int, int) int
 		isAnime := series.SeriesType == "anime"
 		if isAnime && input.Body.Season > 0 && input.Body.Episode > 0 {
 			absoluteEp, _ = showSvc.GetEpisodeAbsoluteNumber(ctx, input.SeriesID, input.Body.Season, input.Body.Episode)
+			tmdbID := series.TMDBID
+			tvdbToAbs = func(s, e int) int {
+				abs, _ := showSvc.TVDBSeasonToAbsolute(tmdbID, s, e)
+				return abs
+			}
 		}
 		queries := buildEpisodeQueries(series.Title, input.Body.Season, input.Body.Episode, absoluteEp, isAnime)
 		results, searchErr := searchAllQueries(ctx, indexerSvc, queries, input.Body.Season, input.Body.Episode)
 
 		// Filter results to only include the requested series and season/episode.
-		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Body.Season, input.Body.Episode, absoluteEp)
+		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Body.Season, input.Body.Episode, absoluteEp, tvdbToAbs)
 
 		// Tag releases outside the series' quality profile. For auto-search
 		// these tags also gate the viable set further down, so the auto-grab
@@ -674,11 +686,18 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 // unrelated shows whose names happen to share common words. We re-parse each
 // result's title and drop anything whose parsed show title doesn't match the
 // series we're actually searching for.
-// filterByEpisode (extended) accepts an absolute episode number — when
-// non-zero, releases parsed as anime-absolute (Show - 48) whose absolute
-// matches the requested value pass through even when their parsed
-// season is 0. Pass 0 to get the standard non-anime behavior.
-func filterByEpisode(results []indexer.SearchResult, seriesTitle string, alternateTitles []string, season, episode, absolute int) []indexer.SearchResult {
+// filterByEpisode (extended) accepts an absolute episode number and
+// an optional TVDB→absolute converter. When `absolute > 0`:
+//
+//   - releases the parser tagged with a matching AbsoluteEpisode
+//     (fansub "Show - 48" form) pass through regardless of season;
+//   - releases parsed as TVDB-style "Show S03E01" run through
+//     `tvdbToAbsolute(parsed_season, parsed_episode)`; if that
+//     yields the requested absolute, they also pass.
+//
+// Pass `absolute=0` and `tvdbToAbsolute=nil` for the non-anime
+// behavior (no augmentation, strict season/episode matching only).
+func filterByEpisode(results []indexer.SearchResult, seriesTitle string, alternateTitles []string, season, episode, absolute int, tvdbToAbsolute func(int, int) int) []indexer.SearchResult {
 	// Build the candidate-title set once: canonical title + any TMDB
 	// alternates. The series row's AlternateTitles list does NOT contain
 	// the canonical title — prepend it explicitly so single-title series
@@ -713,6 +732,20 @@ func filterByEpisode(results []indexer.SearchResult, seriesTitle string, alterna
 		if absolute > 0 && ep.AbsoluteEpisode == absolute {
 			filtered = append(filtered, r)
 			continue
+		}
+
+		// TVDB-tagged anime acceptance: a release tagged S03E01 for a
+		// show TMDB serves as a single Season 1 corresponds to absolute
+		// 48 (or whatever the Anime-Lists XML says). Run the parsed
+		// (season, episode) through the converter; on a match against
+		// the requested absolute, accept the release. Without this,
+		// every TVDB-tagged anime release gets dropped as wrong-season
+		// because TMDB and TVDB disagree about season layout.
+		if absolute > 0 && tvdbToAbsolute != nil && ep.Season > 0 && len(ep.Episodes) == 1 {
+			if tvdbToAbsolute(ep.Season, ep.Episodes[0]) == absolute {
+				filtered = append(filtered, r)
+				continue
+			}
 		}
 
 		// Wrong season — skip.
