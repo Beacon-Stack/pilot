@@ -60,8 +60,16 @@ type MetadataProvider interface {
 // population during series add/refresh. The interface decouples the
 // show service from the animelist package's concrete Service so unit
 // tests can stub in a fake without touching the network.
+//
+// TVDBSeasonToAbsolute translates a TVDB-tagged (season, episode) to
+// the show's absolute episode number using the Anime-Lists XML
+// mapping data. Used by the search filter to accept fansub releases
+// tagged "Show S03E01" as the user's TMDB-relative S01E48. Returns
+// (0, false) when conversion isn't possible (non-anime tmdb id,
+// unmapped season, etc).
 type AnimeLookup interface {
 	IsAnime(tmdbID int) bool
+	TVDBSeasonToAbsolute(tmdbID, tvdbSeason, tvdbEpisode int) (int, bool)
 }
 
 // Series is the domain representation of a TV series record.
@@ -1094,6 +1102,17 @@ func (s *Service) BackfillAnimeForAllSeries(ctx context.Context) {
 		s.logger.Info("anime backfill sweep complete",
 			"scanned", scanned, "upgraded", upgraded)
 	}
+}
+
+// TVDBSeasonToAbsolute is a thin pass-through to the configured anime
+// lookup. Returns (0, false) when no anime lookup is configured.
+// Used by the search filter to accept TVDB-tagged fansub releases
+// against a TMDB-relative episode request — see filterByEpisode.
+func (s *Service) TVDBSeasonToAbsolute(tmdbID, tvdbSeason, tvdbEpisode int) (int, bool) {
+	if s.anime == nil {
+		return 0, false
+	}
+	return s.anime.TVDBSeasonToAbsolute(tmdbID, tvdbSeason, tvdbEpisode)
 }
 
 // GetEpisodeAbsoluteNumber returns the absolute episode number for a

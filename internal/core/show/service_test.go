@@ -212,16 +212,16 @@ func TestRowToSeries_AlternateTitlesPopulated(t *testing.T) {
 func mkSeriesRow(id string, altTitles []byte) db.Series {
 	now := "2025-01-01T00:00:00Z"
 	return db.Series{
-		ID:               id,
-		TmdbID:           1,
-		Title:            "Test",
-		SortTitle:        "test",
-		Year:             2024,
-		GenresJson:       "[]",
-		SeriesType:       "standard",
-		AddedAt:          now,
-		UpdatedAt:        now,
-		AlternateTitles:  altTitles,
+		ID:              id,
+		TmdbID:          1,
+		Title:           "Test",
+		SortTitle:       "test",
+		Year:            2024,
+		GenresJson:      "[]",
+		SeriesType:      "standard",
+		AddedAt:         now,
+		UpdatedAt:       now,
+		AlternateTitles: altTitles,
 	}
 }
 
@@ -232,6 +232,10 @@ type fakeAnimeLookup struct {
 }
 
 func (f fakeAnimeLookup) IsAnime(tmdbID int) bool { return f.hits[tmdbID] }
+
+func (f fakeAnimeLookup) TVDBSeasonToAbsolute(_, _, _ int) (int, bool) {
+	return 0, false
+}
 
 // ── RefreshMetadata ──────────────────────────────────────────────────────────
 
@@ -463,7 +467,7 @@ func TestRefreshMetadata_AnimeBackfill_FlipsTypeAndPopulatesAbsolute(t *testing.
 		getSeriesRow: row,
 		updatedRow:   row, // refresh returns the original row; anime upgrade happens after.
 		episodes: []db.Episode{
-			{ID: "e0", SeasonNumber: 0, EpisodeNumber: 1}, // special
+			{ID: "e0", SeasonNumber: 0, EpisodeNumber: 1},  // special
 			{ID: "e0b", SeasonNumber: 0, EpisodeNumber: 2}, // special
 			{ID: "e1", SeasonNumber: 1, EpisodeNumber: 1},
 			{ID: "e2", SeasonNumber: 1, EpisodeNumber: 2},
