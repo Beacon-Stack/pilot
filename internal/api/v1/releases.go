@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -151,15 +152,33 @@ func indexerResultToReleaseBody(r indexer.SearchResult) *releaseBody {
 // naming conventions and will silently miss the other. Dedupe happens at the
 // caller by GUID. See Sonarr issue #3934 for the same bug in Sonarr proper.
 //
-// Examples:
+// Anime augmentation: when isAnime is true and absolute > 0, the
+// per-episode form additionally emits two absolute-numbering queries
+// (`<title> <abs>` and `<title> - <abs>`) because anime fansubs tag
+// releases that way rather than S01E48. Without these, episode search
+// for shows TMDB structures as one big season — like Jujutsu Kaisen —
+// returns zero results because indexers don't tag releases as `S01E48`.
 //
-//	["Breaking Bad S01E05"]               — single episode
+// Examples (non-anime):
+//
+//	["Breaking Bad S01E05"]                      — single episode
 //	["Breaking Bad S01", "Breaking Bad Season 1"] — full season
-//	["Breaking Bad"]                      — whole series
-func buildEpisodeQueries(title string, season, episode int) []string {
+//	["Breaking Bad"]                              — whole series
+//
+// Examples (anime, absolute=48):
+//
+//	["Jujutsu Kaisen S01E48", "Jujutsu Kaisen 48", "Jujutsu Kaisen - 48"]
+func buildEpisodeQueries(title string, season, episode, absolute int, isAnime bool) []string {
 	switch {
 	case season > 0 && episode > 0:
-		return []string{fmt.Sprintf("%s S%02dE%02d", title, season, episode)}
+		queries := []string{fmt.Sprintf("%s S%02dE%02d", title, season, episode)}
+		if isAnime && absolute > 0 {
+			queries = append(queries,
+				fmt.Sprintf("%s %02d", title, absolute),
+				fmt.Sprintf("%s - %02d", title, absolute),
+			)
+		}
+		return queries
 	case season > 0:
 		return []string{
 			fmt.Sprintf("%s S%02d", title, season),
@@ -204,22 +223,44 @@ func applyQualityProfile(results []indexer.SearchResult, profile *quality.Profil
 	}
 }
 
-// searchAllQueries issues each query against indexerSvc and merges the
-// results, deduping by GUID. The first occurrence of a GUID wins, which means
-// the first query's ordering is preserved for that release. Errors from
-// individual searches are collected into a combined error; partial results
-// are still returned alongside.
+// searchAllQueries fans out each query to indexerSvc in parallel and
+// merges results, deduping by GUID. The first occurrence of a GUID wins;
+// query order is preserved by walking `queries` in input order during
+// the merge. Errors from individual searches are collected into a
+// combined error; partial results are still returned alongside.
+//
+// Parallel because each query already calls every indexer in parallel
+// internally — running queries serially multiplied total wait time by
+// the number of query variations. Season searches typically issue 3+
+// variations ("Show", "Show S01", "Show Season 1"), so the serial
+// loop turned a 30s worst case into 90s+.
 func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries []string, season, episode int) ([]indexer.SearchResult, error) {
+	type queryResult struct {
+		results []indexer.SearchResult
+		err     error
+	}
+	out := make([]queryResult, len(queries))
+	var wg sync.WaitGroup
+	for i, query := range queries {
+		i, query := i, query
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sq := plugin.SearchQuery{Query: query, Season: season, Episode: episode}
+			res, err := indexerSvc.Search(ctx, sq)
+			out[i] = queryResult{results: res, err: err}
+		}()
+	}
+	wg.Wait()
+
 	seen := make(map[string]struct{})
 	var merged []indexer.SearchResult
 	var errs []string
-	for _, query := range queries {
-		sq := plugin.SearchQuery{Query: query, Season: season, Episode: episode}
-		results, err := indexerSvc.Search(ctx, sq)
-		if err != nil {
-			errs = append(errs, err.Error())
+	for _, qr := range out {
+		if qr.err != nil {
+			errs = append(errs, qr.err.Error())
 		}
-		for _, r := range results {
+		for _, r := range qr.results {
 			if _, ok := seen[r.GUID]; ok {
 				continue
 			}
@@ -256,11 +297,32 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to get series", err)
 		}
 
-		queries := buildEpisodeQueries(series.Title, input.Season, input.Episode)
-		results, searchErr := searchAllQueries(ctx, indexerSvc, queries, input.Season, input.Episode)
+		// Anime context: only fetch the absolute episode number when the
+		// series is flagged anime AND we're searching for a specific
+		// episode (absolute is meaningless for season-pack or whole-series
+		// searches). Skipping this lookup for non-anime series saves a DB
+		// hit on every manual search.
+		var absoluteEp int
+		isAnime := series.SeriesType == "anime"
+		if isAnime && input.Season > 0 && input.Episode > 0 {
+			absoluteEp, _ = showSvc.GetEpisodeAbsoluteNumber(ctx, input.SeriesID, input.Season, input.Episode)
+		}
+		queries := buildEpisodeQueries(series.Title, input.Season, input.Episode, absoluteEp, isAnime)
+
+		// Hard interactive-search cut-off. A single dead/walled indexer
+		// can otherwise hold the search at the per-indexer client timeout
+		// (~30s). Empirically healthy indexers come back in 0.2–10s
+		// (Cloudflare-walled torznab providers tend to be the slow tail);
+		// 12s leaves room for those while killing genuinely dead ones
+		// quickly. Stragglers show up in pilot logs as `indexer search
+		// failed duration_ms=12000+ error=context deadline exceeded`.
+		searchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+		defer cancel()
+
+		results, searchErr := searchAllQueries(searchCtx, indexerSvc, queries, input.Season, input.Episode)
 
 		// Filter results to only include the requested series and season/episode.
-		results = filterByEpisode(results, series.Title, input.Season, input.Episode)
+		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Season, input.Episode, absoluteEp)
 
 		// Tag releases outside the series' quality profile so the UI greys
 		// them with an "override and grab anyway" button (same UX as the
@@ -473,11 +535,19 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to get series", err)
 		}
 
-		queries := buildEpisodeQueries(series.Title, input.Body.Season, input.Body.Episode)
+		// Anime context: same rationale as the manual-search path above —
+		// only fetch absolute number when the series is anime AND a
+		// specific episode is being searched.
+		var absoluteEp int
+		isAnime := series.SeriesType == "anime"
+		if isAnime && input.Body.Season > 0 && input.Body.Episode > 0 {
+			absoluteEp, _ = showSvc.GetEpisodeAbsoluteNumber(ctx, input.SeriesID, input.Body.Season, input.Body.Episode)
+		}
+		queries := buildEpisodeQueries(series.Title, input.Body.Season, input.Body.Episode, absoluteEp, isAnime)
 		results, searchErr := searchAllQueries(ctx, indexerSvc, queries, input.Body.Season, input.Body.Episode)
 
 		// Filter results to only include the requested series and season/episode.
-		results = filterByEpisode(results, series.Title, input.Body.Season, input.Body.Episode)
+		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Body.Season, input.Body.Episode, absoluteEp)
 
 		// Tag releases outside the series' quality profile. For auto-search
 		// these tags also gate the viable set further down, so the auto-grab
@@ -604,14 +674,27 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 // unrelated shows whose names happen to share common words. We re-parse each
 // result's title and drop anything whose parsed show title doesn't match the
 // series we're actually searching for.
-func filterByEpisode(results []indexer.SearchResult, seriesTitle string, season, episode int) []indexer.SearchResult {
+// filterByEpisode (extended) accepts an absolute episode number — when
+// non-zero, releases parsed as anime-absolute (Show - 48) whose absolute
+// matches the requested value pass through even when their parsed
+// season is 0. Pass 0 to get the standard non-anime behavior.
+func filterByEpisode(results []indexer.SearchResult, seriesTitle string, alternateTitles []string, season, episode, absolute int) []indexer.SearchResult {
+	// Build the candidate-title set once: canonical title + any TMDB
+	// alternates. The series row's AlternateTitles list does NOT contain
+	// the canonical title — prepend it explicitly so single-title series
+	// behave identically to before.
+	candidates := make([]string, 0, 1+len(alternateTitles))
+	candidates = append(candidates, seriesTitle)
+	candidates = append(candidates, alternateTitles...)
+
 	filtered := make([]indexer.SearchResult, 0, len(results))
 	for _, r := range results {
 		parsed := parser.Parse(r.Title)
 
-		// Series-title gate — strict equality after normalization, with
-		// trailing-year tolerance. See parser.TitleMatches for semantics.
-		if !parser.TitleMatches(seriesTitle, parsed.ShowTitle) {
+		// Series-title gate — strict equality (after normalization) against
+		// any of the canonical/alternate titles. See parser.TitleMatches
+		// and TitleMatchesAny for semantics.
+		if !parser.TitleMatchesAny(candidates, parsed.ShowTitle) {
 			continue
 		}
 
@@ -621,6 +704,16 @@ func filterByEpisode(results []indexer.SearchResult, seriesTitle string, season,
 		}
 
 		ep := parsed.EpisodeInfo
+
+		// Anime absolute-episode acceptance: when the caller knows the
+		// requested episode's absolute number AND the parsed release
+		// has a matching absolute, accept it regardless of parsed
+		// season. This is what makes "Jujutsu Kaisen - 48" findable
+		// when the user asked for S01E48.
+		if absolute > 0 && ep.AbsoluteEpisode == absolute {
+			filtered = append(filtered, r)
+			continue
+		}
 
 		// Wrong season — skip.
 		if ep.Season != season {

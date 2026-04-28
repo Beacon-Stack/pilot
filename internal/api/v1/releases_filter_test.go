@@ -39,7 +39,7 @@ func TestFilterByEpisode_DropsUnrelatedSeasonPacks(t *testing.T) {
 		"Completely.Unrelated.Show.S01.1080p", // ✗
 	)
 
-	got := filterByEpisode(results, "Breaking Bad", 1, 0)
+	got := filterByEpisode(results, "Breaking Bad", nil, 1, 0, 0)
 
 	wantTitles := map[string]bool{
 		"Breaking.Bad.S01.1080p.BluRay.x264": true,
@@ -65,7 +65,7 @@ func TestFilterByEpisode_EpisodeLevel(t *testing.T) {
 		"The.Office.S01E05.1080p",   // ✗ unrelated show
 	)
 
-	got := filterByEpisode(results, "Breaking Bad", 1, 5)
+	got := filterByEpisode(results, "Breaking Bad", nil, 1, 5, 0)
 
 	want := []string{
 		"Breaking.Bad.S01E05.1080p",
@@ -86,7 +86,7 @@ func TestFilterByEpisode_SeasonZeroKeepsTitleMatch(t *testing.T) {
 		"Breaking.Bad.S02E03.720p",
 		"Totally.Different.S01.1080p",
 	)
-	got := filterByEpisode(results, "Breaking Bad", 0, 0)
+	got := filterByEpisode(results, "Breaking Bad", nil, 0, 0, 0)
 	if len(got) != 2 {
 		t.Fatalf("season=0 filter: got %d, want 2 — %v", len(got), titles(got))
 	}
@@ -98,7 +98,7 @@ func TestFilterByEpisode_SeasonZeroKeepsTitleMatch(t *testing.T) {
 }
 
 func TestFilterByEpisode_WrongSeasonDropped(t *testing.T) {
-	got := filterByEpisode(mkResults("Breaking.Bad.S03.1080p"), "Breaking Bad", 1, 0)
+	got := filterByEpisode(mkResults("Breaking.Bad.S03.1080p"), "Breaking Bad", nil, 1, 0, 0)
 	if len(got) != 0 {
 		t.Errorf("wrong season: got %v, want empty", titles(got))
 	}
@@ -108,7 +108,7 @@ func TestBuildEpisodeQueries_SeasonEmitsBothForms(t *testing.T) {
 	// Regression guard for Sonarr issue #3934 — many torznab indexers
 	// tag releases under exactly one naming convention ("S01" vs
 	// "Season 1"), so pilot must search for both.
-	got := buildEpisodeQueries("Breaking Bad", 1, 0)
+	got := buildEpisodeQueries("Breaking Bad", 1, 0, 0, false)
 	want := []string{"Breaking Bad S01", "Breaking Bad Season 1"}
 	if len(got) != len(want) {
 		t.Fatalf("season query count: got %d, want %d — %v", len(got), len(want), got)
@@ -121,16 +121,84 @@ func TestBuildEpisodeQueries_SeasonEmitsBothForms(t *testing.T) {
 }
 
 func TestBuildEpisodeQueries_EpisodeIsSingleQuery(t *testing.T) {
-	got := buildEpisodeQueries("Breaking Bad", 1, 5)
+	got := buildEpisodeQueries("Breaking Bad", 1, 5, 0, false)
 	if len(got) != 1 || got[0] != "Breaking Bad S01E05" {
 		t.Errorf("episode query: got %v, want [Breaking Bad S01E05]", got)
 	}
 }
 
 func TestBuildEpisodeQueries_WholeSeriesIsTitleOnly(t *testing.T) {
-	got := buildEpisodeQueries("Breaking Bad", 0, 0)
+	got := buildEpisodeQueries("Breaking Bad", 0, 0, 0, false)
 	if len(got) != 1 || got[0] != "Breaking Bad" {
 		t.Errorf("whole-series query: got %v, want [Breaking Bad]", got)
+	}
+}
+
+// Headline regression for the Jujutsu Kaisen incident: a non-trivial
+// anime episode produces THREE queries — the standard S01E48 form and
+// two absolute-numbering forms ("48" with and without dash). Without
+// these absolute forms, search returns zero results because anime
+// fansubs tag releases as "Show - 48", not "Show S01E48".
+func TestBuildEpisodeQueries_AnimeEmitsAbsoluteForms(t *testing.T) {
+	got := buildEpisodeQueries("Jujutsu Kaisen", 1, 48, 48, true)
+	want := []string{
+		"Jujutsu Kaisen S01E48",
+		"Jujutsu Kaisen 48",
+		"Jujutsu Kaisen - 48",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("anime query count: got %d, want %d — %v", len(got), len(want), got)
+	}
+	for i, q := range want {
+		if got[i] != q {
+			t.Errorf("query %d: got %q, want %q", i, got[i], q)
+		}
+	}
+}
+
+// Single-digit absolute episode numbers must still be zero-padded so
+// "Show 03" matches indexer titles like "Show - 03 [1080p]".
+func TestBuildEpisodeQueries_AnimeAbsoluteIsZeroPadded(t *testing.T) {
+	got := buildEpisodeQueries("Jujutsu Kaisen", 1, 3, 3, true)
+	want := []string{
+		"Jujutsu Kaisen S01E03",
+		"Jujutsu Kaisen 03",
+		"Jujutsu Kaisen - 03",
+	}
+	for i, q := range want {
+		if i >= len(got) || got[i] != q {
+			t.Errorf("query %d: got %q, want %q", i, got[i], q)
+		}
+	}
+}
+
+// Anime augmentation must NOT fire when absolute is 0 — that's the
+// "absolute number unknown" sentinel. Falling through to standard
+// queries is the right behavior; emitting "Show 00" would be garbage.
+func TestBuildEpisodeQueries_AnimeWithUnknownAbsoluteFallsBack(t *testing.T) {
+	got := buildEpisodeQueries("Jujutsu Kaisen", 1, 48, 0, true)
+	if len(got) != 1 || got[0] != "Jujutsu Kaisen S01E48" {
+		t.Errorf("missing absolute should fall back to S01E48 only; got %v", got)
+	}
+}
+
+// isAnime=false forces the standard path even when absolute is set.
+// Guards against accidentally upgrading regular Western TV to anime
+// queries (which would just be noise).
+func TestBuildEpisodeQueries_NonAnimeIgnoresAbsolute(t *testing.T) {
+	got := buildEpisodeQueries("Breaking Bad", 1, 5, 5, false)
+	if len(got) != 1 || got[0] != "Breaking Bad S01E05" {
+		t.Errorf("non-anime should ignore absolute; got %v", got)
+	}
+}
+
+// Season-pack searches don't get absolute augmentation either —
+// "Show 48" would mean "episode 48", not "season 1 pack".
+func TestBuildEpisodeQueries_AnimeSeasonPackUnchanged(t *testing.T) {
+	got := buildEpisodeQueries("Jujutsu Kaisen", 1, 0, 0, true)
+	want := []string{"Jujutsu Kaisen S01", "Jujutsu Kaisen Season 1"}
+	if len(got) != len(want) {
+		t.Fatalf("season pack query count for anime: got %d, want %d — %v", len(got), len(want), got)
 	}
 }
 
@@ -177,6 +245,87 @@ func TestApplyQualityProfile_ResolutionFloor(t *testing.T) {
 		if !wantTagged[r.Title] && hasTag {
 			t.Errorf("%q was tagged below_quality_profile but should pass the floor", r.Title)
 		}
+	}
+}
+
+// ── Alternate titles ────────────────────────────────────────────────────────
+
+// The headline alt-title regression case. Indexers respond with releases
+// that use marketing/regional names for "Andor" — when the series carries
+// those names as alternates (from TMDB), they must pass the title gate.
+func TestFilterByEpisode_AlternateTitleUnlocksReleases(t *testing.T) {
+	results := mkResults(
+		"Star.Wars.Andor.S01.1080p.BluRay",  // ✓ via alternate
+		"Andor.S01.1080p.BluRay",            // ✓ canonical
+		"Andor.A.Star.Wars.Story.S01.720p",  // ✓ via alternate
+		"Mandor.S01.1080p",                  // ✗ different show
+	)
+	alts := []string{"Star Wars: Andor", "Andor: A Star Wars Story"}
+
+	got := filterByEpisode(results, "Andor", alts, 1, 0, 0)
+
+	want := map[string]bool{
+		"Star.Wars.Andor.S01.1080p.BluRay":   true,
+		"Andor.S01.1080p.BluRay":             true,
+		"Andor.A.Star.Wars.Story.S01.720p":   true,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d, want %d — %v", len(got), len(want), titles(got))
+	}
+	for _, r := range got {
+		if !want[r.Title] {
+			t.Errorf("unexpected release kept: %q", r.Title)
+		}
+	}
+}
+
+// Without alternates configured, the alt-named releases must still drop —
+// proves we haven't accidentally relaxed the strict gate globally.
+func TestFilterByEpisode_NoAlternatesPreservesStrictness(t *testing.T) {
+	results := mkResults(
+		"Star.Wars.Andor.S01.1080p", // strict-rule reject — no alt
+		"Andor.S01.1080p",            // canonical, accept
+	)
+	got := filterByEpisode(results, "Andor", nil, 1, 0, 0)
+
+	if len(got) != 1 || got[0].Title != "Andor.S01.1080p" {
+		t.Errorf("strict mode kept wrong set: %v", titles(got))
+	}
+}
+
+// Empty-slice alternates (loaded from a series row with `[]`) must
+// behave identically to nil alternates. Avoids a regression where
+// empty-slice handling differs from nil.
+func TestFilterByEpisode_EmptyAlternateListSameAsNil(t *testing.T) {
+	results := mkResults("Star.Wars.Andor.S01.1080p")
+	gotNil := filterByEpisode(results, "Andor", nil, 1, 0, 0)
+	gotEmpty := filterByEpisode(results, "Andor", []string{}, 1, 0, 0)
+	if len(gotNil) != len(gotEmpty) {
+		t.Errorf("nil alts and []string{} produced different results: %d vs %d",
+			len(gotNil), len(gotEmpty))
+	}
+}
+
+// Alternate titles must NOT bypass season/episode gating. A release
+// matching an alternate but for the wrong season still drops.
+func TestFilterByEpisode_AlternateTitleRespectsSeasonGate(t *testing.T) {
+	results := mkResults(
+		"Star.Wars.Andor.S01.1080p", // ✓ via alt, S01 matches
+		"Star.Wars.Andor.S02.1080p", // ✗ via alt but wrong season
+	)
+	got := filterByEpisode(results, "Andor", []string{"Star Wars: Andor"}, 1, 0, 0)
+	if len(got) != 1 || got[0].Title != "Star.Wars.Andor.S01.1080p" {
+		t.Errorf("season gate didn't fire on alternate-title match: %v", titles(got))
+	}
+}
+
+// Alternate that overlaps with the canonical (caller mistakenly added
+// the canonical to the alt list too) should not double-match or break.
+func TestFilterByEpisode_AlternateContainingCanonicalIsHarmless(t *testing.T) {
+	results := mkResults("Andor.S01.1080p")
+	got := filterByEpisode(results, "Andor", []string{"Andor", "Star Wars: Andor"}, 1, 0, 0)
+	if len(got) != 1 {
+		t.Errorf("dedup behavior off: got %d results, want 1 (%v)", len(got), titles(got))
 	}
 }
 
