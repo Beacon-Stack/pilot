@@ -586,5 +586,47 @@ func TestRefreshMetadata_AnimeBackfill_IsIdempotent(t *testing.T) {
 	}
 }
 
+// ── TVDBSeasonToAbsolute pass-through ───────────────────────────────────────
+
+// recordingAnimeLookup records the args TVDBSeasonToAbsolute was called
+// with so we can assert the show service forwards them verbatim.
+type recordingAnimeLookup struct {
+	gotTMDB, gotSeason, gotEpisode int
+	returnAbs                      int
+	returnOk                       bool
+}
+
+func (r *recordingAnimeLookup) IsAnime(int) bool { return false }
+func (r *recordingAnimeLookup) TVDBSeasonToAbsolute(tmdbID, season, episode int) (int, bool) {
+	r.gotTMDB, r.gotSeason, r.gotEpisode = tmdbID, season, episode
+	return r.returnAbs, r.returnOk
+}
+
+func TestService_TVDBSeasonToAbsolute_DelegatesToLookup(t *testing.T) {
+	rec := &recordingAnimeLookup{returnAbs: 48, returnOk: true}
+	svc := NewService(nil, nil, rec, nil, discardLogger())
+
+	abs, ok := svc.TVDBSeasonToAbsolute(95479, 3, 1)
+	if !ok || abs != 48 {
+		t.Fatalf("got (%d, %v), want (48, true)", abs, ok)
+	}
+	if rec.gotTMDB != 95479 || rec.gotSeason != 3 || rec.gotEpisode != 1 {
+		t.Errorf("forwarded args wrong: tmdb=%d season=%d episode=%d",
+			rec.gotTMDB, rec.gotSeason, rec.gotEpisode)
+	}
+}
+
+// Deployments that don't run the Anime-Lists fetcher pass nil for the
+// AnimeLookup. The pass-through must return (0, false) without panic so
+// the search filter falls back to strict season/episode matching.
+func TestService_TVDBSeasonToAbsolute_NilLookupIsSafe(t *testing.T) {
+	svc := NewService(nil, nil, nil, nil, discardLogger())
+
+	abs, ok := svc.TVDBSeasonToAbsolute(95479, 3, 1)
+	if ok || abs != 0 {
+		t.Errorf("nil lookup must return (0, false); got (%d, %v)", abs, ok)
+	}
+}
+
 // silence unused-import alarm for time when only used elsewhere
 var _ = time.Now
