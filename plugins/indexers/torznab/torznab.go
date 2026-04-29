@@ -59,11 +59,16 @@ type Indexer struct {
 }
 
 // New creates a new Torznab Indexer from the given config.
+//
+// 30s per-call timeout matches Newznab and matches Sonarr/Radarr defaults.
+// A higher value (we used to ship 180s) means a single misbehaving indexer
+// — Cloudflare-walled, dead, or overloaded — pins an interactive search
+// for the worst case before all the parallel goroutines finish.
 func New(cfg Config) *Indexer {
 	return &Indexer{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout:   180 * time.Second,
+			Timeout:   30 * time.Second,
 			Transport: safedialer.LANTransport(),
 		},
 	}
@@ -117,6 +122,15 @@ func (idx *Indexer) Capabilities(ctx context.Context) (plugin.Capabilities, erro
 //     q.Query (e.g. "Breaking Bad S01E05").
 func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.Release, error) {
 	// 1. TV search with season/episode params — lets the indexer filter server-side.
+	//
+	// q is sent verbatim with any "S01" / "Season N" markers intact even
+	// though the structured `season=` / `ep=` params are ALSO set. We
+	// learned the hard way: many torznab implementations (TorrentGalaxy
+	// is the canonical case) silently ignore `season=` and only text-
+	// match `q`. Stripping the markers reduced those indexers to fuzzy
+	// "Andor" → "Anderson / Andrea" substring garbage. The downside of
+	// duplication (text gate + structured gate stacking) is strictly
+	// less harmful than losing 95% of results from a healthy indexer.
 	if q.Season > 0 || q.TVDBID != 0 {
 		params := url.Values{}
 		params.Set("q", q.Query)
