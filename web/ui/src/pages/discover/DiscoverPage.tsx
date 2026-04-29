@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, AlertTriangle } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useLookupSeries, useLibraryTmdbIds } from "@/api/series";
 import type { LookupResult } from "@/api/series";
+import { APIError } from "@beacon-shared/api";
 import DiscoverCard from "./DiscoverCard";
 import AddSeriesDrawer from "./AddSeriesDrawer";
 
@@ -9,8 +11,15 @@ export default function DiscoverPage() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<LookupResult | null>(null);
 
-  const { data: results, isLoading, isFetching } = useLookupSeries(query);
+  const { data: results, isLoading, isFetching, error } = useLookupSeries(query);
   const { data: tmdbIds } = useLibraryTmdbIds();
+
+  // Surface "metadata provider not configured" as a clear actionable
+  // empty state rather than a silent zero-results screen. Pilot returns
+  // 503 with a specific detail string when the TMDB key is missing.
+  // Any other 5xx is treated generically.
+  const lookupConfigError =
+    error instanceof APIError && error.status === 503 ? error : null;
 
   const addedSet = useMemo(
     () => new Set(tmdbIds ?? []),
@@ -69,6 +78,8 @@ export default function DiscoverPage() {
         <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--color-text-muted)", fontSize: 13 }}>
           Type at least 3 characters to search
         </div>
+      ) : lookupConfigError ? (
+        <ConfigErrorState err={lookupConfigError} />
       ) : showLoading && !results?.length ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--color-text-muted)", fontSize: 13 }}>
           <Loader2 size={24} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
@@ -100,6 +111,70 @@ export default function DiscoverPage() {
           onClose={() => setSelected(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ConfigErrorState surfaces backend "service unavailable" responses for
+// the lookup endpoint as an actionable empty state. The expected case is
+// a missing TMDB key, but we render the backend's `detail` as the body so
+// future config-related 503s (e.g. provider quota exceeded) read the same.
+function ConfigErrorState({ err }: { err: APIError }) {
+  const isTMDB = (err.detail ?? err.message ?? "").toLowerCase().includes("tmdb");
+  return (
+    <div
+      style={{
+        margin: "40px auto",
+        maxWidth: 520,
+        padding: "24px 28px",
+        borderRadius: 10,
+        border: "1px solid var(--color-warning)",
+        background: "color-mix(in srgb, var(--color-warning) 8%, transparent)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+        <AlertTriangle size={22} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: 2 }} />
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: "var(--color-text-primary)",
+              marginBottom: 4,
+            }}
+          >
+            {isTMDB ? "TMDB metadata provider not configured" : "Series lookup is unavailable"}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+            {err.detail ?? err.message ?? "Pilot couldn't reach its metadata provider."}
+          </div>
+          {isTMDB && (
+            <div style={{ marginTop: 12, fontSize: 13, color: "var(--color-text-secondary)" }}>
+              Add a TMDB key in{" "}
+              <Link
+                to="/settings/providers"
+                style={{
+                  color: "var(--color-accent)",
+                  textDecoration: "none",
+                  fontWeight: 500,
+                }}
+              >
+                Settings → Providers
+              </Link>
+              . Free keys at{" "}
+              <a
+                href="https://www.themoviedb.org/settings/api"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--color-accent)", textDecoration: "none" }}
+              >
+                themoviedb.org/settings/api
+              </a>
+              .
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
