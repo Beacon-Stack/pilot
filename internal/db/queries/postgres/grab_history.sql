@@ -46,3 +46,14 @@ SELECT * FROM grab_history WHERE info_hash = $1 ORDER BY grabbed_at DESC LIMIT 1
 
 -- name: MarkGrabRemoved :exec
 UPDATE grab_history SET download_status = 'removed' WHERE id = $1;
+
+-- name: ListGrabHistoryByStatusSince :many
+-- Used by the Activity page's "Recently imported" and "Needs attention" rails
+-- to window grabs by terminal status and time. The ::text casts make the
+-- types explicit to the planner; grab_history.grabbed_at is TEXT-encoded
+-- RFC3339 so the comparison is lexicographic but order-preserving.
+SELECT * FROM grab_history
+WHERE download_status = sqlc.arg('status')::text
+  AND grabbed_at > sqlc.arg('since')::text
+ORDER BY grabbed_at DESC
+LIMIT sqlc.arg('limit');

@@ -92,6 +92,9 @@ type Querier interface {
 	IsBlocklistedByTitle(ctx context.Context, releaseTitle string) (int64, error)
 	LatestStatsSnapshot(ctx context.Context) (StatsSnapshot, error)
 	ListActiveGrabs(ctx context.Context) ([]GrabHistory, error)
+	// The ::text casts are required for Postgres to plan a parameterised
+	// "($1 IS NULL OR col = $1)" — without them the planner can't infer the
+	// type from `$1 IS NULL` alone and fails with SQLSTATE 42P08.
 	ListActivities(ctx context.Context, arg ListActivitiesParams) ([]ActivityLog, error)
 	ListAllEpisodeFilePaths(ctx context.Context) ([]string, error)
 	ListAllTMDBIDs(ctx context.Context) ([]int32, error)
@@ -113,6 +116,11 @@ type Querier interface {
 	ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams) ([]GrabHistory, error)
 	ListGrabHistoryByEpisode(ctx context.Context, episodeID sql.NullString) ([]GrabHistory, error)
 	ListGrabHistoryBySeries(ctx context.Context, seriesID string) ([]GrabHistory, error)
+	// Used by the Activity page's "Recently imported" and "Needs attention" rails
+	// to window grabs by terminal status and time. The ::text casts make the
+	// types explicit to the planner; grab_history.grabbed_at is TEXT-encoded
+	// RFC3339 so the comparison is lexicographic but order-preserving.
+	ListGrabHistoryByStatusSince(ctx context.Context, arg ListGrabHistoryByStatusSinceParams) ([]GrabHistory, error)
 	ListImportExclusions(ctx context.Context) ([]ImportExclusion, error)
 	ListImportListConfigs(ctx context.Context) ([]ImportListConfig, error)
 	ListIndexerConfigs(ctx context.Context) ([]IndexerConfig, error)

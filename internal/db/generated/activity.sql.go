@@ -12,13 +12,13 @@ import (
 
 const countActivities = `-- name: CountActivities :one
 SELECT COUNT(*) FROM activity_log
-WHERE ($1 IS NULL OR category = $1)
-  AND ($2 IS NULL OR created_at > $2)
+WHERE ($1::text IS NULL OR category = $1::text)
+  AND ($2::text    IS NULL OR created_at > $2::text)
 `
 
 type CountActivitiesParams struct {
-	Category interface{} `json:"category"`
-	Since    interface{} `json:"since"`
+	Category sql.NullString `json:"category"`
+	Since    sql.NullString `json:"since"`
 }
 
 func (q *Queries) CountActivities(ctx context.Context, arg CountActivitiesParams) (int64, error) {
@@ -58,18 +58,21 @@ func (q *Queries) InsertActivity(ctx context.Context, arg InsertActivityParams) 
 
 const listActivities = `-- name: ListActivities :many
 SELECT id, type, category, series_id, title, detail, created_at FROM activity_log
-WHERE ($1 IS NULL OR category = $1)
-  AND ($2 IS NULL OR created_at > $2)
+WHERE ($1::text IS NULL OR category = $1::text)
+  AND ($2::text    IS NULL OR created_at > $2::text)
 ORDER BY created_at DESC
 LIMIT $3
 `
 
 type ListActivitiesParams struct {
-	Category interface{} `json:"category"`
-	Since    interface{} `json:"since"`
-	Limit    int32       `json:"limit"`
+	Category sql.NullString `json:"category"`
+	Since    sql.NullString `json:"since"`
+	Limit    int32          `json:"limit"`
 }
 
+// The ::text casts are required for Postgres to plan a parameterised
+// "($1 IS NULL OR col = $1)" — without them the planner can't infer the
+// type from `$1 IS NULL` alone and fails with SQLSTATE 42P08.
 func (q *Queries) ListActivities(ctx context.Context, arg ListActivitiesParams) ([]ActivityLog, error) {
 	rows, err := q.db.QueryContext(ctx, listActivities, arg.Category, arg.Since, arg.Limit)
 	if err != nil {
