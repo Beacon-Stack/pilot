@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"sync"
@@ -115,16 +116,21 @@ type GrabRequest struct {
 
 // Service manages indexer configuration and search orchestration.
 type Service struct {
-	q     db.Querier
-	reg   *registry.Registry
-	bus   *events.Bus
-	rl    *ratelimit.Registry
-	cache sync.Map // config ID → plugin.Indexer
+	q      db.Querier
+	reg    *registry.Registry
+	bus    *events.Bus
+	rl     *ratelimit.Registry
+	logger *slog.Logger
+	cache  sync.Map // config ID → plugin.Indexer
 }
 
-// NewService creates a new Service.
-func NewService(q db.Querier, reg *registry.Registry, bus *events.Bus, rl *ratelimit.Registry) *Service {
-	return &Service{q: q, reg: reg, bus: bus, rl: rl}
+// NewService creates a new Service. A nil logger falls back to slog.Default()
+// so existing callers continue to work without migration.
+func NewService(q db.Querier, reg *registry.Registry, bus *events.Bus, rl *ratelimit.Registry, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Service{q: q, reg: reg, bus: bus, rl: rl, logger: logger}
 }
 
 // cachedIndexer returns a cached or freshly-created indexer for the given config.
@@ -440,6 +446,7 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 		go func(row db.IndexerConfig) {
 			defer wg.Done()
 			cfg, _ := rowToConfig(row)
+			started := time.Now()
 			if err := s.rl.Wait(ctx, cfg.ID, extractRateLimit(cfg.Settings)); err != nil {
 				resultsCh <- indexerResult{indexerID: cfg.ID, indexerName: cfg.Name, err: err}
 				return
@@ -450,6 +457,26 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 				return
 			}
 			releases, err := idx.Search(ctx, q)
+			elapsed := time.Since(started)
+			// Per-indexer timing on every search so a slow indexer is
+			// visible in `scripts/logs pilot | grep indexer.search`. Errors
+			// log at warn level (typical: timeout, Cloudflare 403, dead host);
+			// success at info.
+			if err != nil {
+				s.logger.Warn("indexer search failed",
+					"indexer", cfg.Name,
+					"kind", cfg.Kind,
+					"query", q.Query,
+					"duration_ms", elapsed.Milliseconds(),
+					"error", err)
+			} else {
+				s.logger.Info("indexer search ok",
+					"indexer", cfg.Name,
+					"kind", cfg.Kind,
+					"query", q.Query,
+					"duration_ms", elapsed.Milliseconds(),
+					"results", len(releases))
+			}
 			resultsCh <- indexerResult{
 				indexerID:   cfg.ID,
 				indexerName: cfg.Name,
