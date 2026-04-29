@@ -25,6 +25,7 @@ Pilot stands on its own as a Sonarr alternative. It comes into its own as part o
 - Per-series monitoring with configurable monitor types (all, future episodes, missing, none)
 - Season and episode-level monitoring controls
 - Season detail view with per-season episode counts and total size
+- Multi-cour anime split — shows like Jujutsu Kaisen that TMDB serves as a single 59-episode "Season 1" are projected into their broadcast cours (Season 1/2/3) using the [Anime-Lists](https://github.com/Anime-Lists/anime-lists) mapping, with cour boundaries inferred from air-date gaps when TMDB and AniDB disagree on season layout
 - Wanted page covering missing episodes and cutoff-unmet upgrades
 - Calendar view of upcoming and recently aired episodes
 - Library stats with breakdowns by quality, genre, network, and storage trends
@@ -35,7 +36,7 @@ Pilot stands on its own as a Sonarr alternative. It comes into its own as part o
 - Custom formats with regex matching and weighted scoring
 - Title-matched release filter — releases for other shows with overlapping words in the title don't get grabbed
 - Anime-aware search — series flagged as anime via the [Anime-Lists](https://github.com/Anime-Lists/anime-lists) mapping get absolute-numbering query forms (`Show 48`, `Show - 48`) alongside the `S01E48` form, and TVDB-cour-tagged releases (`Show S03E01`) are accepted when they translate to the requested TMDB-relative episode
-- Interactive search modal with pack-type filters (Season Pack / Episodes / All), quality badges, and an Episode Count tier in the comparator that surfaces season packs above individual episodes within the same quality
+- Interactive search modal with pack-type filters (Season Pack / Episodes / All), quality badges, click-to-sort columns (Size, Quality, Seeds), and an Episode Count tier in the comparator that surfaces season packs above individual episodes within the same quality
 - Dead-torrent detection — the stallwatcher polls your download client for stalled torrents and blocklists them, with a per-episode circuit breaker so a single bad release can't cause a retry storm
 - Manual search across all indexers with per-release scoring breakdown
 
