@@ -408,8 +408,16 @@ function ReleaseRow({ release, onGrab, isGrabbing }: ReleaseRowProps) {
 
 interface ManualSearchModalProps {
   seriesId: string;
+  // seasonNumber/episodeNumber are TMDB-relative — passed straight to
+  // the backend's release-search endpoint.
   seasonNumber?: number;
   episodeNumber?: number;
+  // displaySeasonNumber/displayEpisodeNumber override the modal title
+  // labels for cour-shaped anime (cour 3 ep 1 reads "S03E01" even
+  // though the API call uses TMDB-relative S01E48). Falls back to the
+  // API values when omitted, which is correct for non-anime series.
+  displaySeasonNumber?: number;
+  displayEpisodeNumber?: number;
   onClose: () => void;
 }
 
@@ -417,6 +425,8 @@ export default function ManualSearchModal({
   seriesId,
   seasonNumber,
   episodeNumber,
+  displaySeasonNumber,
+  displayEpisodeNumber,
   onClose,
 }: ManualSearchModalProps) {
   const { data: releases, isLoading, isError, error, refetch, isFetching } = useSearchReleases(
@@ -510,10 +520,15 @@ export default function ManualSearchModal({
     });
   }
 
-  const title = episodeNumber !== undefined
-    ? `Search — S${String(seasonNumber).padStart(2, "0")}E${String(episodeNumber).padStart(2, "0")}`
-    : seasonNumber !== undefined
-      ? `Search — Season ${seasonNumber}`
+  // Title labels use display values when provided so cour-shaped
+  // anime renders "S03E01" instead of the TMDB-relative S01E48 the
+  // backend actually queries with.
+  const titleSeason = displaySeasonNumber ?? seasonNumber;
+  const titleEpisode = displayEpisodeNumber ?? episodeNumber;
+  const title = titleEpisode !== undefined
+    ? `Search — S${String(titleSeason).padStart(2, "0")}E${String(titleEpisode).padStart(2, "0")}`
+    : titleSeason !== undefined
+      ? `Search — Season ${titleSeason}`
       : "Search Releases";
 
   const liveCount = releases?.filter((r) => r.seeds > 0).length ?? 0;

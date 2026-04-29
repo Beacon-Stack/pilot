@@ -20,8 +20,19 @@ import BulkActionBar from "./BulkActionBar";
 
 interface SearchTarget {
   seriesId: string;
+  // seasonNumber/episodeNumber are TMDB-relative — the backend's
+  // search filter resolves releases against these (Phase 2A's
+  // TVDB→absolute conversion expects TMDB coords).
   seasonNumber: number;
   episodeNumber?: number;
+  // displaySeasonNumber/displayEpisodeNumber are what the user sees in
+  // the UI (cour-relative in cour mode: Season 3 ep 1 instead of
+  // TMDB-relative Season 1 ep 48). Used only for labels (toast +
+  // modal title); the API call still uses seasonNumber/episodeNumber.
+  // When omitted the modal/toast falls back to the API values, which
+  // is the correct behaviour for non-anime series.
+  displaySeasonNumber?: number;
+  displayEpisodeNumber?: number;
 }
 
 function SeriesStatusBadge({ status }: { status: string }) {
@@ -164,8 +175,8 @@ function SeasonEpisodeList({
             updateSeasonMonitored.mutate({ seasonId: season.id, monitored: !season.monitored });
           }
         }}
-        onInteractiveSearch={() => onSearch({ seriesId, seasonNumber: apiSeasonNumber })}
-        onAutoSearchSeason={() => onAutoSearch({ seriesId, seasonNumber: apiSeasonNumber })}
+        onInteractiveSearch={() => onSearch({ seriesId, seasonNumber: apiSeasonNumber, displaySeasonNumber: season.season_number })}
+        onAutoSearchSeason={() => onAutoSearch({ seriesId, seasonNumber: apiSeasonNumber, displaySeasonNumber: season.season_number })}
         isAutoSearching={isAutoSearching}
       />
 
@@ -185,8 +196,20 @@ function SeasonEpisodeList({
               selected={selected.has(ep.id)}
               onToggleSelect={() => toggleSelect(ep.id)}
               onToggleMonitor={() => updateEpMonitored.mutate({ episodeId: ep.id, monitored: !ep.monitored, seasonNumber: apiSeasonNumber })}
-              onSearch={() => onSearch({ seriesId, seasonNumber: apiSeasonNumber, episodeNumber: ep.episode_number })}
-              onAutoSearch={() => onAutoSearch({ seriesId, seasonNumber: apiSeasonNumber, episodeNumber: ep.episode_number })}
+              onSearch={() => onSearch({
+                seriesId,
+                seasonNumber: apiSeasonNumber,
+                episodeNumber: ep.episode_number,
+                displaySeasonNumber: season.season_number,
+                displayEpisodeNumber: ep.episode_number - (displayEpisodeOffset ?? 0),
+              })}
+              onAutoSearch={() => onAutoSearch({
+                seriesId,
+                seasonNumber: apiSeasonNumber,
+                episodeNumber: ep.episode_number,
+                displaySeasonNumber: season.season_number,
+                displayEpisodeNumber: ep.episode_number - (displayEpisodeOffset ?? 0),
+              })}
             />
           ))}
         </div>
@@ -199,7 +222,13 @@ function SeasonEpisodeList({
         onSearch={() => {
           for (const id of selected) {
             const ep = episodes?.find((e: Episode) => e.id === id);
-            if (ep) onSearch({ seriesId, seasonNumber: apiSeasonNumber, episodeNumber: ep.episode_number });
+            if (ep) onSearch({
+              seriesId,
+              seasonNumber: apiSeasonNumber,
+              episodeNumber: ep.episode_number,
+              displaySeasonNumber: season.season_number,
+              displayEpisodeNumber: ep.episode_number - (displayEpisodeOffset ?? 0),
+            });
           }
           setSelected(new Set());
         }}
@@ -228,9 +257,11 @@ export default function SeriesDetail() {
   const [activeSeason, setActiveSeason] = useState(-1);
 
   function handleAutoSearch(target: SearchTarget) {
-    const label = target.episodeNumber
-      ? `S${target.seasonNumber}E${String(target.episodeNumber).padStart(2, "0")}`
-      : `Season ${target.seasonNumber}`;
+    const labelSeason = target.displaySeasonNumber ?? target.seasonNumber;
+    const labelEpisode = target.displayEpisodeNumber ?? target.episodeNumber;
+    const label = labelEpisode !== undefined
+      ? `S${String(labelSeason).padStart(2, "0")}E${String(labelEpisode).padStart(2, "0")}`
+      : `Season ${labelSeason}`;
     const toastId = toast.loading(`Searching releases for ${label}…`);
     autoSearch.mutate(
       { season: target.seasonNumber, episode: target.episodeNumber },
@@ -424,6 +455,8 @@ export default function SeriesDetail() {
           seriesId={searchTarget.seriesId}
           seasonNumber={searchTarget.seasonNumber}
           episodeNumber={searchTarget.episodeNumber}
+          displaySeasonNumber={searchTarget.displaySeasonNumber}
+          displayEpisodeNumber={searchTarget.displayEpisodeNumber}
           onClose={() => setSearchTarget(null)}
         />
       )}
