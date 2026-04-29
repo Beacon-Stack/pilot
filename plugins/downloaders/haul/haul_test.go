@@ -44,23 +44,29 @@ func TestAdd_EmptyDownloadURLReturnsActionableError(t *testing.T) {
 }
 
 func TestAdd_WhitespaceOnlyDownloadURLIsRejected(t *testing.T) {
-	// Pure whitespace doesn't start with magnet:/http: so it would
-	// otherwise pass through as-is to Haul → unsupported scheme. Catch it
-	// here for the same reason we catch empty: clearer error attribution.
-	// (Currently treated as non-empty by the validator; document the
-	// behavior either way so we notice if it changes.)
+	// Whitespace-only download URLs (single space, tab, "\n", etc.)
+	// must hit the same early-rejection path as empty strings — same
+	// rationale: the operator gets a clear error attributed to the
+	// indexer/release instead of Haul's opaque 422 "either uri or file"
+	// text. Tested for `" "`, `"\t"`, `"\n"`, and a mix.
 	c := New(Config{URL: "http://haul:8484", APIKey: "k"})
-	_, err := c.Add(context.Background(), plugin.Release{
-		Title:       "Bogus",
-		Indexer:     "ZeroIndexer",
-		DownloadURL: "   ",
-	})
-	// We don't currently strip whitespace; the request will go on to fail
-	// later in the chain. That's acceptable — empty-string is the common
-	// case. If this changes (we add Trim before the empty check), update
-	// the assertion accordingly.
-	if err == nil {
-		t.Skip("whitespace passed through — current behavior; see comment")
+
+	for _, uri := range []string{" ", "\t", "\n", "  \t \n "} {
+		_, err := c.Add(context.Background(), plugin.Release{
+			Title:       "Bogus",
+			Indexer:     "ZeroIndexer",
+			DownloadURL: uri,
+		})
+		if err == nil {
+			t.Errorf("DownloadURL %q: expected rejection, got nil error", uri)
+			continue
+		}
+		if !strings.Contains(err.Error(), "no download URL") {
+			t.Errorf("DownloadURL %q: error should mention 'no download URL': %v", uri, err)
+		}
+		if strings.Contains(err.Error(), "either uri or file") {
+			t.Errorf("DownloadURL %q: error leaked Haul's 422 text — should be caught at plugin layer: %v", uri, err)
+		}
 	}
 }
 
