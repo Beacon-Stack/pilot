@@ -226,6 +226,22 @@ function RowActions({ indexer, onEdit }: { indexer: IndexerConfig; onEdit: () =>
   const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
   const del = useDeleteIndexer();
   const test = useTestIndexer();
+  const update = useUpdateIndexer();
+
+  // Toggling enabled is "soft disable" — keeps the row, just stops it
+  // from being queried by searches. Backed by the existing PUT endpoint
+  // which requires the full body, so we splat the current indexer's
+  // fields and flip just the enabled flag.
+  function handleToggleEnabled() {
+    update.mutate({
+      id: indexer.id,
+      name: indexer.name,
+      kind: indexer.kind,
+      priority: indexer.priority,
+      settings: indexer.settings,
+      enabled: !indexer.enabled,
+    });
+  }
 
   function handleTest() {
     setTestResult(null);
@@ -257,6 +273,18 @@ function RowActions({ indexer, onEdit }: { indexer: IndexerConfig; onEdit: () =>
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+      <button
+        onClick={handleToggleEnabled}
+        disabled={update.isPending}
+        title={indexer.enabled ? "Stop using this indexer for searches" : "Re-enable this indexer for searches"}
+        style={
+          indexer.enabled
+            ? actionBtn("var(--color-text-secondary)", "var(--color-bg-elevated)")
+            : actionBtn("var(--color-success)", "color-mix(in srgb, var(--color-success) 14%, transparent)")
+        }
+      >
+        {update.isPending ? "…" : indexer.enabled ? "Disable" : "Enable"}
+      </button>
       <button onClick={handleTest} disabled={test.isPending} style={actionBtn("var(--color-text-secondary)", "var(--color-bg-elevated)")}>{test.isPending ? "Testing…" : "Test"}</button>
       <button onClick={onEdit} style={actionBtn("var(--color-text-secondary)", "var(--color-bg-elevated)")}>Edit</button>
       <button onClick={() => setConfirming(true)} style={actionBtn("var(--color-danger)", "color-mix(in srgb, var(--color-danger) 12%, transparent)")}>Delete</button>
