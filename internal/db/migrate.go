@@ -25,7 +25,11 @@ func Migrate(sqlDB *sql.DB, driver string) error {
 		return fmt.Errorf("setting goose dialect: %w", initErr)
 	}
 
-	if err := goose.Up(sqlDB, "migrations"); err != nil {
+	// WithAllowMissing lets goose apply migrations whose version is lower
+	// than the current database max — needed when migrations land on main
+	// out of numerical order (e.g. 00006/00007 committed after 00008/00009
+	// were already applied to existing databases).
+	if err := goose.Up(sqlDB, "migrations", goose.WithAllowMissing()); err != nil {
 		return fmt.Errorf("running migrations: %w", err)
 	}
 
