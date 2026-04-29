@@ -1,11 +1,11 @@
 import { useState, useMemo } from "react";
-import { X, Download, Wifi, HardDrive, Loader2, AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
+import { X, Download, Wifi, HardDrive, Loader2, AlertTriangle, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useSearchReleases, useGrabRelease } from "@/api/releases";
 import Modal from "@beacon-shared/Modal";
 import type { ReleaseResult } from "@/types";
 
-type SortField = "seeds" | "size";
+type SortField = "seeds" | "size" | "quality";
 type SortDir = "asc" | "desc";
 
 type PackFilter = "season" | "episodes" | "all";
@@ -419,7 +419,7 @@ export default function ManualSearchModal({
   episodeNumber,
   onClose,
 }: ManualSearchModalProps) {
-  const { data: releases, isLoading, isError, error, refetch } = useSearchReleases(
+  const { data: releases, isLoading, isError, error, refetch, isFetching } = useSearchReleases(
     { seriesId, season: seasonNumber, episode: episodeNumber },
     true
   );
@@ -435,10 +435,17 @@ export default function ManualSearchModal({
   const sorted = useMemo(() => {
     if (!releases) return [];
     if (!sort) return releases;
+    // Quality sorts on `quality_score` (the int Quality.Score() produces:
+    // resolution*100 + source*10 + codec) and tiebreaks on seeds-desc so
+    // two same-quality releases land in seed-rank order — same convention
+    // as auto-search.
     return [...releases].sort((a, b) => {
-      const av = a[sort.field] ?? 0;
-      const bv = b[sort.field] ?? 0;
-      return sort.dir === "desc" ? bv - av : av - bv;
+      const sortKey = sort.field === "quality" ? "quality_score" : sort.field;
+      const av = (a[sortKey] as number | undefined) ?? 0;
+      const bv = (b[sortKey] as number | undefined) ?? 0;
+      const primary = sort.dir === "desc" ? bv - av : av - bv;
+      if (primary !== 0 || sort.field !== "quality") return primary;
+      return (b.seeds ?? 0) - (a.seeds ?? 0);
     });
   }, [releases, sort]);
 
@@ -562,19 +569,46 @@ export default function ManualSearchModal({
             </div>
           )}
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "var(--color-text-muted)",
-            display: "flex",
-            padding: 4,
-          }}
-        >
-          <X size={18} />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            title="Re-run search across all enabled indexers (bypasses cache)"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              border: "1px solid var(--color-border-default)",
+              borderRadius: 6,
+              background: "none",
+              cursor: isFetching ? "default" : "pointer",
+              fontSize: 12,
+              fontWeight: 500,
+              color: "var(--color-text-secondary)",
+              opacity: isFetching ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw
+              size={13}
+              style={{ animation: isFetching ? "spin 1s linear infinite" : "none" }}
+            />
+            {isFetching ? "Searching…" : "Re-search"}
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--color-text-muted)",
+              display: "flex",
+              padding: 4,
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Pack-type filter pills */}
@@ -753,7 +787,9 @@ export default function ManualSearchModal({
                 <th style={sortableThStyle("size")} onClick={() => toggleSort("size")}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Size {sortIcon("size")}</span>
                 </th>
-                <th style={thStyle}>Quality</th>
+                <th style={sortableThStyle("quality")} onClick={() => toggleSort("quality")}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Quality {sortIcon("quality")}</span>
+                </th>
                 <th style={sortableThStyle("seeds")} onClick={() => toggleSort("seeds")}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>Seeds (indexer) {sortIcon("seeds")}</span>
                 </th>
