@@ -49,6 +49,7 @@ function SeasonEpisodeList({
   isAutoSearching,
   fetchSeasonNumber,
   filterEpisodeIDs,
+  displayEpisodeOffset,
   onMonitorOverride,
 }: {
   seriesId: string;
@@ -58,20 +59,33 @@ function SeasonEpisodeList({
   onAutoSearch: (target: SearchTarget) => void;
   isAutoSearching: boolean;
   // fetchSeasonNumber overrides which TMDB season to fetch episodes
-  // from. Cours have season.season_number = the cour identifier (e.g. 3
-  // for "Season 3"), but the underlying episodes live in TMDB Season 1.
+  // from AND the season number passed to the backend for search/grab.
+  // Cours have season.season_number = the cour identifier (e.g. 3 for
+  // "Season 3"), but episodes live in a different TMDB season (0 for
+  // specials, 1 for typical cours). The backend's search filter resolves
+  // releases against TMDB-relative coords (Phase 2A handles the
+  // TVDB→absolute conversion), so we must pass the TMDB season here.
   // Defaults to season.season_number when omitted (non-anime path).
   fetchSeasonNumber?: number;
   // filterEpisodeIDs, when provided, narrows the rendered episode list
   // to just those IDs. Used for cour mode to slice the TMDB season's
   // full episode list down to the cour's window.
   filterEpisodeIDs?: Set<string>;
+  // displayEpisodeOffset shifts the displayed episode number for
+  // cour-relative numbering — e.g. cour 3 starts at TMDB ep 48 with
+  // offset=47, so the user sees "3x01" instead of "3x48". Search and
+  // grab calls still use the underlying TMDB-relative episode number.
+  displayEpisodeOffset?: number;
   // onMonitorOverride replaces the default season-monitor mutation.
   // For cours we hit the cour endpoint instead of the season endpoint.
   onMonitorOverride?: (monitored: boolean) => void;
 }) {
-  const fetchSeason = fetchSeasonNumber ?? season.season_number;
-  const { data: episodesAll, isLoading } = useEpisodes(seriesId, fetchSeason);
+  // apiSeasonNumber is the season used for backend API calls (search,
+  // grab, episode-list fetch). For cour mode this is the underlying
+  // TMDB season, not the cour identifier — the backend's filter
+  // resolves against TMDB-relative coords.
+  const apiSeasonNumber = fetchSeasonNumber ?? season.season_number;
+  const { data: episodesAll, isLoading } = useEpisodes(seriesId, apiSeasonNumber);
   const episodes = useMemo(() => {
     if (!episodesAll) return undefined;
     if (!filterEpisodeIDs) return episodesAll;
@@ -119,7 +133,7 @@ function SeasonEpisodeList({
   const handleBulkMonitor = (monitored: boolean) => {
     for (const id of selected) {
       const ep = episodes?.find((e: Episode) => e.id === id);
-      if (ep) updateEpMonitored.mutate({ episodeId: id, monitored, seasonNumber: season.season_number });
+      if (ep) updateEpMonitored.mutate({ episodeId: id, monitored, seasonNumber: apiSeasonNumber });
     }
     setSelected(new Set());
   };
@@ -150,8 +164,8 @@ function SeasonEpisodeList({
             updateSeasonMonitored.mutate({ seasonId: season.id, monitored: !season.monitored });
           }
         }}
-        onInteractiveSearch={() => onSearch({ seriesId, seasonNumber: season.season_number })}
-        onAutoSearchSeason={() => onAutoSearch({ seriesId, seasonNumber: season.season_number })}
+        onInteractiveSearch={() => onSearch({ seriesId, seasonNumber: apiSeasonNumber })}
+        onAutoSearchSeason={() => onAutoSearch({ seriesId, seasonNumber: apiSeasonNumber })}
         isAutoSearching={isAutoSearching}
       />
 
@@ -167,11 +181,12 @@ function SeasonEpisodeList({
               episode={ep}
               file={fileMap.get(ep.id)}
               seasonNumber={season.season_number}
+              displayEpisodeOffset={displayEpisodeOffset}
               selected={selected.has(ep.id)}
               onToggleSelect={() => toggleSelect(ep.id)}
-              onToggleMonitor={() => updateEpMonitored.mutate({ episodeId: ep.id, monitored: !ep.monitored, seasonNumber: season.season_number })}
-              onSearch={() => onSearch({ seriesId, seasonNumber: season.season_number, episodeNumber: ep.episode_number })}
-              onAutoSearch={() => onAutoSearch({ seriesId, seasonNumber: season.season_number, episodeNumber: ep.episode_number })}
+              onToggleMonitor={() => updateEpMonitored.mutate({ episodeId: ep.id, monitored: !ep.monitored, seasonNumber: apiSeasonNumber })}
+              onSearch={() => onSearch({ seriesId, seasonNumber: apiSeasonNumber, episodeNumber: ep.episode_number })}
+              onAutoSearch={() => onAutoSearch({ seriesId, seasonNumber: apiSeasonNumber, episodeNumber: ep.episode_number })}
             />
           ))}
         </div>
@@ -184,7 +199,7 @@ function SeasonEpisodeList({
         onSearch={() => {
           for (const id of selected) {
             const ep = episodes?.find((e: Episode) => e.id === id);
-            if (ep) onSearch({ seriesId, seasonNumber: season.season_number, episodeNumber: ep.episode_number });
+            if (ep) onSearch({ seriesId, seasonNumber: apiSeasonNumber, episodeNumber: ep.episode_number });
           }
           setSelected(new Set());
         }}
@@ -263,6 +278,18 @@ export default function SeriesDetail() {
   const courEpisodeIDsByCour = useMemo(() => {
     const m = new Map<number, Set<string>>();
     for (const c of cours ?? []) m.set(c.tvdb_season, new Set(c.episode_ids));
+    return m;
+  }, [cours]);
+
+  // Per-cour TMDB-shape metadata — fetch the right TMDB season for each
+  // cour (specials live in TMDB Season 0; the rest typically Season 1)
+  // and subtract the per-cour episode offset for cour-relative display
+  // (cour 3 ep "3x48" → "3x01").
+  const courMetaByCour = useMemo(() => {
+    const m = new Map<number, { tmdbSeason: number; episodeOffset: number }>();
+    for (const c of cours ?? []) {
+      m.set(c.tvdb_season, { tmdbSeason: c.tmdb_season, episodeOffset: c.episode_offset });
+    }
     return m;
   }, [cours]);
 
@@ -440,12 +467,13 @@ export default function SeriesDetail() {
               onSearch={setSearchTarget}
               onAutoSearch={handleAutoSearch}
               isAutoSearching={autoSearch.isPending}
-              // Cour mode: fetch the underlying TMDB Season 1 episodes
-              // and filter to the cour's window. The cour's tvdb_season
-              // is what the user sees, but episode data lives under
-              // TMDB Season 1.
-              fetchSeasonNumber={useCourMode ? 1 : undefined}
+              // Cour mode: fetch the underlying TMDB season for THIS
+              // cour (specials use 0, normal cours typically 1) and
+              // filter to just the cour's episode window. The cour's
+              // tvdb_season is what the user sees in the pill label.
+              fetchSeasonNumber={useCourMode ? courMetaByCour.get(selectedSeason.season_number)?.tmdbSeason : undefined}
               filterEpisodeIDs={useCourMode ? courEpisodeIDsByCour.get(selectedSeason.season_number) : undefined}
+              displayEpisodeOffset={useCourMode ? courMetaByCour.get(selectedSeason.season_number)?.episodeOffset : undefined}
               onMonitorOverride={useCourMode ? (monitored) => updateCourMonitored.mutate({ tvdbSeason: selectedSeason.season_number, monitored }) : undefined}
             />
           ) : (

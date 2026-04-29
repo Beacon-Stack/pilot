@@ -44,7 +44,9 @@ func episodeID(n int) string {
 }
 
 // Headline test: JJK with all 59 episodes available → three cours
-// with the right windows (24, 23, 12 episodes).
+// with the right windows (24, 23, 12 episodes), each carrying the
+// metadata the UI needs for cour-relative numbering and per-cour
+// episode fetching.
 func TestBuildCours_JujutsuKaisenSplitsCorrectly(t *testing.T) {
 	episodes := makeEpisodes(59, false)
 	parentMonitored := map[int]bool{1: true}
@@ -55,17 +57,23 @@ func TestBuildCours_JujutsuKaisenSplitsCorrectly(t *testing.T) {
 		t.Fatalf("len(cours) = %d, want 3", len(cours))
 	}
 	wants := []struct {
-		tvdb, count int
-		first, last string
+		tvdb, count, tmdbSeason, offset int
+		first, last                     string
 	}{
-		{1, 24, "ep01", "ep24"},
-		{2, 23, "ep25", "ep47"},
-		{3, 12, "ep48", "ep59"},
+		{1, 24, 1, 0, "ep01", "ep24"},
+		{2, 23, 1, 24, "ep25", "ep47"},
+		{3, 12, 1, 47, "ep48", "ep59"},
 	}
 	for i, w := range wants {
 		got := cours[i]
 		if got.TVDBSeason != w.tvdb {
 			t.Errorf("cour %d: TVDBSeason = %d, want %d", i, got.TVDBSeason, w.tvdb)
+		}
+		if got.TMDBSeason != w.tmdbSeason {
+			t.Errorf("cour %d: TMDBSeason = %d, want %d", i, got.TMDBSeason, w.tmdbSeason)
+		}
+		if got.EpisodeOffset != w.offset {
+			t.Errorf("cour %d: EpisodeOffset = %d, want %d", i, got.EpisodeOffset, w.offset)
 		}
 		if got.EpisodeCount != int64(w.count) {
 			t.Errorf("cour %d: EpisodeCount = %d, want %d", i, got.EpisodeCount, w.count)
@@ -79,6 +87,27 @@ func TestBuildCours_JujutsuKaisenSplitsCorrectly(t *testing.T) {
 		if len(got.EpisodeIDs) > 0 && got.EpisodeIDs[len(got.EpisodeIDs)-1] != w.last {
 			t.Errorf("cour %d: last ep = %q, want %q", i, got.EpisodeIDs[len(got.EpisodeIDs)-1], w.last)
 		}
+	}
+}
+
+// Specials must carry TMDBSeason=0 and EpisodeOffset=0 so the UI
+// fetches /seasons/0/episodes (where they actually live) rather than
+// /seasons/1/episodes (which would return 0 matches).
+func TestBuildCours_SpecialsCarryTMDBSeasonZero(t *testing.T) {
+	episodes := makeEpisodes(59, false)
+	episodes = append(episodes,
+		db.Episode{ID: "sp01", SeasonNumber: 0, EpisodeNumber: 1},
+	)
+	cours := buildCours(jjkBounds, episodes, nil, nil, map[int]bool{0: true, 1: true})
+
+	if cours[0].TVDBSeason != 0 {
+		t.Fatalf("expected specials first; got TVDBSeason=%d", cours[0].TVDBSeason)
+	}
+	if cours[0].TMDBSeason != 0 {
+		t.Errorf("specials TMDBSeason = %d, want 0", cours[0].TMDBSeason)
+	}
+	if cours[0].EpisodeOffset != 0 {
+		t.Errorf("specials EpisodeOffset = %d, want 0", cours[0].EpisodeOffset)
 	}
 }
 

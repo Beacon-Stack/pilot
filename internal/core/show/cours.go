@@ -19,6 +19,16 @@ type Cour struct {
 	// Anime-Lists' defaulttvdbseason attribute. The frontend renders
 	// this as the season number ("Season 3").
 	TVDBSeason int
+	// TMDBSeason is the underlying TMDB season this cour pulls episodes
+	// from. Almost always 1 for multi-cour anime; 0 for the specials
+	// bucket. The UI uses this to fetch the correct season's episode
+	// list before filtering down to the cour's window.
+	TMDBSeason int
+	// EpisodeOffset is the count of TMDB episodes that sit before this
+	// cour within the same TMDBSeason. The UI subtracts this from each
+	// TMDB-relative episode number to display cour-relative numbers
+	// ("3x01" instead of "3x48"). Always 0 for specials and for cour 1.
+	EpisodeOffset int
 	// Name is the human-readable cour title from AniDB ("Jujutsu Kaisen
 	// Shimetsu Kaiyuu - Zenpen") when available; falls back to a
 	// generic "Season N" string in the API layer.
@@ -144,8 +154,13 @@ func buildCours(
 
 	// Specials always come first (TVDBSeason=0). They don't participate
 	// in cour layout — surface them as their own bucket if present.
+	// TMDBSeason=0, EpisodeOffset=0 — specials use their own number
+	// space starting at 1.
 	if specials, ok := bySeason[0]; ok && len(specials) > 0 {
-		out = append(out, courFromEpisodes(0, "Specials", specials, sizeByEpisode, overrideByCour, parentMonitored))
+		c := courFromEpisodes(0, "Specials", specials, sizeByEpisode, overrideByCour, parentMonitored)
+		c.TMDBSeason = 0
+		c.EpisodeOffset = 0
+		out = append(out, c)
 	}
 
 	// For each cour, compute its episode-number window within the
@@ -186,6 +201,8 @@ func buildCours(
 		}
 		c := courFromEpisodes(b.TVDBSeason, b.Name, slice, sizeByEpisode, overrideByCour, parentMonitored)
 		c.TVDBSeason = b.TVDBSeason // keep the cour identifier even when slice is empty
+		c.TMDBSeason = b.TMDBSeason
+		c.EpisodeOffset = b.TMDBOffset
 		out = append(out, c)
 	}
 

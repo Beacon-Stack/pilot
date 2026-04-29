@@ -195,13 +195,15 @@ type updateSeasonInput struct {
 // anime "season" projected from the Anime-Lists XML rather than from
 // the underlying TMDB-shape DB rows. See show.Cour for semantics.
 type courBody struct {
-	TVDBSeason       int      `json:"tvdb_season"        doc:"Cour identifier; renders as the season number in the UI (0 = specials)"`
-	Name             string   `json:"name"               doc:"Cour name from AniDB; empty for specials"`
-	Monitored        bool     `json:"monitored"          doc:"Effective monitored bit (override > parent season > true)"`
-	EpisodeCount     int64    `json:"episode_count"      doc:"Episodes belonging to this cour"`
-	EpisodeFileCount int64    `json:"episode_file_count" doc:"Episodes in this cour with a file on disk"`
-	TotalSizeBytes   int64    `json:"total_size_bytes"   doc:"Sum of episode-file sizes for this cour"`
-	EpisodeIDs       []string `json:"episode_ids"      doc:"Episode UUIDs in TMDB-relative episode order"`
+	TVDBSeason       int      `json:"tvdb_season"          doc:"Cour identifier; renders as the season number in the UI (0 = specials)"`
+	TMDBSeason       int      `json:"tmdb_season"          doc:"Underlying TMDB season the cour pulls episodes from (0 for specials, almost always 1 otherwise)"`
+	EpisodeOffset    int      `json:"episode_offset"       doc:"Count of TMDB-season episodes before this cour; UI subtracts this for cour-relative numbering (3x48 → 3x01)"`
+	Name             string   `json:"name"                 doc:"Cour name from AniDB; empty for specials"`
+	Monitored        bool     `json:"monitored"            doc:"Effective monitored bit (override > parent season > true)"`
+	EpisodeCount     int64    `json:"episode_count"        doc:"Episodes belonging to this cour"`
+	EpisodeFileCount int64    `json:"episode_file_count"   doc:"Episodes in this cour with a file on disk"`
+	TotalSizeBytes   int64    `json:"total_size_bytes"     doc:"Sum of episode-file sizes for this cour"`
+	EpisodeIDs       []string `json:"episode_ids"          doc:"Episode UUIDs in TMDB-relative episode order"`
 }
 
 type courListOutput struct {
@@ -261,6 +263,8 @@ func seriesToBody(s show.Series) *seriesBody {
 func courToBody(c show.Cour) *courBody {
 	return &courBody{
 		TVDBSeason:       c.TVDBSeason,
+		TMDBSeason:       c.TMDBSeason,
+		EpisodeOffset:    c.EpisodeOffset,
 		Name:             c.Name,
 		Monitored:        c.Monitored,
 		EpisodeCount:     c.EpisodeCount,

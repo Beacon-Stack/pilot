@@ -7,6 +7,11 @@ interface Props {
   episode: Episode;
   file?: EpisodeFile;
   seasonNumber: number;
+  // displayEpisodeOffset is subtracted from the episode's TMDB-relative
+  // episode number for display only — used by anime cour mode where
+  // TMDB episode 48 is "3x01" of cour 3 (offset=47). All grab/search
+  // calls still use the TMDB-relative value from the episode object.
+  displayEpisodeOffset?: number;
   selected: boolean;
   onToggleSelect: () => void;
   onToggleMonitor: () => void;
@@ -16,13 +21,14 @@ interface Props {
 }
 
 export default function EpisodeRow({
-  episode, file, seasonNumber, selected,
+  episode, file, seasonNumber, displayEpisodeOffset, selected,
   onToggleSelect, onToggleMonitor, onSearch, onAutoSearch, onDeleteFile,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const ep = episode;
   const aired = ep.air_date ? new Date(ep.air_date) <= new Date() : false;
-  const epNum = `${seasonNumber}x${String(ep.episode_number).padStart(2, "0")}`;
+  const displayedEpisode = ep.episode_number - (displayEpisodeOffset ?? 0);
+  const epNum = `${seasonNumber}x${String(displayedEpisode).padStart(2, "0")}`;
 
   return (
     <div

@@ -53,6 +53,12 @@ export interface Season {
 // UI renders them as if they were seasons.
 export interface Cour {
   tvdb_season: number;
+  // tmdb_season is the season we should fetch episodes from for this
+  // cour. 0 for specials, otherwise normally 1.
+  tmdb_season: number;
+  // episode_offset is subtracted from TMDB-relative episode numbers
+  // to display cour-relative ones (3x48 → 3x01 for cour 3 of JJK).
+  episode_offset: number;
   name: string;
   monitored: boolean;
   episode_count: number;
