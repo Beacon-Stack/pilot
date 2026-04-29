@@ -400,6 +400,69 @@ func (q *Queries) ListGrabHistoryBySeries(ctx context.Context, seriesID string) 
 	return items, nil
 }
 
+const listGrabHistoryByStatusSince = `-- name: ListGrabHistoryByStatusSince :many
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history
+WHERE download_status = $1::text
+  AND grabbed_at > $2::text
+ORDER BY grabbed_at DESC
+LIMIT $3
+`
+
+type ListGrabHistoryByStatusSinceParams struct {
+	Status string `json:"status"`
+	Since  string `json:"since"`
+	Limit  int32  `json:"limit"`
+}
+
+// Used by the Activity page's "Recently imported" and "Needs attention" rails
+// to window grabs by terminal status and time. The ::text casts make the
+// types explicit to the planner; grab_history.grabbed_at is TEXT-encoded
+// RFC3339 so the comparison is lexicographic but order-preserving.
+func (q *Queries) ListGrabHistoryByStatusSince(ctx context.Context, arg ListGrabHistoryByStatusSinceParams) ([]GrabHistory, error) {
+	rows, err := q.db.QueryContext(ctx, listGrabHistoryByStatusSince, arg.Status, arg.Since, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GrabHistory
+	for rows.Next() {
+		var i GrabHistory
+		if err := rows.Scan(
+			&i.ID,
+			&i.SeriesID,
+			&i.EpisodeID,
+			&i.SeasonNumber,
+			&i.IndexerID,
+			&i.ReleaseGuid,
+			&i.ReleaseTitle,
+			&i.ReleaseSource,
+			&i.ReleaseResolution,
+			&i.ReleaseCodec,
+			&i.ReleaseHdr,
+			&i.Protocol,
+			&i.Size,
+			&i.DownloadClientID,
+			&i.ClientItemID,
+			&i.DownloadStatus,
+			&i.DownloadedBytes,
+			&i.ScoreBreakdown,
+			&i.GrabbedAt,
+			&i.Source,
+			&i.InfoHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markGrabRemoved = `-- name: MarkGrabRemoved :exec
 UPDATE grab_history SET download_status = 'removed' WHERE id = $1
 `
