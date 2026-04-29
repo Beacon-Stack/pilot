@@ -49,6 +49,8 @@ type RouterConfig struct {
 	DBType                 string
 	DBPath                 string
 	ConfigFile             string
+	TMDBKeyConfigured      bool
+	TMDBKeyIsDefault       bool
 	LogBuffer              *logging.RingBuffer
 	Queries                db.Querier
 	ShowService            *show.Service
@@ -161,7 +163,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		_ = huma.WriteErr(humaAPI, ctx, http.StatusUnauthorized, "A valid X-Api-Key header is required.")
 	})
 
-	v1.RegisterSystemRoutes(humaAPI, cfg.StartTime, cfg.DBType, cfg.DBPath, cfg.ConfigFile, cfg.Auth.Value(), cfg.Logger)
+	v1.RegisterSystemRoutes(humaAPI, cfg.StartTime, cfg.DBType, cfg.DBPath, cfg.ConfigFile, cfg.Auth.Value(), cfg.TMDBKeyConfigured, cfg.TMDBKeyIsDefault, cfg.Logger)
+	v1.RegisterRuntimeRoutes(humaAPI, cfg.StartTime)
+	v1.RegisterEnvRoutes(humaAPI)
 	v1.RegisterFilesystemRoutes(humaAPI)
 
 	if cfg.LogBuffer != nil {

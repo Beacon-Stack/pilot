@@ -30,10 +30,10 @@ export default function ProvidersSettings() {
       />
 
       <ProviderRow
-        name="tvdb"
-        label="TVDB (TheMovieDB) API Key"
+        name="tmdb"
+        label="TMDB API Key"
         signupUrl="https://www.themoviedb.org/settings/api"
-        description="Used for TV series metadata lookup. Required to add new series."
+        description="Used for TV series metadata lookup. Required to add new series. The same key works in Prism for movies."
       />
     </div>
   );

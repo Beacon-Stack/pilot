@@ -27,7 +27,7 @@ import (
 // Provider identifiers — used as DB keys in the settings table and as
 // API path segments.
 const (
-	TVDB  = "tvdb"
+	TMDB  = "tmdb"
 	Trakt = "trakt"
 )
 
@@ -141,7 +141,7 @@ func overrideKey(name string) string { return "provider." + name + ".api_key" }
 
 func isKnown(name string) bool {
 	switch name {
-	case TVDB, Trakt:
+	case TMDB, Trakt:
 		return true
 	}
 	return false
@@ -149,7 +149,7 @@ func isKnown(name string) bool {
 
 func bakedDefault(name string) string {
 	switch name {
-	case TVDB:
+	case TMDB:
 		return config.DefaultTMDBKey()
 	case Trakt:
 		return config.DefaultTraktClientID()

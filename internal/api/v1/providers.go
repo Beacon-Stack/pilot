@@ -10,7 +10,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/provider"
 )
 
-// Providers API — rotates the baked-in TVDB / Trakt keys without
+// Providers API — rotates the baked-in TMDB / Trakt keys without
 // rebuilding the image. Read endpoints return a redacted preview and
 // the source ("default" | "override"); the actual key value is never
 // sent back through any endpoint.
@@ -19,7 +19,7 @@ import (
 // is constructed once at startup. Documented in the UI copy.
 
 type providerStatusInput struct {
-	Name string `path:"name" doc:"Provider name: tvdb | trakt"`
+	Name string `path:"name" doc:"Provider name: tmdb | trakt"`
 }
 
 type providerStatusOutput struct {

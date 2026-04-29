@@ -4,13 +4,13 @@ INSERT INTO series (
     overview, runtime_minutes, genres_json, poster_url, fanart_url,
     status, series_type, monitor_type, network, air_time, certification,
     monitored, library_id, quality_profile_id, path,
-    added_at, updated_at, metadata_refreshed_at
+    added_at, updated_at, metadata_refreshed_at, alternate_titles
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, $14, $15, $16, $17,
     $18, $19, $20, $21,
-    $22, $23, $24
+    $22, $23, $24, $25
 )
 RETURNING *;
 
@@ -63,8 +63,9 @@ UPDATE series SET
     air_time              = $12,
     certification         = $13,
     metadata_refreshed_at = $14,
-    updated_at            = $15
-WHERE id = $16
+    updated_at            = $15,
+    alternate_titles      = $16
+WHERE id = $17
 RETURNING *;
 
 -- name: DeleteSeries :exec

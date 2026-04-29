@@ -13,6 +13,9 @@ import "encoding/base64"
 // api key." Anyone with a debugger or the source code can still
 // recover the plaintext; the goal here is casual-attacker deterrence,
 // not real confidentiality.
+//
+// Pilot's metadata client is TMDB-TV (themoviedb.org's TV API) — TMDB
+// covers both movies and TV, so one key works for Pilot and Prism.
 var (
 	obfuscatedTMDBKey       string
 	tmdbKeyXORKey           string

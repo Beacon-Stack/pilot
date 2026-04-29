@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 )
 
 const countSeries = `-- name: CountSeries :one
@@ -38,42 +39,43 @@ INSERT INTO series (
     overview, runtime_minutes, genres_json, poster_url, fanart_url,
     status, series_type, monitor_type, network, air_time, certification,
     monitored, library_id, quality_profile_id, path,
-    added_at, updated_at, metadata_refreshed_at
+    added_at, updated_at, metadata_refreshed_at, alternate_titles
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
     $12, $13, $14, $15, $16, $17,
     $18, $19, $20, $21,
-    $22, $23, $24
+    $22, $23, $24, $25
 )
-RETURNING id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at
+RETURNING id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at, alternate_titles
 `
 
 type CreateSeriesParams struct {
-	ID                  string         `json:"id"`
-	TmdbID              int32          `json:"tmdbId"`
-	ImdbID              sql.NullString `json:"imdbId"`
-	Title               string         `json:"title"`
-	SortTitle           string         `json:"sortTitle"`
-	Year                int32          `json:"year"`
-	Overview            string         `json:"overview"`
-	RuntimeMinutes      sql.NullInt32  `json:"runtimeMinutes"`
-	GenresJson          string         `json:"genresJson"`
-	PosterUrl           sql.NullString `json:"posterUrl"`
-	FanartUrl           sql.NullString `json:"fanartUrl"`
-	Status              string         `json:"status"`
-	SeriesType          string         `json:"seriesType"`
-	MonitorType         string         `json:"monitorType"`
-	Network             sql.NullString `json:"network"`
-	AirTime             sql.NullString `json:"airTime"`
-	Certification       sql.NullString `json:"certification"`
-	Monitored           bool           `json:"monitored"`
-	LibraryID           string         `json:"libraryId"`
-	QualityProfileID    string         `json:"qualityProfileId"`
-	Path                sql.NullString `json:"path"`
-	AddedAt             string         `json:"addedAt"`
-	UpdatedAt           string         `json:"updatedAt"`
-	MetadataRefreshedAt sql.NullString `json:"metadataRefreshedAt"`
+	ID                  string          `json:"id"`
+	TmdbID              int32           `json:"tmdbId"`
+	ImdbID              sql.NullString  `json:"imdbId"`
+	Title               string          `json:"title"`
+	SortTitle           string          `json:"sortTitle"`
+	Year                int32           `json:"year"`
+	Overview            string          `json:"overview"`
+	RuntimeMinutes      sql.NullInt32   `json:"runtimeMinutes"`
+	GenresJson          string          `json:"genresJson"`
+	PosterUrl           sql.NullString  `json:"posterUrl"`
+	FanartUrl           sql.NullString  `json:"fanartUrl"`
+	Status              string          `json:"status"`
+	SeriesType          string          `json:"seriesType"`
+	MonitorType         string          `json:"monitorType"`
+	Network             sql.NullString  `json:"network"`
+	AirTime             sql.NullString  `json:"airTime"`
+	Certification       sql.NullString  `json:"certification"`
+	Monitored           bool            `json:"monitored"`
+	LibraryID           string          `json:"libraryId"`
+	QualityProfileID    string          `json:"qualityProfileId"`
+	Path                sql.NullString  `json:"path"`
+	AddedAt             string          `json:"addedAt"`
+	UpdatedAt           string          `json:"updatedAt"`
+	MetadataRefreshedAt sql.NullString  `json:"metadataRefreshedAt"`
+	AlternateTitles     json.RawMessage `json:"alternateTitles"`
 }
 
 func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (Series, error) {
@@ -102,6 +104,7 @@ func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (Ser
 		arg.AddedAt,
 		arg.UpdatedAt,
 		arg.MetadataRefreshedAt,
+		arg.AlternateTitles,
 	)
 	var i Series
 	err := row.Scan(
@@ -129,6 +132,7 @@ func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (Ser
 		&i.AddedAt,
 		&i.UpdatedAt,
 		&i.MetadataRefreshedAt,
+		&i.AlternateTitles,
 	)
 	return i, err
 }
@@ -143,7 +147,7 @@ func (q *Queries) DeleteSeries(ctx context.Context, id string) error {
 }
 
 const getSeries = `-- name: GetSeries :one
-SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at FROM series WHERE id = $1
+SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at, alternate_titles FROM series WHERE id = $1
 `
 
 func (q *Queries) GetSeries(ctx context.Context, id string) (Series, error) {
@@ -174,12 +178,13 @@ func (q *Queries) GetSeries(ctx context.Context, id string) (Series, error) {
 		&i.AddedAt,
 		&i.UpdatedAt,
 		&i.MetadataRefreshedAt,
+		&i.AlternateTitles,
 	)
 	return i, err
 }
 
 const getSeriesByTMDBID = `-- name: GetSeriesByTMDBID :one
-SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at FROM series WHERE tmdb_id = $1
+SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at, alternate_titles FROM series WHERE tmdb_id = $1
 `
 
 func (q *Queries) GetSeriesByTMDBID(ctx context.Context, tmdbID int32) (Series, error) {
@@ -210,6 +215,7 @@ func (q *Queries) GetSeriesByTMDBID(ctx context.Context, tmdbID int32) (Series, 
 		&i.AddedAt,
 		&i.UpdatedAt,
 		&i.MetadataRefreshedAt,
+		&i.AlternateTitles,
 	)
 	return i, err
 }
@@ -242,7 +248,7 @@ func (q *Queries) ListAllTMDBIDs(ctx context.Context) ([]int32, error) {
 }
 
 const listMonitoredSeries = `-- name: ListMonitoredSeries :many
-SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at FROM series WHERE monitored = TRUE ORDER BY sort_title ASC
+SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at, alternate_titles FROM series WHERE monitored = TRUE ORDER BY sort_title ASC
 `
 
 func (q *Queries) ListMonitoredSeries(ctx context.Context) ([]Series, error) {
@@ -279,6 +285,7 @@ func (q *Queries) ListMonitoredSeries(ctx context.Context) ([]Series, error) {
 			&i.AddedAt,
 			&i.UpdatedAt,
 			&i.MetadataRefreshedAt,
+			&i.AlternateTitles,
 		); err != nil {
 			return nil, err
 		}
@@ -294,7 +301,7 @@ func (q *Queries) ListMonitoredSeries(ctx context.Context) ([]Series, error) {
 }
 
 const listSeries = `-- name: ListSeries :many
-SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at FROM series ORDER BY sort_title ASC LIMIT $1 OFFSET $2
+SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at, alternate_titles FROM series ORDER BY sort_title ASC LIMIT $1 OFFSET $2
 `
 
 type ListSeriesParams struct {
@@ -336,6 +343,7 @@ func (q *Queries) ListSeries(ctx context.Context, arg ListSeriesParams) ([]Serie
 			&i.AddedAt,
 			&i.UpdatedAt,
 			&i.MetadataRefreshedAt,
+			&i.AlternateTitles,
 		); err != nil {
 			return nil, err
 		}
@@ -351,7 +359,7 @@ func (q *Queries) ListSeries(ctx context.Context, arg ListSeriesParams) ([]Serie
 }
 
 const listSeriesByLibrary = `-- name: ListSeriesByLibrary :many
-SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at FROM series WHERE library_id = $1 ORDER BY sort_title ASC LIMIT $2 OFFSET $3
+SELECT id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at, alternate_titles FROM series WHERE library_id = $1 ORDER BY sort_title ASC LIMIT $2 OFFSET $3
 `
 
 type ListSeriesByLibraryParams struct {
@@ -394,6 +402,7 @@ func (q *Queries) ListSeriesByLibrary(ctx context.Context, arg ListSeriesByLibra
 			&i.AddedAt,
 			&i.UpdatedAt,
 			&i.MetadataRefreshedAt,
+			&i.AlternateTitles,
 		); err != nil {
 			return nil, err
 		}
@@ -418,7 +427,7 @@ UPDATE series SET
     path               = $6,
     updated_at         = $7
 WHERE id = $8
-RETURNING id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at
+RETURNING id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at, alternate_titles
 `
 
 type UpdateSeriesParams struct {
@@ -469,6 +478,7 @@ func (q *Queries) UpdateSeries(ctx context.Context, arg UpdateSeriesParams) (Ser
 		&i.AddedAt,
 		&i.UpdatedAt,
 		&i.MetadataRefreshedAt,
+		&i.AlternateTitles,
 	)
 	return i, err
 }
@@ -489,28 +499,30 @@ UPDATE series SET
     air_time              = $12,
     certification         = $13,
     metadata_refreshed_at = $14,
-    updated_at            = $15
-WHERE id = $16
-RETURNING id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at
+    updated_at            = $15,
+    alternate_titles      = $16
+WHERE id = $17
+RETURNING id, tmdb_id, imdb_id, title, sort_title, year, overview, runtime_minutes, genres_json, poster_url, fanart_url, status, series_type, monitor_type, network, air_time, certification, monitored, library_id, quality_profile_id, path, added_at, updated_at, metadata_refreshed_at, alternate_titles
 `
 
 type UpdateSeriesMetadataParams struct {
-	ImdbID              sql.NullString `json:"imdbId"`
-	Title               string         `json:"title"`
-	SortTitle           string         `json:"sortTitle"`
-	Year                int32          `json:"year"`
-	Overview            string         `json:"overview"`
-	RuntimeMinutes      sql.NullInt32  `json:"runtimeMinutes"`
-	GenresJson          string         `json:"genresJson"`
-	PosterUrl           sql.NullString `json:"posterUrl"`
-	FanartUrl           sql.NullString `json:"fanartUrl"`
-	Status              string         `json:"status"`
-	Network             sql.NullString `json:"network"`
-	AirTime             sql.NullString `json:"airTime"`
-	Certification       sql.NullString `json:"certification"`
-	MetadataRefreshedAt sql.NullString `json:"metadataRefreshedAt"`
-	UpdatedAt           string         `json:"updatedAt"`
-	ID                  string         `json:"id"`
+	ImdbID              sql.NullString  `json:"imdbId"`
+	Title               string          `json:"title"`
+	SortTitle           string          `json:"sortTitle"`
+	Year                int32           `json:"year"`
+	Overview            string          `json:"overview"`
+	RuntimeMinutes      sql.NullInt32   `json:"runtimeMinutes"`
+	GenresJson          string          `json:"genresJson"`
+	PosterUrl           sql.NullString  `json:"posterUrl"`
+	FanartUrl           sql.NullString  `json:"fanartUrl"`
+	Status              string          `json:"status"`
+	Network             sql.NullString  `json:"network"`
+	AirTime             sql.NullString  `json:"airTime"`
+	Certification       sql.NullString  `json:"certification"`
+	MetadataRefreshedAt sql.NullString  `json:"metadataRefreshedAt"`
+	UpdatedAt           string          `json:"updatedAt"`
+	AlternateTitles     json.RawMessage `json:"alternateTitles"`
+	ID                  string          `json:"id"`
 }
 
 func (q *Queries) UpdateSeriesMetadata(ctx context.Context, arg UpdateSeriesMetadataParams) (Series, error) {
@@ -530,6 +542,7 @@ func (q *Queries) UpdateSeriesMetadata(ctx context.Context, arg UpdateSeriesMeta
 		arg.Certification,
 		arg.MetadataRefreshedAt,
 		arg.UpdatedAt,
+		arg.AlternateTitles,
 		arg.ID,
 	)
 	var i Series
@@ -558,6 +571,7 @@ func (q *Queries) UpdateSeriesMetadata(ctx context.Context, arg UpdateSeriesMeta
 		&i.AddedAt,
 		&i.UpdatedAt,
 		&i.MetadataRefreshedAt,
+		&i.AlternateTitles,
 	)
 	return i, err
 }

@@ -162,6 +162,40 @@ func (c *Client) GetSeries(ctx context.Context, tmdbID int) (*SeriesDetail, erro
 	}, nil
 }
 
+// GetAlternativeTitles fetches the list of alternate titles TMDB knows
+// about for the series. Includes per-region marketing names ("Star Wars:
+// Andor" for "Andor"), original-language titles, and any user-submitted
+// aliases. The canonical title is NOT included — callers prepend it
+// themselves so the matcher checks against the full set.
+//
+// Returns an empty slice (no error) when TMDB has no alternates.
+func (c *Client) GetAlternativeTitles(ctx context.Context, tmdbID int) ([]string, error) {
+	var raw struct {
+		Results []struct {
+			Title string `json:"title"`
+		} `json:"results"`
+	}
+	path := fmt.Sprintf("/tv/%d/alternative_titles", tmdbID)
+	if err := c.get(ctx, path, nil, &raw); err != nil {
+		return nil, fmt.Errorf("tmdbtv get alt titles %d: %w", tmdbID, err)
+	}
+	titles := make([]string, 0, len(raw.Results))
+	seen := make(map[string]struct{}, len(raw.Results))
+	for _, r := range raw.Results {
+		t := strings.TrimSpace(r.Title)
+		if t == "" {
+			continue
+		}
+		key := strings.ToLower(t)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		titles = append(titles, t)
+	}
+	return titles, nil
+}
+
 // GetSeasonEpisodes fetches the episode list for a single season.
 func (c *Client) GetSeasonEpisodes(ctx context.Context, tmdbID int, seasonNum int) ([]EpisodeDetail, error) {
 	var raw struct {

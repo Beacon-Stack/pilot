@@ -8,13 +8,18 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Log      LogConfig      `mapstructure:"log"`
 	Auth     AuthConfig     `mapstructure:"auth"`
-	TVDB     TVDBConfig     `mapstructure:"tvdb"`
+	TMDB     TMDBConfig     `mapstructure:"tmdb"`
 	Trakt    TraktConfig    `mapstructure:"trakt"`
 	Pulse    PulseConfig    `mapstructure:"pulse"`
 
 	// ConfigFile is the path of the config file that was loaded, if any.
 	// Empty when running on defaults/env vars only.
 	ConfigFile string `mapstructure:"-"`
+
+	// TMDBKeyIsDefault is true when the TMDB key came from the build-time
+	// baked-in default rather than user config or env. Surfaced via
+	// /api/v1/system/config so the UI can prompt for a custom key.
+	TMDBKeyIsDefault bool `mapstructure:"-"`
 }
 
 // PulseConfig holds optional Beacon Pulse integration settings.
@@ -60,8 +65,10 @@ type AuthConfig struct {
 	APIKey Secret `mapstructure:"api_key"`
 }
 
-// TVDBConfig holds TheTVDB API credentials (placeholder — not wired up yet).
-type TVDBConfig struct {
+// TMDBConfig holds the TMDB (themoviedb.org) API credentials. Pilot uses
+// TMDB's TV API for series metadata; despite the name, TMDB covers both
+// movies and TV. A single TMDB key works for both Pilot and Prism.
+type TMDBConfig struct {
 	APIKey Secret `mapstructure:"api_key"`
 }
 

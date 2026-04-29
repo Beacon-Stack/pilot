@@ -36,7 +36,7 @@ func (f *fakeStore) DeleteSetting(_ context.Context, key string) error {
 func TestResolver_EffectiveKey_NoOverride_FallsBackToDefault(t *testing.T) {
 	// With no stored override and no baked default, effective key is empty.
 	r := NewResolver(newFakeStore())
-	key, source, err := r.EffectiveKey(context.Background(), TVDB)
+	key, source, err := r.EffectiveKey(context.Background(), TMDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,11 +52,11 @@ func TestResolver_EffectiveKey_Override_WinsOverDefault(t *testing.T) {
 	store := newFakeStore()
 	r := NewResolver(store)
 
-	if err := r.SetOverride(context.Background(), TVDB, "my-override-key"); err != nil {
+	if err := r.SetOverride(context.Background(), TMDB, "my-override-key"); err != nil {
 		t.Fatal(err)
 	}
 
-	key, source, err := r.EffectiveKey(context.Background(), TVDB)
+	key, source, err := r.EffectiveKey(context.Background(), TMDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,11 +71,11 @@ func TestResolver_EffectiveKey_Override_WinsOverDefault(t *testing.T) {
 func TestResolver_ClearOverride_RevertsToDefault(t *testing.T) {
 	r := NewResolver(newFakeStore())
 	ctx := context.Background()
-	if err := r.SetOverride(ctx, TVDB, "will-be-cleared"); err != nil {
+	if err := r.SetOverride(ctx, TMDB, "will-be-cleared"); err != nil {
 		t.Fatal(err)
 	}
 
-	has, err := r.HasOverride(ctx, TVDB)
+	has, err := r.HasOverride(ctx, TMDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,11 +83,11 @@ func TestResolver_ClearOverride_RevertsToDefault(t *testing.T) {
 		t.Fatal("expected override to exist before clear")
 	}
 
-	if err := r.ClearOverride(ctx, TVDB); err != nil {
+	if err := r.ClearOverride(ctx, TMDB); err != nil {
 		t.Fatal(err)
 	}
 
-	has, err = r.HasOverride(ctx, TVDB)
+	has, err = r.HasOverride(ctx, TMDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestResolver_ClearOverride_RevertsToDefault(t *testing.T) {
 		t.Error("expected override to be absent after clear")
 	}
 
-	_, source, err := r.EffectiveKey(ctx, TVDB)
+	_, source, err := r.EffectiveKey(ctx, TMDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,11 +107,11 @@ func TestResolver_ClearOverride_RevertsToDefault(t *testing.T) {
 func TestResolver_SetOverride_TrimsWhitespace(t *testing.T) {
 	r := NewResolver(newFakeStore())
 	ctx := context.Background()
-	if err := r.SetOverride(ctx, TVDB, "  key-with-whitespace\n"); err != nil {
+	if err := r.SetOverride(ctx, TMDB, "  key-with-whitespace\n"); err != nil {
 		t.Fatal(err)
 	}
 
-	key, _, err := r.EffectiveKey(ctx, TVDB)
+	key, _, err := r.EffectiveKey(ctx, TMDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestResolver_SetOverride_TrimsWhitespace(t *testing.T) {
 
 func TestResolver_SetOverride_RejectsEmpty(t *testing.T) {
 	r := NewResolver(newFakeStore())
-	if err := r.SetOverride(context.Background(), TVDB, "   "); err == nil {
+	if err := r.SetOverride(context.Background(), TMDB, "   "); err == nil {
 		t.Error("expected error when override value is empty after trim")
 	}
 }
@@ -145,10 +145,10 @@ func TestResolver_UnknownProvider_Rejected(t *testing.T) {
 func TestResolver_Preview_RedactsOverride(t *testing.T) {
 	r := NewResolver(newFakeStore())
 	ctx := context.Background()
-	if err := r.SetOverride(ctx, TVDB, "abcdef1234567890xyz"); err != nil {
+	if err := r.SetOverride(ctx, TMDB, "abcdef1234567890xyz"); err != nil {
 		t.Fatal(err)
 	}
-	preview, source, err := r.Preview(ctx, TVDB)
+	preview, source, err := r.Preview(ctx, TMDB)
 	if err != nil {
 		t.Fatal(err)
 	}

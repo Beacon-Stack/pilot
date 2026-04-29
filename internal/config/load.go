@@ -65,7 +65,7 @@ func Load(cfgFile string) (*Config, error) {
 
 	// Explicit bindings for keys that contain underscores.
 	_ = v.BindEnv("auth.api_key", "PILOT_AUTH_API_KEY")
-	_ = v.BindEnv("tvdb.api_key", "PILOT_TVDB_API_KEY")
+	_ = v.BindEnv("tmdb.api_key", "PILOT_TMDB_API_KEY")
 	_ = v.BindEnv("trakt.client_id", "PILOT_TRAKT_CLIENT_ID")
 	_ = v.BindEnv("database.path", "PILOT_DATABASE_PATH")
 	_ = v.BindEnv("database.dsn", "PILOT_DATABASE_DSN")
@@ -124,10 +124,13 @@ func Load(cfgFile string) (*Config, error) {
 	// Apply build-time default keys when no user-provided key is present.
 	// DefaultTMDBKey / DefaultTraktClientID de-obfuscate the XOR-masked
 	// ldflag vars on demand; empty-string return means the image wasn't
-	// built with a default.
-	if cfg.TVDB.APIKey.IsEmpty() {
+	// built with a default. cfg.TMDBKeyIsDefault tracks which path won so
+	// /api/v1/system/config can tell the UI whether to nudge the user
+	// toward setting their own key.
+	if cfg.TMDB.APIKey.IsEmpty() {
 		if baked := DefaultTMDBKey(); baked != "" {
-			cfg.TVDB.APIKey = Secret(baked)
+			cfg.TMDB.APIKey = Secret(baked)
+			cfg.TMDBKeyIsDefault = true
 		}
 	}
 	if cfg.Trakt.ClientID.IsEmpty() {
