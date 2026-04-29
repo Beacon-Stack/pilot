@@ -85,6 +85,17 @@ func (c *Client) Test(ctx context.Context) error {
 // downloads the .torrent file first and sends as a magnet or resolves the
 // redirect — this avoids Haul needing network access to Pulse.
 func (c *Client) Add(ctx context.Context, r plugin.Release) (string, error) {
+	// Reject empty download URL with a clear, actionable error before we
+	// ship the request off to Haul. This happens when the indexer's
+	// torznab response is missing the <enclosure> tag (some scrapers
+	// like Pulse's Pirate Bay produce this). Without the early check,
+	// Haul returns a confusing "either uri or file must be provided"
+	// 422 that makes the operator chase the wrong layer.
+	if r.DownloadURL == "" {
+		return "", fmt.Errorf("haul: release %q from indexer %q has no download URL — the torznab response is missing an enclosure tag; disable that indexer or fix its scraper definition",
+			r.Title, r.Indexer)
+	}
+
 	uri := r.DownloadURL
 
 	// If the download URL is an HTTP(S) URL (not a magnet), resolve it locally
@@ -94,6 +105,9 @@ func (c *Client) Add(ctx context.Context, r plugin.Release) (string, error) {
 		resolved, err := c.resolveDownloadURL(ctx, uri)
 		if err != nil {
 			return "", fmt.Errorf("haul: resolving download URL: %w", err)
+		}
+		if resolved == "" {
+			return "", fmt.Errorf("haul: download URL %q resolved to empty (torznab proxy returned no torrent or magnet) — try a different release", r.DownloadURL)
 		}
 		uri = resolved
 	}
