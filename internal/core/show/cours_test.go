@@ -3,6 +3,7 @@ package show
 import (
 	"database/sql"
 	"testing"
+	"time"
 
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
@@ -207,27 +208,115 @@ func TestBuildCours_NoParentNoOverrideDefaultsTrue(t *testing.T) {
 	}
 }
 
-// A cour whose declared TMDBSeason has no episodes in our DB is
-// hidden — the alternative ("0 episodes" phantom card) is worse UX.
-// The Jujutsu Kaisen wire case: cour 2 declares tmdbseason=2 but TMDB
-// itself has no Season 2 (cours 1+2 are folded into Season 1).
-func TestBuildCours_DropsCourWhenTMDBSeasonAbsent(t *testing.T) {
-	// Same bounds as JJK, but only TMDB Season 1 has episodes — cour 2
-	// (declared tmdbseason=2) finds no episodes and must be dropped.
+// JJK headline regression with realistic air dates. Cour 2 declares
+// tmdbseason=2 but TMDB has no Season 2; the algorithm must fold cour
+// 2 into TMDB Season 1, then use the air-date gap between ep 24
+// (Mar 2021) and ep 25 (Jul 2023) to split cours 1 and 2.
+func TestBuildCours_AirDateGapSplitsFoldedJJKCours(t *testing.T) {
 	bounds := []CourBound{
-		{TVDBSeason: 1, TMDBSeason: 1, TMDBOffset: 0},
-		{TVDBSeason: 2, TMDBSeason: 2, TMDBOffset: 0}, // missing season
-		{TVDBSeason: 3, TMDBSeason: 1, TMDBOffset: 47},
+		{TVDBSeason: 1, TMDBSeason: 1, TMDBOffset: 0, Name: "Jujutsu Kaisen"},
+		{TVDBSeason: 2, TMDBSeason: 2, TMDBOffset: 0, Name: "Jujutsu Kaisen 2"},
+		{TVDBSeason: 3, TMDBSeason: 1, TMDBOffset: 47, Name: "JJK Shimetsu Kaiyuu"},
 	}
-	episodes := makeEpisodes(59, false)
+	episodes := makeJJKEpisodes()
 	cours := buildCours(bounds, episodes, nil, nil, map[int]bool{1: true})
 
+	if len(cours) != 3 {
+		t.Fatalf("len(cours) = %d, want 3 (cour 2 folded, all three surface)", len(cours))
+	}
+	wants := []struct {
+		tvdb, count, offset int
+		firstEp, lastEp     int
+	}{
+		{1, 24, 0, 1, 24},
+		{2, 23, 24, 25, 47},
+		{3, 12, 47, 48, 59},
+	}
+	for i, w := range wants {
+		got := cours[i]
+		if got.TVDBSeason != w.tvdb {
+			t.Errorf("cour %d: TVDBSeason = %d, want %d", i, got.TVDBSeason, w.tvdb)
+		}
+		if got.EpisodeCount != int64(w.count) {
+			t.Errorf("cour %d: EpisodeCount = %d, want %d", i, got.EpisodeCount, w.count)
+		}
+		if got.EpisodeOffset != w.offset {
+			t.Errorf("cour %d: EpisodeOffset = %d, want %d", i, got.EpisodeOffset, w.offset)
+		}
+		if got.TMDBSeason != 1 {
+			t.Errorf("cour %d: TMDBSeason = %d, want 1 (folded into S1)", i, got.TMDBSeason)
+		}
+	}
+}
+
+// When a cour has no sibling at all (all cours' declared TMDB seasons
+// are empty), there's nowhere to fold to. The cour is dropped — the
+// caller produces no phantom card.
+func TestBuildCours_OrphanCourIsDropped(t *testing.T) {
+	bounds := []CourBound{
+		{TVDBSeason: 1, TMDBSeason: 99, TMDBOffset: 0, Name: "Orphan"},
+	}
+	cours := buildCours(bounds, makeEpisodes(10, false), nil, nil, nil)
+	if len(cours) != 0 {
+		t.Errorf("orphan cour should be dropped; got %d cours", len(cours))
+	}
+}
+
+// When air dates are missing or parse-broken, fall back to even
+// spacing so we still produce N+1 cours (better than dropping).
+func TestBuildCours_FallsBackToEvenSplitWhenNoAirDates(t *testing.T) {
+	bounds := []CourBound{
+		{TVDBSeason: 1, TMDBSeason: 1, TMDBOffset: 0},
+		{TVDBSeason: 2, TMDBSeason: 2, TMDBOffset: 0}, // forces fold
+	}
+	// 24 episodes, no air dates → no gap detection possible.
+	episodes := makeEpisodes(24, false)
+	cours := buildCours(bounds, episodes, nil, nil, map[int]bool{1: true})
 	if len(cours) != 2 {
-		t.Fatalf("len(cours) = %d, want 2 (cour 2 dropped, cours 1+3 kept)", len(cours))
+		t.Fatalf("len(cours) = %d, want 2", len(cours))
 	}
-	if cours[0].TVDBSeason != 1 || cours[1].TVDBSeason != 3 {
-		t.Errorf("got cours [%d, %d], want [1, 3]", cours[0].TVDBSeason, cours[1].TVDBSeason)
+	// Even split: roughly 12/12.
+	if cours[0].EpisodeCount+cours[1].EpisodeCount != 24 {
+		t.Errorf("even-split total = %d, want 24",
+			cours[0].EpisodeCount+cours[1].EpisodeCount)
 	}
+	if cours[0].EpisodeCount == 0 || cours[1].EpisodeCount == 0 {
+		t.Errorf("even split must produce two non-empty cours; got %d/%d",
+			cours[0].EpisodeCount, cours[1].EpisodeCount)
+	}
+}
+
+// makeJJKEpisodes produces 59 episodes in TMDB Season 1 with realistic
+// air dates: cour 1 = weekly Oct 2020–Mar 2021, cour 2 = weekly
+// Jul 2023–Dec 2023, cour 3 = weekly Jan 2026+. The gap between ep 24
+// and ep 25 spans ~28 months, the gap between 47 and 48 spans ~25
+// months — both far exceed any in-cour weekly cadence.
+func makeJJKEpisodes() []db.Episode {
+	base := []time.Time{
+		// cour 1: 24 weekly episodes starting 2020-10-03
+		time.Date(2020, 10, 3, 0, 0, 0, 0, time.UTC),
+		// cour 2: 23 weekly episodes starting 2023-07-06
+		time.Date(2023, 7, 6, 0, 0, 0, 0, time.UTC),
+		// cour 3: 12 weekly episodes starting 2026-01-08
+		time.Date(2026, 1, 8, 0, 0, 0, 0, time.UTC),
+	}
+	courLengths := []int{24, 23, 12}
+	out := make([]db.Episode, 0, 59)
+	epNum := 1
+	for ci, courLen := range courLengths {
+		for i := 0; i < courLen; i++ {
+			d := base[ci].AddDate(0, 0, 7*i)
+			out = append(out, db.Episode{
+				ID:             episodeID(epNum),
+				SeasonNumber:   1,
+				EpisodeNumber:  int32(epNum),
+				AirDate:        sql.NullString{String: d.Format("2006-01-02"), Valid: true},
+				AbsoluteNumber: sql.NullInt32{Int32: int32(epNum), Valid: true},
+			})
+			epNum++
+		}
+	}
+	return out
 }
 
 // Single-cour anime: bounds has one entry. Behaviour should reduce to

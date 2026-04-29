@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
@@ -163,46 +164,18 @@ func buildCours(
 		out = append(out, c)
 	}
 
-	// For each cour, compute its episode-number window within the
-	// cour's TMDB season and slice the season's episode list.
-	for i, b := range bounds {
-		seasonEps := bySeason[b.TMDBSeason]
-		if len(seasonEps) == 0 {
-			// The cour's declared TMDB season has no episodes at all
-			// in our DB. Two ways this happens:
-			//   - The TMDB record genuinely has no such season (the
-			//     XML disagrees with TMDB's layout — Jujutsu Kaisen
-			//     cour 2 declares tmdbseason=2, but TMDB folds all
-			//     cours into Season 1).
-			//   - We haven't refreshed the series yet to pull that
-			//     season's episodes.
-			// In either case, surfacing an empty cour gives the user
-			// a phantom "0 episodes" card, which is worse UX than
-			// just hiding it. Skip.
-			continue
-		}
-		// Window: [TMDBOffset+1, next-bound's TMDBOffset OR end-of-season]
-		startEp := b.TMDBOffset + 1
-		endEp := len(seasonEps)
-		// Look ahead for the next cour in the SAME TMDB season —
-		// that's where this cour ends.
-		for j := i + 1; j < len(bounds); j++ {
-			if bounds[j].TMDBSeason == b.TMDBSeason {
-				endEp = bounds[j].TMDBOffset
-				break
-			}
-		}
-		var slice []db.Episode
-		for _, ep := range seasonEps {
-			n := int(ep.EpisodeNumber)
-			if n >= startEp && n <= endEp {
-				slice = append(slice, ep)
-			}
-		}
-		c := courFromEpisodes(b.TVDBSeason, b.Name, slice, sizeByEpisode, overrideByCour, parentMonitored)
-		c.TVDBSeason = b.TVDBSeason // keep the cour identifier even when slice is empty
-		c.TMDBSeason = b.TMDBSeason
-		c.EpisodeOffset = b.TMDBOffset
+	// Compute each cour's effective TMDB section. Some cours declare a
+	// TMDB season that doesn't exist in our data (e.g. Jujutsu Kaisen's
+	// cour 2 declares tmdbseason=2 but TMDB collapses every cour into
+	// Season 1) — those get folded into a sibling cour's TMDB season,
+	// with the boundary inferred from large air-date gaps inside the
+	// shared section. See resolveCourBounds for the full algorithm.
+	resolved := resolveCourBounds(bounds, bySeason)
+	for _, r := range resolved {
+		c := courFromEpisodes(r.Bound.TVDBSeason, r.Bound.Name, r.Episodes, sizeByEpisode, overrideByCour, parentMonitored)
+		c.TVDBSeason = r.Bound.TVDBSeason // keep the cour identifier even when slice is empty
+		c.TMDBSeason = r.TMDBSeason
+		c.EpisodeOffset = r.EpisodeOffset
 		out = append(out, c)
 	}
 
@@ -270,4 +243,294 @@ func (s *Service) SetCourMonitored(ctx context.Context, seriesID string, tvdbSea
 		return fmt.Errorf("upsert anime cour monitored: %w", err)
 	}
 	return nil
+}
+
+// resolvedCour is a CourBound that has been mapped to its actual
+// position in the TMDB layout — useful when the declared TMDB season
+// disagrees with what TMDB serves (the JJK cour-2 case).
+type resolvedCour struct {
+	Bound         CourBound
+	TMDBSeason    int          // effective TMDB season (may differ from declared)
+	EpisodeOffset int          // count of preceding TMDB episodes within TMDBSeason
+	Episodes      []db.Episode // episodes that belong to this cour, in order
+}
+
+// resolveCourBounds maps each declared cour onto its actual TMDB
+// position. Cours whose declared TMDB season has episodes pass
+// through unchanged; cours whose season is empty (Anime-Lists XML
+// disagrees with what TMDB serves) get folded into a neighbouring
+// cour's TMDB season, with the boundary inferred from the largest
+// air-date gap inside the shared section.
+//
+// JJK case:
+//   - cour 1: declared (s=1, off=0), passes through
+//   - cour 2: declared (s=2, off=0), TMDB has no S2 → folded into S1
+//   - cour 3: declared (s=1, off=47), passes through
+//
+// Within TMDB Season 1 we now have 3 cours with one explicit boundary
+// at episode 47. The region [1..47] holds 2 cours (1 and 2) so we
+// look for one air-date gap inside it. JJK eps 24→25 span Mar 2021
+// to Jul 2023 — that gap becomes the cour-1 / cour-2 boundary.
+//
+// Cours that can't be folded (no sibling has episodes) are dropped
+// so the caller produces no phantom "0 episodes" cards.
+func resolveCourBounds(bounds []CourBound, bySeason map[int][]db.Episode) []resolvedCour {
+	if len(bounds) == 0 {
+		return nil
+	}
+
+	// Step 1 — pick an effective TMDB season per cour. The declared
+	// season wins when TMDB has episodes there; otherwise borrow the
+	// nearest sibling's season (preferring the previous cour, then
+	// the next cour, in defaulttvdbseason order).
+	effSeason := make([]int, len(bounds))
+	for i, b := range bounds {
+		if len(bySeason[b.TMDBSeason]) > 0 {
+			effSeason[i] = b.TMDBSeason
+		} else {
+			effSeason[i] = -1 // marker: needs a home
+		}
+	}
+	for i := range bounds {
+		if effSeason[i] != -1 {
+			continue
+		}
+		donor := -1
+		for j := i - 1; j >= 0; j-- {
+			if effSeason[j] >= 0 {
+				donor = effSeason[j]
+				break
+			}
+		}
+		if donor == -1 {
+			for j := i + 1; j < len(bounds); j++ {
+				if effSeason[j] >= 0 {
+					donor = effSeason[j]
+					break
+				}
+			}
+		}
+		effSeason[i] = donor // -1 stays for orphans
+	}
+
+	// Step 2 — group cour indices by effective TMDB season, in input
+	// order (which is defaulttvdbseason-ascending). Drop orphans.
+	type group struct {
+		season  int
+		courIxs []int
+	}
+	groups := make(map[int]*group)
+	var groupOrder []int
+	for i, s := range effSeason {
+		if s < 0 {
+			continue
+		}
+		g, ok := groups[s]
+		if !ok {
+			g = &group{season: s}
+			groups[s] = g
+			groupOrder = append(groupOrder, s)
+		}
+		g.courIxs = append(g.courIxs, i)
+	}
+
+	out := make([]resolvedCour, 0, len(bounds))
+	// Stable iteration: groups in the order their first cour appeared,
+	// which matches input order (= defaulttvdbseason ascending).
+	for _, season := range groupOrder {
+		g := groups[season]
+		eps := bySeason[season]
+		windows := computeCourWindows(g.courIxs, bounds, eps)
+		for k, ix := range g.courIxs {
+			b := bounds[ix]
+			startEp, endEp := windows[k][0], windows[k][1]
+			var slice []db.Episode
+			for _, ep := range eps {
+				n := int(ep.EpisodeNumber)
+				if n >= startEp && n <= endEp {
+					slice = append(slice, ep)
+				}
+			}
+			out = append(out, resolvedCour{
+				Bound:         b,
+				TMDBSeason:    season,
+				EpisodeOffset: startEp - 1,
+				Episodes:      slice,
+			})
+		}
+	}
+	return out
+}
+
+// computeCourWindows returns each cour's [startEp, endEp] window
+// (1-based, inclusive of both endpoints) within the TMDB season
+// represented by `eps`. `courIxs` are indices into `bounds` for the
+// cours that share this TMDB season, in defaulttvdbseason order.
+//
+// Algorithm:
+//   - A cour is "anchored" when its declared TMDB season equals the
+//     season we're laying out — its declared offset is then a known
+//     boundary. The first cour in the group is implicitly anchored
+//     at offset 0 even when it wasn't declared in this season.
+//   - Folded cours (declared season != current season) have no
+//     explicit anchor. Their boundaries fall inside the segment
+//     between two anchored cours.
+//   - For each segment with K cours and 2 outer anchors, we need
+//     K-1 implicit boundaries — find them as the largest air-date
+//     gaps among the segment's episodes.
+func computeCourWindows(courIxs []int, bounds []CourBound, eps []db.Episode) [][2]int {
+	n := len(courIxs)
+	windows := make([][2]int, n)
+	if n == 0 {
+		return windows
+	}
+
+	groupSeason := 0
+	if len(eps) > 0 {
+		groupSeason = int(eps[0].SeasonNumber)
+	}
+
+	hasAnchor := make([]bool, n)
+	anchorOffset := make([]int, n)
+	for k, ix := range courIxs {
+		b := bounds[ix]
+		if b.TMDBSeason == groupSeason {
+			hasAnchor[k] = true
+			anchorOffset[k] = b.TMDBOffset
+		}
+	}
+	// First cour always anchors at offset 0 (start of the season).
+	if !hasAnchor[0] {
+		hasAnchor[0] = true
+		anchorOffset[0] = 0
+	}
+
+	endOfSeason := len(eps)
+
+	var anchors []int
+	for k := 0; k < n; k++ {
+		if hasAnchor[k] {
+			anchors = append(anchors, k)
+		}
+	}
+
+	for a := 0; a < len(anchors); a++ {
+		startK := anchors[a]
+		startOff := anchorOffset[startK]
+		endK := n
+		endOff := endOfSeason
+		if a+1 < len(anchors) {
+			endK = anchors[a+1]
+			endOff = anchorOffset[endK]
+		}
+		segCount := endK - startK
+		if segCount <= 0 {
+			continue
+		}
+		// Cours [startK, endK) share episodes (startOff, endOff].
+		var segEps []db.Episode
+		for _, ep := range eps {
+			n2 := int(ep.EpisodeNumber)
+			if n2 > startOff && n2 <= endOff {
+				segEps = append(segEps, ep)
+			}
+		}
+		boundaries := largestGapBoundaries(segEps, segCount-1)
+		// Combine outer offsets with the implicit gap boundaries to
+		// build segCount+1 partition points.
+		bnds := make([]int, 0, segCount+1)
+		bnds = append(bnds, startOff)
+		bnds = append(bnds, boundaries...)
+		bnds = append(bnds, endOff)
+		for k := 0; k < segCount; k++ {
+			windows[startK+k] = [2]int{bnds[k] + 1, bnds[k+1]}
+		}
+	}
+
+	return windows
+}
+
+// largestGapBoundaries returns up to n boundary episode-numbers, one
+// per "gap" between consecutive episodes' air dates. Sorted ascending
+// in episode-number order, so callers get a partition-friendly list.
+//
+// boundary[i] = the LAST episode number before the i-th boundary
+// (i.e., the gap is between boundary[i] and boundary[i]+1).
+//
+// When the episode list has fewer parseable air-date gaps than n
+// (e.g., back-to-back airing, or missing AirDate values), we fall
+// back to evenly-spaced boundaries so the caller still produces n+1
+// non-empty cours.
+func largestGapBoundaries(episodes []db.Episode, n int) []int {
+	if n <= 0 || len(episodes) <= 1 {
+		return nil
+	}
+
+	type gap struct {
+		days     float64
+		beforeEp int
+	}
+	var gaps []gap
+	for i := 1; i < len(episodes); i++ {
+		prev, curr := episodes[i-1], episodes[i]
+		if !prev.AirDate.Valid || !curr.AirDate.Valid {
+			continue
+		}
+		prevDate, errP := time.Parse("2006-01-02", prev.AirDate.String)
+		currDate, errC := time.Parse("2006-01-02", curr.AirDate.String)
+		if errP != nil || errC != nil {
+			continue
+		}
+		gaps = append(gaps, gap{
+			days:     currDate.Sub(prevDate).Hours() / 24,
+			beforeEp: int(prev.EpisodeNumber),
+		})
+	}
+
+	if len(gaps) == 0 {
+		// No air dates available — fall back to evenly-spaced
+		// boundaries within the episode-number range.
+		return evenBoundaries(episodes, n)
+	}
+
+	// Take the n largest gaps.
+	sort.Slice(gaps, func(i, j int) bool { return gaps[i].days > gaps[j].days })
+	if len(gaps) > n {
+		gaps = gaps[:n]
+	}
+
+	// If we found fewer gaps than requested, top up with even spacing
+	// so the partition still produces n+1 cours.
+	if len(gaps) < n {
+		extra := evenBoundaries(episodes, n-len(gaps))
+		for _, b := range extra {
+			gaps = append(gaps, gap{beforeEp: b})
+		}
+	}
+
+	out := make([]int, len(gaps))
+	for i, g := range gaps {
+		out[i] = g.beforeEp
+	}
+	sort.Ints(out)
+	return out
+}
+
+// evenBoundaries returns n boundary episode-numbers evenly spaced
+// across `episodes`. Used as the fallback when air-date data is
+// unavailable for gap detection.
+func evenBoundaries(episodes []db.Episode, n int) []int {
+	if n <= 0 || len(episodes) <= 1 {
+		return nil
+	}
+	out := make([]int, 0, n)
+	step := float64(len(episodes)) / float64(n+1)
+	for i := 1; i <= n; i++ {
+		idx := int(float64(i) * step)
+		if idx >= len(episodes) {
+			idx = len(episodes) - 1
+		}
+		out = append(out, int(episodes[idx-1].EpisodeNumber))
+	}
+	return out
 }
