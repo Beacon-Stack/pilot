@@ -23,8 +23,12 @@ import {
 
 import PageHeader from "@/components/PageHeader";
 import { useQueue } from "@/api/queue";
-import { useHistory, type GrabHistoryItem } from "@/api/history";
-import { useNeedsAttention, type AttentionItem } from "@/api/activity";
+import {
+  useActivity,
+  useNeedsAttention,
+  type ActivityEntry,
+  type AttentionItem,
+} from "@/api/activity";
 import { useSeriesList } from "@/api/series";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import type { QueueItem, Series } from "@/types";
@@ -296,15 +300,27 @@ function DownloadingRail({ idx }: { idx: Map<string, Series> }) {
 }
 
 // ── 2. Recently imported ─────────────────────────────────────────────────────
+//
+// Sourced from activity_log (category=import_succeeded, type=import_complete)
+// rather than grab_history. activity_log.created_at is the actual import-
+// completion time; grab_history.grabbed_at is the time the grab was
+// requested, which can be days earlier when the download is large.
+// Filtering on grabbed_at hid imports that just landed but were grabbed
+// outside the 48h window.
 
 function RecentlyImportedRail({ idx }: { idx: Map<string, Series> }) {
-  const { data, isLoading } = useHistory(1, 100);
+  const { data, isLoading } = useActivity({
+    category: "import_succeeded",
+    limit: 100,
+  });
   const cutoff = useMemo(() => Date.now() - 48 * 3600 * 1000, []);
 
-  const items = useMemo<GrabHistoryItem[]>(() => {
-    const list = (data?.items ?? data ?? []) as GrabHistoryItem[];
+  const items = useMemo<ActivityEntry[]>(() => {
+    const list = data?.activities ?? [];
     return list.filter(
-      (h) => h.download_status === "completed" && new Date(h.grabbed_at).getTime() >= cutoff
+      (a) =>
+        a.type === "import_complete" &&
+        new Date(a.created_at).getTime() >= cutoff,
     );
   }, [data, cutoff]);
 
@@ -316,47 +332,71 @@ function RecentlyImportedRail({ idx }: { idx: Map<string, Series> }) {
         <Empty>No imports in the last 48 hours.</Empty>
       ) : (
         <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-          {items.map((h, i) => (
-            <li
-              key={h.id}
-              style={{
-                padding: "10px 20px",
-                borderBottom:
-                  i === items.length - 1 ? "none" : "1px solid var(--color-border-subtle)",
-                display: "flex",
-                gap: 12,
-                alignItems: "flex-start",
-              }}
-            >
-              <CheckCircle2
-                size={15}
-                style={{ color: "var(--color-success)", flexShrink: 0, marginTop: 2 }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
+          {items.map((a, i) => {
+            const series = a.series_id ? idx.get(a.series_id) : undefined;
+            const detail = (a.detail ?? {}) as Record<string, unknown>;
+            const quality =
+              typeof detail.quality === "string" ? detail.quality : "";
+            // Prefer the resolved series title from the index; fall
+            // back to whatever classify() wrote into the title column.
+            // Older activity rows pre-date the title fix and only have
+            // "Imported release" — the idx lookup recovers from that.
+            const headline =
+              series?.title ??
+              a.title.replace(/^Imported\s*/, "").replace(/\s*—.*$/, "") ??
+              "Imported";
+            return (
+              <li
+                key={a.id}
+                style={{
+                  padding: "10px 20px",
+                  borderBottom:
+                    i === items.length - 1
+                      ? "none"
+                      : "1px solid var(--color-border-subtle)",
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "flex-start",
+                }}
+              >
+                <CheckCircle2
+                  size={15}
                   style={{
-                    fontSize: 13,
-                    color: "var(--color-text-primary)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    color: "var(--color-success)",
+                    flexShrink: 0,
+                    marginTop: 2,
                   }}
-                  title={h.release_title}
-                >
-                  {h.release_title}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--color-text-primary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <SeriesLabel
+                      id={a.series_id}
+                      fallback={headline}
+                      idx={idx}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--color-text-muted)",
+                      marginTop: 2,
+                    }}
+                  >
+                    {quality && <>{quality} · </>}
+                    {timeAgo(a.created_at)}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 2 }}>
-                  <SeriesLabel id={h.series_id} fallback="Unknown series" idx={idx} />
-                  {h.season_number != null && h.episode_id && (
-                    <> · S{String(h.season_number).padStart(2, "0")}</>
-                  )}
-                  {h.release_resolution && <> · {h.release_resolution}</>}
-                  {h.size > 0 && <> · {formatBytes(h.size)}</>}
-                  <> · {timeAgo(h.grabbed_at)}</>
-                </div>
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </Rail>
