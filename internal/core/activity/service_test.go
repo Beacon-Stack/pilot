@@ -1,8 +1,15 @@
 package activity
 
 import (
+	"context"
+	"errors"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 )
 
@@ -57,6 +64,144 @@ func TestClassify_UnknownEventReturnsEmpty(t *testing.T) {
 	if cat != "" || title != "" {
 		t.Errorf("classify(unknown) = (%q, %q), want empty/empty", cat, title)
 	}
+}
+
+// ── handleEvent ──────────────────────────────────────────────────────────────
+//
+// handleEvent is the bridge between the in-memory event bus and the
+// persistent activity_log table. If it silently drops events or
+// produces malformed rows, the user never sees their grab/stall
+// history. classify is tested above; these tests pin the surrounding
+// plumbing.
+
+// activityRecorder embeds db.Querier so only InsertActivity needs a
+// real implementation. Records every call so tests can assert on
+// what handleEvent persisted.
+type activityRecorder struct {
+	db.Querier
+
+	mu        sync.Mutex
+	inserted  []db.InsertActivityParams
+	insertErr error
+}
+
+func (r *activityRecorder) InsertActivity(_ context.Context, p db.InsertActivityParams) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.inserted = append(r.inserted, p)
+	return r.insertErr
+}
+
+func (r *activityRecorder) calls() []db.InsertActivityParams {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]db.InsertActivityParams, len(r.inserted))
+	copy(out, r.inserted)
+	return out
+}
+
+// Headline: a known event type (TypeEpisodeGrabbed) results in exactly
+// one InsertActivity call with the classified category + title. Pin
+// the contract so a regression that replaces the call site with a
+// stub never silently disables activity logging.
+func TestHandleEvent_KnownEventInsertsRow(t *testing.T) {
+	rec := &activityRecorder{}
+	svc := NewService(rec, slog.New(slog.DiscardHandler))
+
+	svc.handleEvent(context.Background(), events.Event{
+		Type:      events.TypeEpisodeGrabbed,
+		ShowID:    "series-42",
+		Timestamp: time.Date(2026, 1, 8, 10, 30, 0, 0, time.UTC),
+		Data: map[string]any{
+			"release_title": "Show.S01E01.1080p",
+			"indexer":       "TGx",
+		},
+	})
+
+	calls := rec.calls()
+	if len(calls) != 1 {
+		t.Fatalf("len(calls) = %d, want 1", len(calls))
+	}
+	c := calls[0]
+	if c.Category != string(CategoryGrabSucceeded) {
+		t.Errorf("Category = %q, want %q", c.Category, CategoryGrabSucceeded)
+	}
+	if c.Type != string(events.TypeEpisodeGrabbed) {
+		t.Errorf("Type = %q, want %q", c.Type, events.TypeEpisodeGrabbed)
+	}
+	if !strings.Contains(c.Title, "Show.S01E01.1080p") {
+		t.Errorf("Title = %q, want it to mention the release", c.Title)
+	}
+	if !c.SeriesID.Valid || c.SeriesID.String != "series-42" {
+		t.Errorf("SeriesID = %+v, want valid string 'series-42'", c.SeriesID)
+	}
+	// Detail should be the JSON-encoded event data.
+	if !c.Detail.Valid || !strings.Contains(c.Detail.String, "TGx") {
+		t.Errorf("Detail = %+v, want JSON containing 'TGx'", c.Detail)
+	}
+	if c.CreatedAt != "2026-01-08T10:30:00Z" {
+		t.Errorf("CreatedAt = %q, want RFC3339 UTC", c.CreatedAt)
+	}
+	if c.ID == "" {
+		t.Errorf("ID is empty; expected uuid")
+	}
+}
+
+// Unknown event types must NOT insert anything. Otherwise every
+// internal/diagnostic event leaks into the user-facing activity feed.
+func TestHandleEvent_UnknownEventDoesNotInsert(t *testing.T) {
+	rec := &activityRecorder{}
+	svc := NewService(rec, slog.New(slog.DiscardHandler))
+
+	svc.handleEvent(context.Background(), events.Event{
+		Type: "this_event_is_not_classified",
+		Data: map[string]any{"x": "y"},
+	})
+
+	if got := len(rec.calls()); got != 0 {
+		t.Errorf("expected 0 inserts for unknown event; got %d (%+v)", got, rec.calls())
+	}
+}
+
+// Empty ShowID → SeriesID stays !Valid (NULL). Required for events
+// that aren't series-scoped (TypeTaskStarted, TypeHealthIssue, etc.)
+// — a Valid="" would violate the foreign-key on series.id.
+func TestHandleEvent_NoShowIDProducesNullSeriesID(t *testing.T) {
+	rec := &activityRecorder{}
+	svc := NewService(rec, slog.New(slog.DiscardHandler))
+
+	svc.handleEvent(context.Background(), events.Event{
+		Type:      events.TypeTaskStarted,
+		Timestamp: time.Now().UTC(),
+		Data:      map[string]any{"task": "rss_sync"},
+	})
+
+	calls := rec.calls()
+	if len(calls) != 1 {
+		t.Fatalf("len(calls) = %d, want 1", len(calls))
+	}
+	if calls[0].SeriesID.Valid {
+		t.Errorf("SeriesID.Valid = true for non-series event; want false (would FK-violate)")
+	}
+}
+
+// DB error from InsertActivity must NOT crash the bus — handleEvent
+// is invoked via bus.Subscribe and a panic would propagate. Just log
+// and continue.
+func TestHandleEvent_DBErrorIsSwallowed(t *testing.T) {
+	rec := &activityRecorder{insertErr: errors.New("db unavailable")}
+	svc := NewService(rec, slog.New(slog.DiscardHandler))
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("handleEvent panicked on DB error: %v", r)
+		}
+	}()
+	svc.handleEvent(context.Background(), events.Event{
+		Type:      events.TypeEpisodeGrabbed,
+		Timestamp: time.Now().UTC(),
+		Data:      map[string]any{"title": "x"},
+	})
 }
 
 // TestValidCategory pins the closed-set of accepted categories AND the
