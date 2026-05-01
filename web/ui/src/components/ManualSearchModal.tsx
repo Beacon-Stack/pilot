@@ -223,6 +223,9 @@ function ReleaseRow({ release, onGrab, isGrabbing }: ReleaseRowProps) {
   const grabbedAgeLabel = alreadyGrabbed
     ? formatAge(Math.max(0, (Date.now() - new Date(release.already_grabbed_at!).getTime()) / 86400000))
     : "";
+  // formatAge returns "Today" for <1 day and N-with-unit ("3d", "2mo")
+  // otherwise. "Today ago" reads wrong; the "N ago" forms read right.
+  const grabbedAgeText = grabbedAgeLabel === "Today" ? "today" : `${grabbedAgeLabel} ago`;
 
   return (
     <tr
@@ -282,7 +285,7 @@ function ReleaseRow({ release, onGrab, isGrabbing }: ReleaseRowProps) {
           )}
           {alreadyGrabbed && (
             <span
-              title={`Previously grabbed ${grabbedAgeLabel} ago — status: ${release.already_grabbed_status ?? "unknown"}`}
+              title={`Previously grabbed ${grabbedAgeText} — status: ${release.already_grabbed_status ?? "unknown"}`}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -296,7 +299,7 @@ function ReleaseRow({ release, onGrab, isGrabbing }: ReleaseRowProps) {
                 fontWeight: 500,
               }}
             >
-              <History size={10} /> Already grabbed {grabbedAgeLabel} ago
+              <History size={10} /> Already grabbed {grabbedAgeText}
             </span>
           )}
           {filtered && release.filter_reasons?.map((reason, idx) => (
@@ -436,6 +439,12 @@ interface ManualSearchModalProps {
   // the backend's release-search endpoint.
   seasonNumber?: number;
   episodeNumber?: number;
+  // episodeId is the episode UUID for the (season, episode) being
+  // searched. Set when the modal is opened from a specific episode
+  // row. Used at grab time so grab_history rows carry episode_id —
+  // without it, downstream features (orphaned-grab badge,
+  // per-episode history queries) miss the row.
+  episodeId?: string;
   // displaySeasonNumber/displayEpisodeNumber override the modal title
   // labels for cour-shaped anime (cour 3 ep 1 reads "S03E01" even
   // though the API call uses TMDB-relative S01E48). Falls back to the
@@ -449,6 +458,7 @@ export default function ManualSearchModal({
   seriesId,
   seasonNumber,
   episodeNumber,
+  episodeId,
   displaySeasonNumber,
   displayEpisodeNumber,
   onClose,
@@ -545,6 +555,7 @@ export default function ManualSearchModal({
       download_url: release.download_url,
       size: release.size,
       quality: release.quality,
+      episode_id: episodeId,
       season_number: seasonNumber,
       override,
     }, {
