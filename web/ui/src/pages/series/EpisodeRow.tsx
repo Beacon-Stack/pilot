@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info, RefreshCw } from "lucide-react";
+import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 import type { Episode, EpisodeFile } from "@/types";
 import type { HaulRecord, SeriesGrabHistoryItem } from "@/api/haul";
@@ -264,13 +264,14 @@ function HaulBadge({ record, onReimport }: { record: HaulRecord; onReimport?: (i
 }
 
 // OrphanedGrabBadge renders when grab_history has a completed grab
-// for this episode but the episode_file isn't linked. Distinct from
-// HaulBadge — orphaned grabs predate Phase 1-4's metadata SDK and so
-// don't have episode_id in Haul's history record. This badge fires
-// off Pilot's own grab_history, which always carried episode_id.
+// for this episode but the episode_file isn't linked. Click anywhere
+// on the badge to trigger /api/v1/grabs/{id}/reimport, which looks
+// up the file in Haul by info_hash and runs the importer.
 //
-// Click "Re-import" → POST /api/v1/grabs/{grab_id}/reimport, which
-// looks up the file in Haul by info_hash and runs the importer.
+// Visually matches Missing/Downloaded/Haul pills: subtle-bg, no
+// border, no icon. The whole pill is the click target, so it
+// stays compact in the 160px-wide status column. Hover reveals
+// the grab timestamp.
 function OrphanedGrabBadge({
   grab, onReimportGrab,
 }: {
@@ -280,32 +281,29 @@ function OrphanedGrabBadge({
   const grabbedDate = grab.grabbed_at
     ? new Date(grab.grabbed_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
     : "";
+  const tooltip = `Grabbed ${grabbedDate} but not linked into the library. Click to re-run the importer against the file in Haul.`;
+  if (!onReimportGrab) {
+    return (
+      <span style={badgeStyle} title={tooltip}>Grabbed</span>
+    );
+  }
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-      background: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
-      color: "var(--color-warning)",
-      border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
-    }} title={`Grabbed ${grab.grabbed_at} but not linked into the library — file may be on disk`}>
-      <RefreshCw size={10} />
-      Grabbed{grabbedDate ? ` · ${grabbedDate}` : ""}
-      {onReimportGrab && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onReimportGrab(grab.id); }}
-          style={{
-            marginLeft: 2, background: "none", border: "none", cursor: "pointer",
-            padding: "0 2px", fontWeight: 600, fontSize: 11,
-            color: "var(--color-warning)", textDecoration: "underline",
-          }}
-          title="Re-run the importer against the file in Haul"
-        >
-          Import
-        </button>
-      )}
-    </span>
+    <button
+      onClick={(e) => { e.stopPropagation(); onReimportGrab(grab.id); }}
+      style={{ ...badgeStyle, border: "none", cursor: "pointer" }}
+      title={tooltip}
+    >
+      Grabbed · Import
+    </button>
   );
 }
+
+const badgeStyle: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center",
+  padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+  background: "color-mix(in srgb, var(--color-warning) 10%, transparent)",
+  color: "var(--color-warning)",
+};
 
 function StatusBadge({ episode, file, aired }: { episode: Episode; file?: EpisodeFile; aired: boolean }) {
   // Downloaded
