@@ -194,6 +194,12 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		v1.RegisterDownloadClientRoutes(humaAPI, cfg.DownloaderService)
 	}
 
+	// Haul history endpoints — needs both downloader (to find a
+	// Haul client) and importer (to run the import pipeline).
+	if cfg.DownloaderService != nil && cfg.ImporterService != nil {
+		v1.RegisterHaulHistoryRoutes(humaAPI, cfg.DownloaderService, cfg.ImporterService)
+	}
+
 	if cfg.NotificationService != nil {
 		v1.RegisterNotificationRoutes(humaAPI, cfg.NotificationService)
 	}

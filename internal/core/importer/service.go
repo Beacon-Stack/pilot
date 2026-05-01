@@ -103,19 +103,54 @@ func (s *Service) ImportFile(ctx context.Context, grabID, contentPath string) er
 		return fmt.Errorf("loading grab %q: %w", grabID, err)
 	}
 
-	// Load all episodes for the series so we can match by season/episode number.
+	return s.importIntoSeries(ctx, grab, qualityFromGrab(grab), contentPath, grabID)
+}
+
+// ImportFromHaulRecord runs the import pipeline against a Haul history
+// record without requiring a pre-existing Pilot grab_history row.
+// Used by the "import from Haul" flow on the Activity page and the
+// per-episode "Haul has it" badge — surfaces files that landed in
+// Haul's downloads directory but never got attached to a Pilot
+// episode (because the original grab lost its episode_id, or the
+// torrent was added directly in Haul, or the file pre-dates the
+// importer fix).
+//
+// seriesID identifies the target series in Pilot's DB; contentPath is
+// the absolute path Haul reports as save_path/name. quality is taken
+// as the caller specifies — typically zero plugin.Quality, since the
+// caller doesn't know what the file actually is and the parser will
+// re-derive what it can from the filename.
+func (s *Service) ImportFromHaulRecord(ctx context.Context, seriesID, contentPath string, quality plugin.Quality) error {
+	s.logger.Info("import started (from Haul record)", "series_id", seriesID, "content_path", contentPath)
+
+	// Synthesize a minimal grab for downstream call sites that read
+	// grab.SeriesID. No grab_history row is created — this import is
+	// orthogonal to the grab pipeline.
+	grab := db.GrabHistory{SeriesID: seriesID}
+	return s.importIntoSeries(ctx, grab, quality, contentPath, "")
+}
+
+// importIntoSeries is the post-grab-loaded portion of ImportFile.
+// Extracted so both the regular grab-driven path AND the
+// import-from-Haul path can share it. grabID is used only for the
+// final TypeImportComplete event Data; pass "" when there's no
+// associated grab.
+func (s *Service) importIntoSeries(
+	ctx context.Context,
+	grab db.GrabHistory,
+	quality plugin.Quality,
+	contentPath string,
+	grabID string,
+) error {
 	episodes, err := s.q.ListEpisodesBySeriesID(ctx, grab.SeriesID)
 	if err != nil {
 		return fmt.Errorf("loading episodes for series %q: %w", grab.SeriesID, err)
 	}
 
-	// Build a (season, episode) → Episode index for fast lookup.
 	epIndex := make(map[epKey]db.Episode, len(episodes))
 	for _, ep := range episodes {
 		epIndex[epKey{int(ep.SeasonNumber), int(ep.EpisodeNumber)}] = ep
 	}
-
-	quality := qualityFromGrab(grab)
 
 	info, statErr := os.Stat(contentPath)
 	if statErr != nil {
@@ -123,7 +158,6 @@ func (s *Service) ImportFile(ctx context.Context, grabID, contentPath string) er
 	}
 
 	if !info.IsDir() {
-		// Single-file download.
 		if !videoExtensions[filepath.Ext(contentPath)] {
 			return fmt.Errorf("not a recognised video extension: %q", filepath.Ext(contentPath))
 		}
