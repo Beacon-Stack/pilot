@@ -47,3 +47,56 @@ export function useReimportFromHaul(seriesId: string) {
     onError: (err) => toast.error((err as Error).message),
   });
 }
+
+// SeriesGrabHistory mirrors the backend grabHistoryBody type. The
+// status drives whether the "orphaned grab" badge appears:
+// download_status === "completed" + episode has no file in library.
+export interface SeriesGrabHistoryItem {
+  id: string;
+  series_id: string;
+  episode_id?: string;
+  season_number?: number;
+  indexer_id?: string;
+  release_guid: string;
+  release_title: string;
+  protocol: string;
+  size: number;
+  download_status: string;
+  grabbed_at: string;
+}
+
+// useSeriesGrabHistory loads Pilot's own grab_history rows for the
+// series. Used to detect "orphaned" grabs — completed downloads whose
+// file never got linked into the library (the anime-importer bug class
+// of issue). Cheap enough to fetch on every series detail open.
+export function useSeriesGrabHistory(seriesId: string) {
+  return useQuery({
+    queryKey: ["series", seriesId, "grab-history"],
+    queryFn: () =>
+      apiFetch<SeriesGrabHistoryItem[]>(`/series/${seriesId}/grab-history`),
+    enabled: !!seriesId,
+    throwOnError: false,
+  });
+}
+
+// useReimportGrab triggers the reimport flow against an existing grab
+// — looks up the info_hash + series_id from grab_history (server side),
+// finds the file in Haul, runs the importer. Use this for orphaned
+// grabs where Haul lacks the requester metadata but Pilot's
+// grab_history has it.
+export function useReimportGrab(seriesId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (grabId: string) =>
+      apiFetch<{ status: string }>(`/grabs/${grabId}/reimport`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toast.success("Re-import queued");
+      void qc.invalidateQueries({ queryKey: ["series", seriesId] });
+      void qc.invalidateQueries({ queryKey: ["series", seriesId, "haul-history"] });
+      void qc.invalidateQueries({ queryKey: ["series", seriesId, "grab-history"] });
+    },
+    onError: (err) => toast.error((err as Error).message),
+  });
+}

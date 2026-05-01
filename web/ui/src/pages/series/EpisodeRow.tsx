@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info } from "lucide-react";
+import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info, RefreshCw } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 import type { Episode, EpisodeFile } from "@/types";
-import type { HaulRecord } from "@/api/haul";
+import type { HaulRecord, SeriesGrabHistoryItem } from "@/api/haul";
 
 interface Props {
   episode: Episode;
@@ -21,12 +21,19 @@ interface Props {
   onDeleteFile?: () => void;
   haulRecord?: HaulRecord;
   onReimport?: (infoHash: string) => void;
+  // orphanedGrab is set when grab_history has a completed grab for
+  // this episode but the file isn't (yet) in the library. Distinct
+  // from haulRecord: this signal works for grabs predating Phase 1-4
+  // because grab_history always carried episode_id.
+  orphanedGrab?: SeriesGrabHistoryItem;
+  onReimportGrab?: (grabId: string) => void;
 }
 
 export default function EpisodeRow({
   episode, file, seasonNumber, displayEpisodeOffset, selected,
   onToggleSelect, onToggleMonitor, onSearch, onAutoSearch, onDeleteFile,
   haulRecord, onReimport,
+  orphanedGrab, onReimportGrab,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const ep = episode;
@@ -91,10 +98,13 @@ export default function EpisodeRow({
 
         {/* Status badge */}
         <div style={{ width: 160, flexShrink: 0, textAlign: "right" }}>
-          {haulRecord && !ep.has_file
-            ? <HaulBadge record={haulRecord} onReimport={onReimport} />
-            : <StatusBadge episode={ep} file={file} aired={aired} />
-          }
+          {haulRecord && !ep.has_file ? (
+            <HaulBadge record={haulRecord} onReimport={onReimport} />
+          ) : orphanedGrab && !ep.has_file ? (
+            <OrphanedGrabBadge grab={orphanedGrab} onReimportGrab={onReimportGrab} />
+          ) : (
+            <StatusBadge episode={ep} file={file} aired={aired} />
+          )}
         </div>
 
         {/* Action buttons */}
@@ -247,6 +257,50 @@ function HaulBadge({ record, onReimport }: { record: HaulRecord; onReimport?: (i
           title="Trigger re-import from Haul download path"
         >
           Re-import
+        </button>
+      )}
+    </span>
+  );
+}
+
+// OrphanedGrabBadge renders when grab_history has a completed grab
+// for this episode but the episode_file isn't linked. Distinct from
+// HaulBadge — orphaned grabs predate Phase 1-4's metadata SDK and so
+// don't have episode_id in Haul's history record. This badge fires
+// off Pilot's own grab_history, which always carried episode_id.
+//
+// Click "Re-import" → POST /api/v1/grabs/{grab_id}/reimport, which
+// looks up the file in Haul by info_hash and runs the importer.
+function OrphanedGrabBadge({
+  grab, onReimportGrab,
+}: {
+  grab: SeriesGrabHistoryItem;
+  onReimportGrab?: (grabId: string) => void;
+}) {
+  const grabbedDate = grab.grabbed_at
+    ? new Date(grab.grabbed_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : "";
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+      background: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
+      color: "var(--color-warning)",
+      border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
+    }} title={`Grabbed ${grab.grabbed_at} but not linked into the library — file may be on disk`}>
+      <RefreshCw size={10} />
+      Grabbed{grabbedDate ? ` · ${grabbedDate}` : ""}
+      {onReimportGrab && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onReimportGrab(grab.id); }}
+          style={{
+            marginLeft: 2, background: "none", border: "none", cursor: "pointer",
+            padding: "0 2px", fontWeight: 600, fontSize: 11,
+            color: "var(--color-warning)", textDecoration: "underline",
+          }}
+          title="Re-run the importer against the file in Haul"
+        >
+          Import
         </button>
       )}
     </span>

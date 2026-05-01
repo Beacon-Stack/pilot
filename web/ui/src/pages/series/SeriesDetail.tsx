@@ -2,8 +2,8 @@ import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Tv, CheckCircle2, RefreshCw } from "lucide-react";
 import { useSeriesDetail, useSeasons, useCours, useUpdateCourMonitored, useEpisodes, useUpdateSeries, useUpdateEpisodeMonitored, useUpdateSeasonMonitored, useRefreshSeriesMetadata } from "@/api/series";
-import { useSeriesHaulHistory, useReimportFromHaul } from "@/api/haul";
-import type { HaulRecord } from "@/api/haul";
+import { useSeriesHaulHistory, useReimportFromHaul, useSeriesGrabHistory, useReimportGrab } from "@/api/haul";
+import type { HaulRecord, SeriesGrabHistoryItem } from "@/api/haul";
 import { useEpisodeFiles, useLibraryScan } from "@/api/episode-files";
 import { Poster } from "@/components/Poster";
 import ManualSearchModal from "@/components/ManualSearchModal";
@@ -58,6 +58,7 @@ function SeasonEpisodeList({
   season,
   fileMap,
   haulMap,
+  orphanedGrabMap,
   onSearch,
   onAutoSearch,
   isAutoSearching,
@@ -66,11 +67,13 @@ function SeasonEpisodeList({
   displayEpisodeOffset,
   onMonitorOverride,
   onReimport,
+  onReimportGrab,
 }: {
   seriesId: string;
   season: Season;
   fileMap: Map<string, EpisodeFile>;
   haulMap: Map<string, HaulRecord>;
+  orphanedGrabMap: Map<string, SeriesGrabHistoryItem>;
   onSearch: (target: SearchTarget) => void;
   onAutoSearch: (target: SearchTarget) => void;
   isAutoSearching: boolean;
@@ -96,6 +99,7 @@ function SeasonEpisodeList({
   // For cours we hit the cour endpoint instead of the season endpoint.
   onMonitorOverride?: (monitored: boolean) => void;
   onReimport?: (infoHash: string) => void;
+  onReimportGrab?: (grabId: string) => void;
 }) {
   // apiSeasonNumber is the season used for backend API calls (search,
   // grab, episode-list fetch). For cour mode this is the underlying
@@ -218,6 +222,8 @@ function SeasonEpisodeList({
               })}
               haulRecord={haulMap.get(ep.id)}
               onReimport={onReimport}
+              orphanedGrab={orphanedGrabMap.get(ep.id)}
+              onReimportGrab={onReimportGrab}
             />
           ))}
         </div>
@@ -304,6 +310,27 @@ export default function SeriesDetail() {
     return m;
   }, [haulRecords]);
   const reimport = useReimportFromHaul(id ?? "");
+
+  // Orphaned grabs: completed grabs whose file isn't (yet) linked into
+  // the library. The map's value is the most-recent completed grab per
+  // episode_id. Keyed off Pilot's own grab_history (NOT Haul's), so it
+  // works for grabs that predate Phase 1-4's metadata SDK — the
+  // grab_history rows always carried episode_id even when Haul didn't.
+  // Most-recent-wins to avoid badging old failed-then-retried episodes
+  // off a stale grab.
+  const { data: grabRows } = useSeriesGrabHistory(id ?? "");
+  const orphanedGrabMap = useMemo(() => {
+    const m = new Map<string, SeriesGrabHistoryItem>();
+    for (const g of grabRows ?? []) {
+      if (g.download_status !== "completed" || !g.episode_id) continue;
+      const existing = m.get(g.episode_id);
+      if (!existing || g.grabbed_at > existing.grabbed_at) {
+        m.set(g.episode_id, g);
+      }
+    }
+    return m;
+  }, [grabRows]);
+  const reimportGrab = useReimportGrab(id ?? "");
 
   // For anime series with an Anime-Lists mapping, the cours[] response
   // is non-empty and we project each cour into a Season-shaped object
@@ -519,6 +546,7 @@ export default function SeriesDetail() {
               season={selectedSeason}
               fileMap={fileMap}
               haulMap={haulMap}
+              orphanedGrabMap={orphanedGrabMap}
               onSearch={setSearchTarget}
               onAutoSearch={handleAutoSearch}
               isAutoSearching={autoSearch.isPending}
@@ -531,6 +559,7 @@ export default function SeriesDetail() {
               displayEpisodeOffset={useCourMode ? courMetaByCour.get(selectedSeason.season_number)?.episodeOffset : undefined}
               onMonitorOverride={useCourMode ? (monitored) => updateCourMonitored.mutate({ tvdbSeason: selectedSeason.season_number, monitored }) : undefined}
               onReimport={(infoHash) => reimport.mutate(infoHash)}
+              onReimportGrab={(grabId) => reimportGrab.mutate(grabId)}
             />
           ) : (
             <div style={{ fontSize: 13, color: "var(--color-text-muted)", padding: 20 }}>Season not found.</div>
