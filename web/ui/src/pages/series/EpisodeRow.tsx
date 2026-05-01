@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 import type { Episode, EpisodeFile } from "@/types";
+import type { HaulRecord } from "@/api/haul";
 
 interface Props {
   episode: Episode;
@@ -18,11 +19,14 @@ interface Props {
   onSearch: () => void;
   onAutoSearch: () => void;
   onDeleteFile?: () => void;
+  haulRecord?: HaulRecord;
+  onReimport?: (infoHash: string) => void;
 }
 
 export default function EpisodeRow({
   episode, file, seasonNumber, displayEpisodeOffset, selected,
   onToggleSelect, onToggleMonitor, onSearch, onAutoSearch, onDeleteFile,
+  haulRecord, onReimport,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const ep = episode;
@@ -87,7 +91,10 @@ export default function EpisodeRow({
 
         {/* Status badge */}
         <div style={{ width: 160, flexShrink: 0, textAlign: "right" }}>
-          <StatusBadge episode={ep} file={file} aired={aired} />
+          {haulRecord && !ep.has_file
+            ? <HaulBadge record={haulRecord} onReimport={onReimport} />
+            : <StatusBadge episode={ep} file={file} aired={aired} />
+          }
         </div>
 
         {/* Action buttons */}
@@ -216,6 +223,35 @@ const actionBtnStyle: React.CSSProperties = {
   background: "none", cursor: "pointer",
   fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)",
 };
+
+function HaulBadge({ record, onReimport }: { record: HaulRecord; onReimport?: (infoHash: string) => void }) {
+  const completedDate = record.completed_at
+    ? new Date(record.completed_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : "";
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+      background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+      color: "var(--color-accent)",
+    }}>
+      Haul{completedDate ? ` · ${completedDate}` : ""}
+      {onReimport && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onReimport(record.info_hash); }}
+          style={{
+            marginLeft: 2, background: "none", border: "none", cursor: "pointer",
+            padding: "0 2px", fontWeight: 600, fontSize: 11,
+            color: "var(--color-accent)", textDecoration: "underline",
+          }}
+          title="Trigger re-import from Haul download path"
+        >
+          Re-import
+        </button>
+      )}
+    </span>
+  );
+}
 
 function StatusBadge({ episode, file, aired }: { episode: Episode; file?: EpisodeFile; aired: boolean }) {
   // Downloaded
