@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import PageHeader from "@/components/PageHeader";
+import TableScroll from "@beacon-shared/TableScroll";
 import { useQueue } from "@/api/queue";
 import { useHistory, type GrabHistoryItem } from "@/api/history";
 import { useNeedsAttention, type AttentionItem } from "@/api/activity";
@@ -173,10 +174,11 @@ function DownloadingRail({ idx }: { idx: Map<string, Series> }) {
       ) : items.length === 0 ? (
         <Empty>Nothing downloading right now.</Empty>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
-              {["Release", "Progress", "Downloaded", "Size", "Protocol"].map((h) => (
+        <TableScroll minWidth={700}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                {["Release", "Progress", "Downloaded", "Size", "Protocol"].map((h) => (
                 <th
                   key={h}
                   style={{
@@ -289,7 +291,8 @@ function DownloadingRail({ idx }: { idx: Map<string, Series> }) {
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </TableScroll>
       )}
     </Rail>
   );

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Modal from "@beacon-shared/Modal";
+import TableScroll from "@beacon-shared/TableScroll";
 import PageHeader from "@/components/PageHeader";
 import { DOCS_URLS } from "@/lib/docsUrls";
 import {
@@ -1101,10 +1102,11 @@ function RemotePathMappingsSection() {
         <>
           {/* Existing mappings */}
           {mappings && mappings.length > 0 ? (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
-                  {["Host", "Remote Path", "Local Path", ""].map((h) => (
+            <TableScroll minWidth={600}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                    {["Host", "Remote Path", "Local Path", ""].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -1150,7 +1152,8 @@ function RemotePathMappingsSection() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </TableScroll>
           ) : !adding ? (
             <div style={{ padding: 32, textAlign: "center" }}>
               <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>No remote path mappings configured</p>
@@ -1324,10 +1327,11 @@ export default function DownloadClientList() {
             </p>
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
-                {["Name", "Type", "Priority", "Status", ""].map((h) => (
+          <TableScroll minWidth={700}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                  {["Name", "Type", "Priority", "Status", ""].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -1391,7 +1395,8 @@ export default function DownloadClientList() {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </TableScroll>
         )}
       </div>
 

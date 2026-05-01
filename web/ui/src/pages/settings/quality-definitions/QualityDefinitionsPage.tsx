@@ -3,6 +3,7 @@ import { useQualityDefinitions, useUpdateQualityDefinitions } from "@/api/qualit
 import PageHeader from "@/components/PageHeader";
 import { DOCS_URLS } from "@/lib/docsUrls";
 import { RangeSlider } from "@/components/RangeSlider";
+import TableScroll from "@beacon-shared/TableScroll";
 import type { QualityDefinition } from "@/types";
 
 // preferred = max (TRaSH Guides: set preferred as high as possible within range)
@@ -243,10 +244,11 @@ export default function QualityDefinitionsPage() {
             Failed to load quality definitions. Please try again.
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
-                {["Quality", "Source", "Size Range", ""].map((h) => (
+          <TableScroll minWidth={800}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                  {["Quality", "Source", "Size Range", ""].map((h) => (
                   <th
                     key={h || "_action"}
                     style={{
@@ -277,7 +279,8 @@ export default function QualityDefinitionsPage() {
                 />
               ))}
             </tbody>
-          </table>
+            </table>
+          </TableScroll>
         )}
       </div>
 
