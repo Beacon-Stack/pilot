@@ -238,6 +238,7 @@ function Sidebar({
   onCollapse,
   onClose,
   isMobile,
+  mobileOpen,
   autoCollapsed,
   appName,
   appIcon,
@@ -251,6 +252,13 @@ function Sidebar({
   onCollapse: () => void;
   onClose: () => void;
   isMobile: boolean;
+  // mobileOpen drives the mobile drawer transform here directly.
+  // We can't apply the transform on a wrapping <div> because that
+  // wrapper has zero width — translateX(-100%) of zero is zero, so
+  // the drawer would fail to slide off-screen. Apply directly to the
+  // fixed-position nav, where the percentage resolves against the
+  // nav's own width.
+  mobileOpen: boolean;
   autoCollapsed: boolean;
   appName: string;
   appIcon: ReactNode;
@@ -274,13 +282,21 @@ function Sidebar({
         display: "flex",
         flexDirection: "column",
         transition:
-          "width 200ms ease, min-width 200ms ease, max-width 200ms ease",
+          "width 200ms ease, min-width 200ms ease, max-width 200ms ease, transform 200ms ease",
         overflow: "hidden",
         position: "fixed",
         top: 0,
         left: 0,
         height: "100vh",
         zIndex: 50,
+        // Mobile slide-in: hidden by default, slid in when mobileOpen.
+        // On desktop the transform is none and the nav sits at
+        // top/left:0 in the normal flow.
+        transform: isMobile
+          ? mobileOpen
+            ? "translateX(0)"
+            : "translateX(-100%)"
+          : "none",
       }}
     >
       {/* Logo */}
@@ -516,32 +532,22 @@ export default function Shell({
         />
       )}
 
-      {/* Sidebar wrapper — slides in/out on mobile */}
-      <div
-        style={{
-          transform: isMobile
-            ? mobileOpen
-              ? "translateX(0)"
-              : "translateX(-100%)"
-            : "none",
-          transition: "transform 200ms ease",
-        }}
-      >
-        <Sidebar
-          collapsed={collapsed}
-          onCollapse={() => setUserCollapsed((c) => !c)}
-          onClose={() => setMobileOpen(false)}
-          isMobile={isMobile}
-          autoCollapsed={mode === "compact"}
-          appName={appName}
-          appIcon={appIcon}
-          homePath={homePath}
-          mainNav={mainNav}
-          settingsNav={settingsNav}
-          docsUrl={docsUrl}
-          sidebarFooterExtras={sidebarFooterExtras}
-        />
-      </div>
+      {/* Sidebar — slides in/out on mobile via its own transform. */}
+      <Sidebar
+        collapsed={collapsed}
+        onCollapse={() => setUserCollapsed((c) => !c)}
+        onClose={() => setMobileOpen(false)}
+        isMobile={isMobile}
+        mobileOpen={mobileOpen}
+        autoCollapsed={mode === "compact"}
+        appName={appName}
+        appIcon={appIcon}
+        homePath={homePath}
+        mainNav={mainNav}
+        settingsNav={settingsNav}
+        docsUrl={docsUrl}
+        sidebarFooterExtras={sidebarFooterExtras}
+      />
 
       {/* Main content */}
       <main

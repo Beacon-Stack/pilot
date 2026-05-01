@@ -34,8 +34,22 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, description, docsUrl, action }: PageHeaderProps) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
-      <div>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        marginBottom: 24,
+        // flexWrap: "wrap" lets the action button drop below the
+        // title block on narrow viewports instead of overlapping or
+        // pushing the title's line-wrapped text against the action.
+        // gap of 12px + minWidth: 0 on the title block ensures clean
+        // multi-line wrapping in either layout.
+        flexWrap: "wrap",
+        gap: 12,
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "var(--color-text-primary)", letterSpacing: "-0.01em" }}>
           {title}
         </h1>
