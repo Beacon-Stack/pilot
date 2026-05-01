@@ -20,6 +20,30 @@ import AllSeasonsView, { buildSeasonSummaries } from "./AllSeasonsView";
 import type { SeasonSummary } from "./AllSeasonsView";
 import BulkActionBar from "./BulkActionBar";
 
+// parseEpisodeFromReleaseTitle is a small recovery helper for
+// orphaned-grab matching. When a grab_history row is missing
+// episode_id (older grabs predating the ManualSearchModal fix that
+// plumbed the UUID through), the release title is the only thing
+// telling us which episode it was for.
+//
+// Two patterns covered:
+//   - SxxExx / SxxExxExx — "Show.Name.S01E48.1080p..."  → {1, 48}
+//   - Anime fansub absolute — "[SubsPlease] Show - 48 (1080p) [hash]"
+//     → {undefined, 48}; the caller fills the season from the grab's
+//     season_number column or the series' single-cour TMDB shape.
+//
+// Returns null when no pattern matches. Conservative on purpose —
+// false positives badge the wrong episode, which is worse than no
+// badge at all.
+export function parseEpisodeFromReleaseTitle(title: string): { season?: number; episode: number } | null {
+  const sxx = title.match(/[Ss](\d{1,2})[Ee](\d{1,3})/);
+  if (sxx) return { season: parseInt(sxx[1], 10), episode: parseInt(sxx[2], 10) };
+  // Anime fansub form: "<group> Show Name - 48 (..." or " - 48v2 ["
+  const dash = title.match(/\s-\s+(\d{1,3})(?:v\d+)?\s+[(\[]/);
+  if (dash) return { episode: parseInt(dash[1], 10) };
+  return null;
+}
+
 interface SearchTarget {
   seriesId: string;
   // seasonNumber/episodeNumber are TMDB-relative — the backend's
@@ -27,6 +51,11 @@ interface SearchTarget {
   // TVDB→absolute conversion expects TMDB coords).
   seasonNumber: number;
   episodeNumber?: number;
+  // episodeId is set when the search is scoped to a specific episode
+  // (vs a season pack search). Forwarded into grab_history so the
+  // row carries episode_id — without it, downstream features (orphan
+  // detection, per-episode history) miss the row.
+  episodeId?: string;
   // displaySeasonNumber/displayEpisodeNumber are what the user sees in
   // the UI (cour-relative in cour mode: Season 3 ep 1 instead of
   // TMDB-relative Season 1 ep 48). Used only for labels (toast +
@@ -58,7 +87,7 @@ function SeasonEpisodeList({
   season,
   fileMap,
   haulMap,
-  orphanedGrabMap,
+  grabRows,
   onSearch,
   onAutoSearch,
   isAutoSearching,
@@ -73,7 +102,11 @@ function SeasonEpisodeList({
   season: Season;
   fileMap: Map<string, EpisodeFile>;
   haulMap: Map<string, HaulRecord>;
-  orphanedGrabMap: Map<string, SeriesGrabHistoryItem>;
+  // grabRows is the unfiltered grab_history list — orphaned-grab
+  // matching happens locally below using the season's episode list,
+  // because some old grabs are missing episode_id and need a release-
+  // title-based fallback to find the right episode.
+  grabRows: SeriesGrabHistoryItem[] | undefined;
   onSearch: (target: SearchTarget) => void;
   onAutoSearch: (target: SearchTarget) => void;
   isAutoSearching: boolean;
@@ -143,6 +176,39 @@ function SeasonEpisodeList({
     return sum;
   }, [episodes, fileMap]);
 
+  // Build episode_id → orphaned grab map for THIS season's episodes.
+  // Two match paths per row:
+  //   1. grab.episode_id is set → direct hit
+  //   2. grab.episode_id is empty → parse the release title for an
+  //      episode number (SxxExx or anime "- 48" form), then lookup
+  //      the matching episode within this season. This recovers
+  //      pre-fix grabs that landed in grab_history without episode_id.
+  // Most-recent-wins per episode.
+  const orphanedGrabMap = useMemo(() => {
+    const m = new Map<string, SeriesGrabHistoryItem>();
+    if (!grabRows || !episodes) return m;
+    for (const g of grabRows) {
+      if (g.download_status !== "completed") continue;
+      let epId = g.episode_id;
+      if (!epId) {
+        const parsed = parseEpisodeFromReleaseTitle(g.release_title);
+        if (parsed === null) continue;
+        const targetSeason = parsed.season ?? g.season_number;
+        const ep = episodes.find((e: Episode) =>
+          (targetSeason === undefined || e.season_number === targetSeason) &&
+          e.episode_number === parsed.episode,
+        );
+        if (!ep) continue;
+        epId = ep.id;
+      }
+      const existing = m.get(epId);
+      if (!existing || g.grabbed_at > existing.grabbed_at) {
+        m.set(epId, g);
+      }
+    }
+    return m;
+  }, [grabRows, episodes]);
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -210,6 +276,7 @@ function SeasonEpisodeList({
                 seriesId,
                 seasonNumber: apiSeasonNumber,
                 episodeNumber: ep.episode_number,
+                episodeId: ep.id,
                 displaySeasonNumber: season.season_number,
                 displayEpisodeNumber: ep.episode_number - (displayEpisodeOffset ?? 0),
               })}
@@ -217,6 +284,7 @@ function SeasonEpisodeList({
                 seriesId,
                 seasonNumber: apiSeasonNumber,
                 episodeNumber: ep.episode_number,
+                episodeId: ep.id,
                 displaySeasonNumber: season.season_number,
                 displayEpisodeNumber: ep.episode_number - (displayEpisodeOffset ?? 0),
               })}
@@ -240,6 +308,7 @@ function SeasonEpisodeList({
               seriesId,
               seasonNumber: apiSeasonNumber,
               episodeNumber: ep.episode_number,
+              episodeId: ep.id,
               displaySeasonNumber: season.season_number,
               displayEpisodeNumber: ep.episode_number - (displayEpisodeOffset ?? 0),
             });
@@ -313,23 +382,19 @@ export default function SeriesDetail() {
 
   // Orphaned grabs: completed grabs whose file isn't (yet) linked into
   // the library. The map's value is the most-recent completed grab per
-  // episode_id. Keyed off Pilot's own grab_history (NOT Haul's), so it
-  // works for grabs that predate Phase 1-4's metadata SDK — the
-  // grab_history rows always carried episode_id even when Haul didn't.
-  // Most-recent-wins to avoid badging old failed-then-retried episodes
-  // off a stale grab.
+  // episode_id. Most-recent-wins to avoid badging episodes off a stale
+  // grab when there's been a retry.
+  //
+  // Building the key has two paths:
+  //   1. Direct: grab.episode_id is set — happy path for grabs made
+  //      after we plumbed episode_id through ManualSearchModal.
+  //   2. Fallback: grab.episode_id is empty (older grabs predating that
+  //      fix) — parse the release title for the episode number, then
+  //      match against the per-season episode lists from haulMap's
+  //      backing data... actually we don't have that here. Pass
+  //      grabRows down to SeasonEpisodeList instead, which has the
+  //      episode list and can do the per-season match locally.
   const { data: grabRows } = useSeriesGrabHistory(id ?? "");
-  const orphanedGrabMap = useMemo(() => {
-    const m = new Map<string, SeriesGrabHistoryItem>();
-    for (const g of grabRows ?? []) {
-      if (g.download_status !== "completed" || !g.episode_id) continue;
-      const existing = m.get(g.episode_id);
-      if (!existing || g.grabbed_at > existing.grabbed_at) {
-        m.set(g.episode_id, g);
-      }
-    }
-    return m;
-  }, [grabRows]);
   const reimportGrab = useReimportGrab(id ?? "");
 
   // For anime series with an Anime-Lists mapping, the cours[] response
@@ -503,6 +568,7 @@ export default function SeriesDetail() {
           seriesId={searchTarget.seriesId}
           seasonNumber={searchTarget.seasonNumber}
           episodeNumber={searchTarget.episodeNumber}
+          episodeId={searchTarget.episodeId}
           displaySeasonNumber={searchTarget.displaySeasonNumber}
           displayEpisodeNumber={searchTarget.displayEpisodeNumber}
           onClose={() => setSearchTarget(null)}
@@ -546,7 +612,7 @@ export default function SeriesDetail() {
               season={selectedSeason}
               fileMap={fileMap}
               haulMap={haulMap}
-              orphanedGrabMap={orphanedGrabMap}
+              grabRows={grabRows}
               onSearch={setSearchTarget}
               onAutoSearch={handleAutoSearch}
               isAutoSearching={autoSearch.isPending}
