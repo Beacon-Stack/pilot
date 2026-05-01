@@ -256,4 +256,12 @@ type Release struct {
 	SeasonNumber  int    `json:"season_number,omitempty"`  // TV only
 	EpisodeNumber int    `json:"episode_number,omitempty"` // TV only
 	EpisodeTitle  string `json:"episode_title,omitempty"`  // TV only
+
+	// Arr-side IDs forwarded to history-aware download clients (Haul)
+	// so they can answer "have I downloaded anything for series X?"
+	// later. All optional; leaving empty disables the lookup integration
+	// for this grab.
+	TMDBID    int    `json:"tmdb_id,omitempty"`    // TMDB tv/movie id
+	SeriesID  string `json:"series_id,omitempty"`  // Pilot series UUID
+	EpisodeID string `json:"episode_id,omitempty"` // Pilot episode UUID
 }

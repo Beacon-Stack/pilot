@@ -121,18 +121,29 @@ func (c *Client) Add(ctx context.Context, r plugin.Release) (string, error) {
 		body["save_path"] = c.cfg.SavePath
 	}
 
-	// Send media metadata so Haul can rename files on completion.
-	if r.MediaTitle != "" {
-		body["metadata"] = map[string]any{
-			"requester":      "pilot",
-			"media_type":     r.MediaType,
-			"title":          r.MediaTitle,
-			"year":           r.MediaYear,
-			"season_number":  r.SeasonNumber,
-			"episode_number": r.EpisodeNumber,
-			"episode_title":  r.EpisodeTitle,
-			"quality":        r.Quality.Name,
-		}
+	// Send media metadata so Haul can:
+	// (1) rename files on completion (uses MediaTitle / Year / Season /
+	//     Episode / Quality), and
+	// (2) answer history-lookup queries from this same Pilot instance
+	//     later — "have I downloaded anything for series X?". The
+	//     TMDB id + Pilot's own UUIDs are the join keys.
+	//
+	// Always send the requester field, even if MediaTitle is empty,
+	// so Haul knows the grab came from Pilot (vs. a sideload). The
+	// other fields default to zero/empty when the caller didn't fill
+	// them in.
+	body["metadata"] = map[string]any{
+		"requester":      "pilot",
+		"media_type":     r.MediaType,
+		"title":          r.MediaTitle,
+		"year":           r.MediaYear,
+		"season_number":  r.SeasonNumber,
+		"episode_number": r.EpisodeNumber,
+		"episode_title":  r.EpisodeTitle,
+		"quality":        r.Quality.Name,
+		"tmdb_id":        r.TMDBID,
+		"series_id":      r.SeriesID,
+		"episode_id":     r.EpisodeID,
 	}
 
 	data, _ := json.Marshal(body)
@@ -300,6 +311,134 @@ func (c *Client) SetSeedLimits(ctx context.Context, clientItemID string, ratioLi
 		return fmt.Errorf("haul: set seed limits returned status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// HistoryRecord mirrors haul/internal/core/torrent/history.go's
+// HistoryRecord — the response shape from Haul's /api/v1/history
+// endpoints. Used by Pilot's library-badge / manual-search guardrail
+// / "downloaded but not in library" rail to detect already-downloaded
+// content without polling Haul's live torrent state.
+type HistoryRecord struct {
+	InfoHash    string `json:"info_hash"`
+	Name        string `json:"name"`
+	SavePath    string `json:"save_path"`
+	Category    string `json:"category"`
+	AddedAt     string `json:"added_at"`
+	CompletedAt string `json:"completed_at,omitempty"`
+	RemovedAt   string `json:"removed_at,omitempty"`
+
+	Requester string `json:"requester,omitempty"`
+	MovieID   string `json:"movie_id,omitempty"`
+	SeriesID  string `json:"series_id,omitempty"`
+	EpisodeID string `json:"episode_id,omitempty"`
+	TMDBID    int    `json:"tmdb_id,omitempty"`
+	Season    int    `json:"season,omitempty"`
+	Episode   int    `json:"episode,omitempty"`
+}
+
+// HistoryFilter narrows a LookupHistory call. All fields optional;
+// zero values are omitted from the query string. See haul's
+// HistoryFilter for full semantics.
+type HistoryFilter struct {
+	Service        string // typically "pilot"
+	InfoHash       string
+	MovieID        string
+	SeriesID       string
+	EpisodeID      string
+	TMDBID         int
+	Season         int
+	Episode        int
+	IncludeRemoved bool
+	Limit          int
+}
+
+// LookupHistory queries Haul's history index. Returns an empty slice
+// when nothing matches — callers treat "no record" as "Haul has never
+// seen this", which is the right default for library-badge rendering.
+func (c *Client) LookupHistory(ctx context.Context, f HistoryFilter) ([]HistoryRecord, error) {
+	q := buildHistoryQueryString(f)
+	resp, err := c.get(ctx, "/api/v1/history?"+q)
+	if err != nil {
+		return nil, fmt.Errorf("haul: history lookup: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return []HistoryRecord{}, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<10))
+		return nil, fmt.Errorf("haul: history lookup returned %d: %s", resp.StatusCode, string(errBody))
+	}
+	var body struct {
+		Items []HistoryRecord `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("haul: decoding history: %w", err)
+	}
+	if body.Items == nil {
+		return []HistoryRecord{}, nil
+	}
+	return body.Items, nil
+}
+
+// LookupHistoryByHash is a fast point-lookup variant for the
+// manual-search guardrail. Returns nil + no error when Haul has
+// never seen the hash (the API returns 404 in that case).
+func (c *Client) LookupHistoryByHash(ctx context.Context, infoHash string) (*HistoryRecord, error) {
+	resp, err := c.get(ctx, "/api/v1/history/by-hash/"+infoHash)
+	if err != nil {
+		return nil, fmt.Errorf("haul: history-by-hash: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<10))
+		return nil, fmt.Errorf("haul: history-by-hash returned %d: %s", resp.StatusCode, string(errBody))
+	}
+	var rec HistoryRecord
+	if err := json.NewDecoder(resp.Body).Decode(&rec); err != nil {
+		return nil, fmt.Errorf("haul: decoding history record: %w", err)
+	}
+	return &rec, nil
+}
+
+// buildHistoryQueryString serializes a HistoryFilter into a URL query
+// string. Unit-testable without an HTTP server.
+func buildHistoryQueryString(f HistoryFilter) string {
+	v := make([]string, 0, 10)
+	if f.Service != "" {
+		v = append(v, "service="+f.Service)
+	}
+	if f.InfoHash != "" {
+		v = append(v, "info_hash="+f.InfoHash)
+	}
+	if f.MovieID != "" {
+		v = append(v, "movie_id="+f.MovieID)
+	}
+	if f.SeriesID != "" {
+		v = append(v, "series_id="+f.SeriesID)
+	}
+	if f.EpisodeID != "" {
+		v = append(v, "episode_id="+f.EpisodeID)
+	}
+	if f.TMDBID > 0 {
+		v = append(v, fmt.Sprintf("tmdb_id=%d", f.TMDBID))
+	}
+	if f.Season > 0 {
+		v = append(v, fmt.Sprintf("season=%d", f.Season))
+	}
+	if f.Episode > 0 {
+		v = append(v, fmt.Sprintf("episode=%d", f.Episode))
+	}
+	if f.IncludeRemoved {
+		v = append(v, "include_removed=true")
+	}
+	if f.Limit > 0 {
+		v = append(v, fmt.Sprintf("limit=%d", f.Limit))
+	}
+	return strings.Join(v, "&")
 }
 
 // StalledTorrent is the shape Haul returns from GET /api/v1/stalls.

@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Tv, CheckCircle2, RefreshCw } from "lucide-react";
 import { useSeriesDetail, useSeasons, useCours, useUpdateCourMonitored, useEpisodes, useUpdateSeries, useUpdateEpisodeMonitored, useUpdateSeasonMonitored, useRefreshSeriesMetadata } from "@/api/series";
+import { useSeriesHaulHistory, useReimportFromHaul } from "@/api/haul";
+import type { HaulRecord } from "@/api/haul";
 import { useEpisodeFiles, useLibraryScan } from "@/api/episode-files";
 import { Poster } from "@/components/Poster";
 import ManualSearchModal from "@/components/ManualSearchModal";
@@ -55,6 +57,7 @@ function SeasonEpisodeList({
   seriesId,
   season,
   fileMap,
+  haulMap,
   onSearch,
   onAutoSearch,
   isAutoSearching,
@@ -62,10 +65,12 @@ function SeasonEpisodeList({
   filterEpisodeIDs,
   displayEpisodeOffset,
   onMonitorOverride,
+  onReimport,
 }: {
   seriesId: string;
   season: Season;
   fileMap: Map<string, EpisodeFile>;
+  haulMap: Map<string, HaulRecord>;
   onSearch: (target: SearchTarget) => void;
   onAutoSearch: (target: SearchTarget) => void;
   isAutoSearching: boolean;
@@ -90,6 +95,7 @@ function SeasonEpisodeList({
   // onMonitorOverride replaces the default season-monitor mutation.
   // For cours we hit the cour endpoint instead of the season endpoint.
   onMonitorOverride?: (monitored: boolean) => void;
+  onReimport?: (infoHash: string) => void;
 }) {
   // apiSeasonNumber is the season used for backend API calls (search,
   // grab, episode-list fetch). For cour mode this is the underlying
@@ -210,6 +216,8 @@ function SeasonEpisodeList({
                 displaySeasonNumber: season.season_number,
                 displayEpisodeNumber: ep.episode_number - (displayEpisodeOffset ?? 0),
               })}
+              haulRecord={haulMap.get(ep.id)}
+              onReimport={onReimport}
             />
           ))}
         </div>
@@ -283,6 +291,19 @@ export default function SeriesDetail() {
     () => new Map<string, EpisodeFile>((episodeFiles ?? []).map((f) => [f.episode_id, f])),
     [episodeFiles]
   );
+
+  const { data: haulRecords } = useSeriesHaulHistory(id ?? "");
+  // Build episode_id → record map; only include completed, still-present records
+  const haulMap = useMemo(() => {
+    const m = new Map<string, HaulRecord>();
+    for (const r of haulRecords ?? []) {
+      if (r.completed_at && !r.removed_at && r.episode_id) {
+        m.set(r.episode_id, r);
+      }
+    }
+    return m;
+  }, [haulRecords]);
+  const reimport = useReimportFromHaul(id ?? "");
 
   // For anime series with an Anime-Lists mapping, the cours[] response
   // is non-empty and we project each cour into a Season-shaped object
@@ -497,6 +518,7 @@ export default function SeriesDetail() {
               seriesId={series.id}
               season={selectedSeason}
               fileMap={fileMap}
+              haulMap={haulMap}
               onSearch={setSearchTarget}
               onAutoSearch={handleAutoSearch}
               isAutoSearching={autoSearch.isPending}
@@ -508,6 +530,7 @@ export default function SeriesDetail() {
               filterEpisodeIDs={useCourMode ? courEpisodeIDsByCour.get(selectedSeason.season_number) : undefined}
               displayEpisodeOffset={useCourMode ? courMetaByCour.get(selectedSeason.season_number)?.episodeOffset : undefined}
               onMonitorOverride={useCourMode ? (monitored) => updateCourMonitored.mutate({ tvdbSeason: selectedSeason.season_number, monitored }) : undefined}
+              onReimport={(infoHash) => reimport.mutate(infoHash)}
             />
           ) : (
             <div style={{ fontSize: 13, color: "var(--color-text-muted)", padding: 20 }}>Season not found.</div>
