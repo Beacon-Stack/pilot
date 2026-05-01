@@ -348,6 +348,42 @@ func (s *Service) TVDBSeasonToAbsolute(tmdbID, tvdbSeason, tvdbEpisode int) (int
 	return 0, false
 }
 
+// AbsoluteToTMDBEpisode is the inverse of TVDBSeasonToAbsolute: given
+// an absolute episode number from an anime fansub release ("Show -
+// 48"), return the TMDB (season, episode) tuple Pilot stores in its
+// database. Used by the importer to attach anime files to the right
+// row when SxxExx isn't present in the filename.
+//
+// Currently only supports the same "TMDB collapses cours into season
+// 1" case as TVDBSeasonToAbsolute — i.e. JJK 95479 maps abs N → S01EN
+// regardless of cour. Shows where TMDB genuinely splits into multiple
+// seasons (rare in anime) need cumulative episode-count math that the
+// XML mapping doesn't carry.
+//
+// Returns (0, 0, false) when:
+//   - tmdbID is 0 or abs <= 0
+//   - the show has no anime mapping (not in animelist.xml)
+//   - the show's mappings don't use the TMDBSeason=1 layout
+func (s *Service) AbsoluteToTMDBEpisode(tmdbID, abs int) (season, episode int, ok bool) {
+	if tmdbID == 0 || abs <= 0 {
+		return 0, 0, false
+	}
+	s.mu.RLock()
+	entries := s.allByTMDBID[tmdbID]
+	s.mu.RUnlock()
+	for _, m := range entries {
+		// Same restriction as the forward function: this layout means
+		// the absolute number IS the TMDB episode (no offset). Once
+		// any cour has TMDBSeason != 1 we'd need richer logic, so
+		// keep the gate strict and let callers fall back.
+		if m.TMDBSeason != 1 {
+			continue
+		}
+		return 1, abs, true
+	}
+	return 0, 0, false
+}
+
 func (s *Service) size() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
