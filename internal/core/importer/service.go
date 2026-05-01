@@ -71,12 +71,23 @@ func (s *Service) Subscribe() {
 				"content_path", contentPath,
 				"error", err,
 			)
+			// Best-effort series_title lookup so the activity row
+			// renders "Import failed for <Show>" instead of just
+			// "Import failed for ".
+			data := map[string]any{
+				"grab_id": grabID,
+				"error":   err.Error(),
+				"reason":  err.Error(),
+			}
+			if grab, gErr := s.q.GetGrabByID(ctx, grabID); gErr == nil {
+				if series, sErr := s.q.GetSeries(ctx, grab.SeriesID); sErr == nil {
+					data["series_title"] = series.Title
+				}
+			}
 			s.bus.Publish(ctx, events.Event{
-				Type: events.TypeImportFailed,
-				Data: map[string]any{
-					"grab_id": grabID,
-					"error":   err.Error(),
-				},
+				Type:   events.TypeImportFailed,
+				ShowID: e.ShowID,
+				Data:   data,
 			})
 		}
 	})
@@ -116,47 +127,73 @@ func (s *Service) ImportFile(ctx context.Context, grabID, contentPath string) er
 		if !videoExtensions[filepath.Ext(contentPath)] {
 			return fmt.Errorf("not a recognised video extension: %q", filepath.Ext(contentPath))
 		}
-		return s.importSingleFile(ctx, contentPath, grab, epIndex, quality)
-	}
-
-	// Directory: season pack — walk and import each video file individually.
-	var importErr error
-	walkErr := filepath.WalkDir(contentPath, func(path string, d os.DirEntry, werr error) error {
-		if werr != nil || d.IsDir() {
-			return werr
+		if err := s.importSingleFile(ctx, contentPath, grab, epIndex, quality); err != nil {
+			return err
 		}
-		if !videoExtensions[filepath.Ext(path)] {
+	} else {
+		// Directory: season pack — walk and import each video file individually.
+		var importErr error
+		walkErr := filepath.WalkDir(contentPath, func(path string, d os.DirEntry, werr error) error {
+			if werr != nil || d.IsDir() {
+				return werr
+			}
+			if !videoExtensions[filepath.Ext(path)] {
+				return nil
+			}
+			if err := s.importSingleFile(ctx, path, grab, epIndex, quality); err != nil {
+				s.logger.Warn("import: failed to import file from season pack",
+					"path", path,
+					"error", err,
+				)
+				importErr = err // record last error but continue with remaining files
+			}
 			return nil
+		})
+		if walkErr != nil {
+			return fmt.Errorf("walking content directory %q: %w", contentPath, walkErr)
 		}
-		if err := s.importSingleFile(ctx, path, grab, epIndex, quality); err != nil {
-			s.logger.Warn("import: failed to import file from season pack",
-				"path", path,
-				"error", err,
-			)
-			importErr = err // record last error but continue with remaining files
+		if importErr != nil {
+			// At least one file failed; surface it so the caller can log/emit an event.
+			return importErr
 		}
-		return nil
-	})
-	if walkErr != nil {
-		return fmt.Errorf("walking content directory %q: %w", contentPath, walkErr)
 	}
 
-	if importErr != nil {
-		// At least one file failed; surface it so the caller can log/emit an event.
-		return importErr
+	// Publish a single TypeImportComplete for the whole grab regardless
+	// of single-file vs season-pack — previously only the directory
+	// path emitted, leaving the activity log silent for ~80% of grabs
+	// (single episodes are far more common than season packs).
+	//
+	// series_title + quality are read by the activity classifier
+	// (internal/core/activity/service.go classify()). The previous emit
+	// omitted both, leaving rows rendered as "Imported release —
+	// unknown" with no series name.
+	seriesTitle := ""
+	if series, sErr := s.q.GetSeries(ctx, grab.SeriesID); sErr == nil {
+		seriesTitle = series.Title
 	}
-
 	s.bus.Publish(ctx, events.Event{
 		Type:   events.TypeImportComplete,
 		ShowID: grab.SeriesID,
 		Data: map[string]any{
 			"grab_id":      grabID,
 			"content_path": contentPath,
+			"series_title": seriesTitle,
+			"quality":      qualityLabel(quality),
 		},
 	})
 
 	s.logger.Info("import complete", "series_id", grab.SeriesID, "content_path", contentPath)
 	return nil
+}
+
+// qualityLabel renders a plugin.Quality as a short human label
+// ("1080p WEBDL", "2160p BluRay", "1080p"). Mirrors what Prism's
+// importer emits so the activity classifiers stay aligned.
+func qualityLabel(q plugin.Quality) string {
+	if q.Source != "" {
+		return string(q.Resolution) + " " + string(q.Source)
+	}
+	return string(q.Resolution)
 }
 
 // importSingleFile parses the filename, matches it to an episode, and calls
