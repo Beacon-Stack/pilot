@@ -195,6 +195,81 @@ func TestTVDBSeasonToAbsolute_RejectsZeroEpisode(t *testing.T) {
 	}
 }
 
+// ── AbsoluteToTMDBEpisode (inverse) ─────────────────────────────────────────
+//
+// These tests pin the import-side mapping that turns a fansub
+// absolute number ("Show - 48") back into the TMDB (season, episode)
+// tuple the importer needs to attach the file. Without this lookup,
+// every anime grab fails silently with "could not parse season/
+// episode from filename, skipping" — the JJK incident.
+
+// Headline: JJK absolute 48 → TMDB S01E48. Locks the JJK regression
+// from the import side. If this fails, the production bug is back.
+func TestAbsoluteToTMDBEpisode_JujutsuKaisenAbs48(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+
+	season, ep, ok := s.AbsoluteToTMDBEpisode(95479, 48)
+	if !ok {
+		t.Fatal("expected absolute=48 → TMDB conversion to succeed for JJK")
+	}
+	if season != 1 || ep != 48 {
+		t.Errorf("got (S%dE%d), want (S01E48)", season, ep)
+	}
+}
+
+// Within-cour absolute (ep 5 in JJK season 1) also resolves. Confirms
+// the function isn't accidentally requiring a TMDB offset.
+func TestAbsoluteToTMDBEpisode_JujutsuKaisenAbs5(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	season, ep, ok := s.AbsoluteToTMDBEpisode(95479, 5)
+	if !ok || season != 1 || ep != 5 {
+		t.Errorf("abs=5 → got (S%dE%d ok=%v), want (S01E05 ok=true)",
+			season, ep, ok)
+	}
+}
+
+// Cowboy Bebop has a single mapping with TMDBSeason=1 — single-cour
+// shows must work the same as multi-cour ones.
+func TestAbsoluteToTMDBEpisode_SingleCourAnime(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	// Cowboy Bebop tmdbtv=30991
+	season, ep, ok := s.AbsoluteToTMDBEpisode(30991, 12)
+	if !ok || season != 1 || ep != 12 {
+		t.Errorf("Bebop abs=12 → got (S%dE%d ok=%v), want (S01E12 ok=true)",
+			season, ep, ok)
+	}
+}
+
+// Unknown TMDB ID returns (0, 0, false). Matches the contract Lookup
+// uses elsewhere — caller falls back to the parser's natural output.
+func TestAbsoluteToTMDBEpisode_UnknownTMDBIDReturnsFalse(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	season, ep, ok := s.AbsoluteToTMDBEpisode(123456, 5)
+	if ok || season != 0 || ep != 0 {
+		t.Errorf("unknown tmdbID → got (S%dE%d ok=%v), want (0,0,false)",
+			season, ep, ok)
+	}
+}
+
+// Defensive: zero / negative absolute fails without panic.
+func TestAbsoluteToTMDBEpisode_RejectsZeroAndNegative(t *testing.T) {
+	s := New("", nil)
+	_ = s.loadFromBytes([]byte(fixtureXML))
+	if _, _, ok := s.AbsoluteToTMDBEpisode(95479, 0); ok {
+		t.Error("abs=0 must return ok=false")
+	}
+	if _, _, ok := s.AbsoluteToTMDBEpisode(95479, -1); ok {
+		t.Error("abs=-1 must return ok=false")
+	}
+	if _, _, ok := s.AbsoluteToTMDBEpisode(0, 5); ok {
+		t.Error("tmdbID=0 must return ok=false")
+	}
+}
+
 // "movie" tvdbid + empty tmdbtv must NOT crash the parser. The XML
 // has both these shapes scattered through it.
 func TestParse_SkipsNonIndexableEntries(t *testing.T) {
