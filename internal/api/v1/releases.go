@@ -55,6 +55,15 @@ type releaseBody struct {
 	// grab anyway" button. The release can still be grabbed via the
 	// normal grab endpoint if the user overrides.
 	FilterReasons []string `json:"filter_reasons,omitempty"`
+	// AlreadyGrabbedAt, when set, means a grab_history row exists for
+	// this release's GUID. The UI badges the row "already grabbed" and
+	// asks for confirmation before grabbing again. The other AlreadyGrabbed*
+	// fields surface the existing grab's id and status so the frontend
+	// can deep-link to it. This is a guardrail, not a hard filter — the
+	// user can still override and re-grab.
+	AlreadyGrabbedAt     string `json:"already_grabbed_at,omitempty"`
+	AlreadyGrabbedID     string `json:"already_grabbed_id,omitempty"`
+	AlreadyGrabbedStatus string `json:"already_grabbed_status,omitempty"`
 }
 
 type releaseListOutput struct {
@@ -119,6 +128,23 @@ type grabOutput struct {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// indexLatestGrabsByGUID returns a map of release GUID → most-recent
+// grab row for that GUID. The search handler uses this to badge
+// releases the user has already grabbed (see "Already grabbed" guardrail).
+//
+// "Most recent" is determined by GrabbedAt string comparison. The
+// column stores RFC3339 UTC timestamps which sort lexically the same as
+// chronologically, so a string compare is the right tiebreaker.
+func indexLatestGrabsByGUID(rows []db.GrabHistory) map[string]db.GrabHistory {
+	out := make(map[string]db.GrabHistory, len(rows))
+	for _, gr := range rows {
+		if existing, ok := out[gr.ReleaseGuid]; !ok || gr.GrabbedAt > existing.GrabbedAt {
+			out[gr.ReleaseGuid] = gr
+		}
+	}
+	return out
+}
 
 func indexerResultToReleaseBody(r indexer.SearchResult) *releaseBody {
 	q := r.Quality
@@ -348,6 +374,16 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			titleIndexers[r.Title][r.IndexerName] = true
 		}
 
+		// Build a guid → most-recent grab map so we can badge releases
+		// the user has already grabbed before. Cheap: one query per
+		// search, hash-map lookup per release. The guardrail covers the
+		// common "I forgot, did I already grab this?" case; it does not
+		// gate the grab — the UI just shows a confirmation prompt.
+		var grabsByGUID map[string]db.GrabHistory
+		if grabRows, gErr := indexerSvc.GrabHistory(ctx, input.SeriesID); gErr == nil {
+			grabsByGUID = indexLatestGrabsByGUID(grabRows)
+		}
+
 		bodies := make([]*releaseBody, len(results))
 		for i, r := range results {
 			b := indexerResultToReleaseBody(r)
@@ -368,6 +404,11 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 				if bErr == nil && ok {
 					b.FilterReasons = append(b.FilterReasons, "previously stalled (on blocklist)")
 				}
+			}
+			if prior, ok := grabsByGUID[r.GUID]; ok {
+				b.AlreadyGrabbedAt = prior.GrabbedAt
+				b.AlreadyGrabbedID = prior.ID
+				b.AlreadyGrabbedStatus = prior.DownloadStatus
 			}
 			bodies[i] = b
 		}

@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
-import { X, Download, Wifi, HardDrive, Loader2, AlertTriangle, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
+import { X, Download, Wifi, HardDrive, Loader2, AlertTriangle, ArrowUp, ArrowDown, RefreshCw, History } from "lucide-react";
 import { toast } from "sonner";
 import { useSearchReleases, useGrabRelease } from "@/api/releases";
 import Modal from "@beacon-shared/Modal";
+import { useConfirm } from "@/shared/ConfirmDialog";
 import type { ReleaseResult } from "@/types";
 
 type SortField = "seeds" | "size" | "quality";
@@ -218,6 +219,10 @@ function ReleaseRow({ release, onGrab, isGrabbing }: ReleaseRowProps) {
   const dead = release.seeds === 0;
   const health = seedHealth(release.seeds);
   const filtered = (release.filter_reasons?.length ?? 0) > 0;
+  const alreadyGrabbed = !!release.already_grabbed_at;
+  const grabbedAgeLabel = alreadyGrabbed
+    ? formatAge(Math.max(0, (Date.now() - new Date(release.already_grabbed_at!).getTime()) / 86400000))
+    : "";
 
   return (
     <tr
@@ -273,6 +278,25 @@ function ReleaseRow({ release, onGrab, isGrabbing }: ReleaseRowProps) {
           {dead && !filtered && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "var(--color-danger)", fontSize: 10 }}>
               <AlertTriangle size={10} /> No seeders
+            </span>
+          )}
+          {alreadyGrabbed && (
+            <span
+              title={`Previously grabbed ${grabbedAgeLabel} ago — status: ${release.already_grabbed_status ?? "unknown"}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                padding: "1px 5px",
+                background: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
+                color: "var(--color-warning)",
+                border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
+                borderRadius: 3,
+                fontSize: 10,
+                fontWeight: 500,
+              }}
+            >
+              <History size={10} /> Already grabbed {grabbedAgeLabel} ago
             </span>
           )}
           {filtered && release.filter_reasons?.map((reason, idx) => (
@@ -434,6 +458,7 @@ export default function ManualSearchModal({
     true
   );
   const grab = useGrabRelease(seriesId);
+  const confirm = useConfirm();
   const [sort, setSort] = useState<{ field: SortField; dir: SortDir } | null>(null);
 
   // Pack-type filter. When the search is season-scoped, default to showing
@@ -491,7 +516,27 @@ export default function ManualSearchModal({
     });
   }
 
-  function handleGrab(release: ReleaseResult, override?: boolean) {
+  async function handleGrab(release: ReleaseResult, override?: boolean) {
+    // Already-grabbed guardrail: if grab_history has a row for this
+    // release's GUID, prompt the user to confirm before re-grabbing.
+    // The status determines the message: a previously-completed grab
+    // implies "the file already exists, you probably want re-import";
+    // a still-active grab implies "this is already in progress".
+    if (release.already_grabbed_at) {
+      const ageDays = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(release.already_grabbed_at).getTime()) / 86400000),
+      );
+      const ageLabel = ageDays === 0 ? "today" : ageDays === 1 ? "1 day ago" : `${ageDays} days ago`;
+      const status = release.already_grabbed_status || "unknown";
+      const ok = await confirm({
+        title: "Already grabbed",
+        message: `You grabbed this exact release ${ageLabel} (status: ${status}). Grab it again?`,
+        confirmLabel: "Grab again",
+        danger: false,
+      });
+      if (!ok) return;
+    }
     grab.mutate({
       guid: release.guid,
       title: release.title,

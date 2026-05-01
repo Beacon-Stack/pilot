@@ -183,6 +183,12 @@ export interface ReleaseResult {
   // safety filter (below min_seeders, previously stalled, ...). The UI
   // renders such rows grayed at the bottom with an "override" button.
   filter_reasons?: string[];
+  // already_grabbed_at, when set, means the user has previously grabbed
+  // this exact release (by GUID match in grab_history). The UI badges
+  // the row and asks for confirmation before re-grabbing.
+  already_grabbed_at?: string;
+  already_grabbed_id?: string;
+  already_grabbed_status?: string;
 }
 
 // ── Download Clients ────────────────────────────────────────────────────────
