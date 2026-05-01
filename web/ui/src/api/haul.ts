@@ -40,7 +40,10 @@ export function useReimportFromHaul(seriesId: string) {
         body: JSON.stringify({ info_hash: infoHash }),
       }),
     onSuccess: () => {
-      toast.success("Re-import queued");
+      // Synchronous completion: the import has already moved + linked
+      // the file by the time this fires. "Linked" beats "queued" —
+      // nothing's actually in a queue.
+      toast.success("Linked into library");
       void qc.invalidateQueries({ queryKey: ["series", seriesId] });
       void qc.invalidateQueries({ queryKey: ["series", seriesId, "haul-history"] });
     },
@@ -92,7 +95,7 @@ export function useReimportGrab(seriesId: string) {
         method: "POST",
       }),
     onSuccess: () => {
-      toast.success("Re-import queued");
+      toast.success("Linked into library");
       void qc.invalidateQueries({ queryKey: ["series", seriesId] });
       void qc.invalidateQueries({ queryKey: ["series", seriesId, "haul-history"] });
       void qc.invalidateQueries({ queryKey: ["series", seriesId, "grab-history"] });
