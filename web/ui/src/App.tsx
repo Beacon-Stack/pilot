@@ -5,7 +5,7 @@ import "./index.css";
 
 import { ConfirmProvider } from "@beacon-shared/ConfirmDialog";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Shell } from "@/layouts/Shell";
+import Shell from "@/layouts/Shell";
 import Dashboard from "@/pages/dashboard/Dashboard";
 import SeriesDetail from "@/pages/series/SeriesDetail";
 import LibraryList from "@/pages/settings/libraries/LibraryList";
