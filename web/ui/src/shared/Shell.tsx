@@ -393,6 +393,14 @@ function Sidebar({
                 textTransform: "uppercase",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
+                // flexShrink: 0 prevents the parent flex column from
+                // squeezing this div's natural line-height (16.5px at
+                // 11px font) down to fontSize (11.6px) when the nav
+                // doesn't have room. Without this, overflow:hidden
+                // clips the top ~5px of every letter and the section
+                // header reads as "cut off". flexShrink defaults to 1.
+                flexShrink: 0,
+                lineHeight: !isMobile && collapsed ? "0" : "16px",
                 height: !isMobile && collapsed ? "0" : "auto",
                 opacity: !isMobile && collapsed ? 0 : 1,
                 transition:
