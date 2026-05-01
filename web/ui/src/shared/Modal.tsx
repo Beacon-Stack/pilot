@@ -38,6 +38,28 @@ export default function Modal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
+  // Detect mobile viewport (matches the Shell.tsx breakpoint exactly so
+  // mobile-mode modal styling kicks in at the same tier as the
+  // sidebar-becomes-drawer transition). At ≤640px the modal goes full
+  // bleed: edge-to-edge width, no border-radius, no surrounding margin.
+  // The 640 threshold is tighter than Shell's 768 because tablets in
+  // landscape (768-1023) still benefit from the centered modal look;
+  // it's only phones where the centered modal wastes space + makes the
+  // close affordance hard to thumb-reach.
+  const isPhone =
+    typeof window !== "undefined" && window.innerWidth <= 640;
+
+  const phoneStyles: CSSProperties = isPhone
+    ? {
+        width: "100vw",
+        maxWidth: "100vw",
+        maxHeight: "100vh",
+        height: "100vh",
+        borderRadius: 0,
+        border: "none",
+      }
+    : {};
+
   return (
     <div
       style={{
@@ -46,7 +68,7 @@ export default function Modal({
         background: "rgba(0,0,0,0.6)",
         backdropFilter: "blur(2px)",
         display: "flex",
-        alignItems: "center",
+        alignItems: isPhone ? "stretch" : "center",
         justifyContent: "center",
         zIndex: 200,
       }}
@@ -65,6 +87,7 @@ export default function Modal({
           flexDirection: "column",
           overflow: "hidden",
           ...innerStyle,
+          ...phoneStyles,
         }}
         onClick={(e) => e.stopPropagation()}
       >

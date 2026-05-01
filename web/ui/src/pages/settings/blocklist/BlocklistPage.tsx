@@ -128,7 +128,11 @@ export default function BlocklistPage() {
               background: "var(--color-bg-surface)",
               border: "1px solid var(--color-border-subtle)",
               borderRadius: 8,
-              overflow: "hidden",
+              // Allow horizontal scroll when the viewport is narrower
+              // than the grid's natural minimum (~700px). Without this
+              // the right-most columns get clipped on compact screens.
+              overflowX: "auto",
+              overflowY: "hidden",
             }}
           >
             {/* Table header */}
@@ -144,6 +148,7 @@ export default function BlocklistPage() {
                 color: "var(--color-text-muted)",
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
+                minWidth: 700,
               }}
             >
               <span>Release</span>
@@ -165,6 +170,7 @@ export default function BlocklistPage() {
                   padding: "12px 16px",
                   borderBottom: "1px solid var(--color-border-subtle)",
                   alignItems: "center",
+                  minWidth: 700,
                 }}
               >
                 {/* Release title + notes */}

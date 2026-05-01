@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Modal from "@beacon-shared/Modal";
+import TableScroll from "@beacon-shared/TableScroll";
 import PageHeader from "@/components/PageHeader";
 import {
   useIndexers,
@@ -336,33 +337,35 @@ export default function IndexerList() {
             <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--color-text-muted)" }}>Add a Torznab or Newznab indexer to start finding releases.</p>
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
-                {["Name", "Protocol", "Priority", "Status", ""].map((h) => (
-                  <th key={h} style={{ textAlign: "left", padding: "10px 16px", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((cfg, i) => (
-                <tr key={cfg.id} style={{ borderBottom: i < data.length - 1 ? "1px solid var(--color-border-subtle)" : "none" }}>
-                  <td style={{ padding: "0 16px", height: 52, color: "var(--color-text-primary)", fontWeight: 500 }}>{cfg.name}</td>
-                  <td style={{ padding: "0 16px", height: 52 }}><KindBadge kind={cfg.kind} /></td>
-                  <td style={{ padding: "0 16px", height: 52, color: "var(--color-text-secondary)" }}>{cfg.priority}</td>
-                  <td style={{ padding: "0 16px", height: 52 }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: cfg.enabled ? "var(--color-success)" : "var(--color-text-muted)" }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.enabled ? "var(--color-success)" : "var(--color-text-muted)", flexShrink: 0 }} />
-                      {cfg.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                  </td>
-                  <td style={{ padding: "0 16px", height: 52, width: 1 }}>
-                    <RowActions indexer={cfg} onEdit={() => setModal({ open: true, editing: cfg })} />
-                  </td>
+          <TableScroll minWidth={700}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                  {["Name", "Protocol", "Priority", "Status", ""].map((h) => (
+                    <th key={h} style={{ textAlign: "left", padding: "10px 16px", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.map((cfg, i) => (
+                  <tr key={cfg.id} style={{ borderBottom: i < data.length - 1 ? "1px solid var(--color-border-subtle)" : "none" }}>
+                    <td style={{ padding: "0 16px", height: 52, color: "var(--color-text-primary)", fontWeight: 500 }}>{cfg.name}</td>
+                    <td style={{ padding: "0 16px", height: 52 }}><KindBadge kind={cfg.kind} /></td>
+                    <td style={{ padding: "0 16px", height: 52, color: "var(--color-text-secondary)" }}>{cfg.priority}</td>
+                    <td style={{ padding: "0 16px", height: 52 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: cfg.enabled ? "var(--color-success)" : "var(--color-text-muted)" }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.enabled ? "var(--color-success)" : "var(--color-text-muted)", flexShrink: 0 }} />
+                        {cfg.enabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </td>
+                    <td style={{ padding: "0 16px", height: 52, width: 1 }}>
+                      <RowActions indexer={cfg} onEdit={() => setModal({ open: true, editing: cfg })} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
         )}
       </div>
 
