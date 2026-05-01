@@ -262,7 +262,7 @@ func run() error {
 	queueSvc := queue.NewService(queries, downloaderSvc, bus, logger)
 	stallWatcher := stallwatcher.NewService(queries, blocklistSvc, downloaderSvc, bus, logger)
 
-	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc)
+	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc, animeListSvc)
 	importerSvc.Subscribe()
 
 	activitySvc := activity.NewService(queries, logger)

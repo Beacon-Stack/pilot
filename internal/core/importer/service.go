@@ -38,6 +38,18 @@ var videoExtensions = map[string]bool{
 	".wmv":  true,
 }
 
+// AbsoluteEpisodeResolver maps an anime absolute episode number to the
+// TMDB (season, episode) tuple Pilot stores in its database. The
+// importer uses this to attach files like "Show - 48" — fansub
+// releases that don't carry SxxExx — to the right episode row.
+//
+// Defined as an interface (rather than a concrete *animelist.Service
+// dep) so the importer's tests can stub it without dragging in the
+// XML loader. Production wiring passes the real service.
+type AbsoluteEpisodeResolver interface {
+	AbsoluteToTMDBEpisode(tmdbID, abs int) (season, episode int, ok bool)
+}
+
 // Service subscribes to TypeDownloadDone events and imports completed files
 // into the library directory tree.
 type Service struct {
@@ -45,11 +57,15 @@ type Service struct {
 	bus    *events.Bus
 	logger *slog.Logger
 	mm     *mediamanagement.Service
+	animeR AbsoluteEpisodeResolver
 }
 
-// NewService creates a new Service.
-func NewService(q db.Querier, bus *events.Bus, logger *slog.Logger, mm *mediamanagement.Service) *Service {
-	return &Service{q: q, bus: bus, logger: logger, mm: mm}
+// NewService creates a new Service. Pass nil for animelist when the
+// caller doesn't have one wired up; the importer just won't resolve
+// anime absolute-numbered files in that case (same as before this
+// dependency existed).
+func NewService(q db.Querier, bus *events.Bus, logger *slog.Logger, mm *mediamanagement.Service, animeR AbsoluteEpisodeResolver) *Service {
+	return &Service{q: q, bus: bus, logger: logger, mm: mm, animeR: animeR}
 }
 
 // Subscribe registers the import handler on the event bus.
@@ -196,6 +212,48 @@ func qualityLabel(q plugin.Quality) string {
 	return string(q.Resolution)
 }
 
+// resolveEpisodeInfo parses srcPath's filename and applies the anime
+// absolute-episode fallback when SxxExx isn't present.
+//
+// Headline regression case: "[SubsPlease] Jujutsu Kaisen - 48 [1080p].mkv"
+// has no SxxExx but does have absolute=48. Without the fallback, the
+// importer skipped the file silently. With the fallback, the animelist
+// service maps absolute → TMDB (season, episode) using the show's
+// tmdbID, and the importer attaches the file to the right row.
+//
+// Pure of filesystem and disk I/O — only DB lookup (GetSeries) and the
+// resolver call. Tested via TestResolveEpisodeInfo_*.
+func (s *Service) resolveEpisodeInfo(
+	ctx context.Context,
+	srcPath string,
+	grab db.GrabHistory,
+) parser.EpisodeInfo {
+	parsed := parser.Parse(filepath.Base(srcPath))
+	info := parsed.EpisodeInfo
+
+	// Anime absolute fallback: when the filename doesn't have SxxExx
+	// but the parser extracted an absolute episode number AND a
+	// resolver is wired up, look up the show's anime mapping to
+	// recover the TMDB (season, episode) tuple.
+	if len(info.Episodes) == 0 && info.AbsoluteEpisode > 0 && s.animeR != nil {
+		series, sErr := s.q.GetSeries(ctx, grab.SeriesID)
+		if sErr == nil {
+			if season, ep, ok := s.animeR.AbsoluteToTMDBEpisode(int(series.TmdbID), info.AbsoluteEpisode); ok {
+				s.logger.Info("import: resolved anime absolute episode via animelist",
+					"path", srcPath,
+					"absolute", info.AbsoluteEpisode,
+					"season", season,
+					"episode", ep,
+				)
+				info.Season = season
+				info.Episodes = []int{ep}
+			}
+		}
+	}
+
+	return info
+}
+
 // importSingleFile parses the filename, matches it to an episode, and calls
 // AttachFile to do the actual disk transfer and DB write.
 func (s *Service) importSingleFile(
@@ -205,8 +263,7 @@ func (s *Service) importSingleFile(
 	epIndex map[epKey]db.Episode,
 	quality plugin.Quality,
 ) error {
-	parsed := parser.Parse(filepath.Base(srcPath))
-	info := parsed.EpisodeInfo
+	info := s.resolveEpisodeInfo(ctx, srcPath, grab)
 
 	if len(info.Episodes) == 0 {
 		s.logger.Warn("import: could not parse season/episode from filename, skipping",
