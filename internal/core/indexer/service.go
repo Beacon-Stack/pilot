@@ -725,6 +725,23 @@ func (s *Service) UpdateGrabDownloadClient(ctx context.Context, arg db.UpdateGra
 	return nil
 }
 
+// UpdateGrabStatus sets the download_status on a grab row. Used when
+// the grab handler can't make forward progress (e.g. download client
+// rejects the release because the indexer response had no download
+// URL) — without this, the row stays at "queued" forever and shows
+// up in the search guardrail as "already grabbed", suppressing the
+// retry the user wants.
+func (s *Service) UpdateGrabStatus(ctx context.Context, grabID, status string) error {
+	if err := s.q.UpdateGrabStatus(ctx, db.UpdateGrabStatusParams{
+		DownloadStatus:  status,
+		DownloadedBytes: 0,
+		ID:              grabID,
+	}); err != nil {
+		return fmt.Errorf("updating grab status: %w", err)
+	}
+	return nil
+}
+
 // UpdateGrabInfoHash records the BitTorrent info_hash on a grab row. The
 // stall watcher uses this to correlate Haul's stall events back to the
 // grab that initiated them.
