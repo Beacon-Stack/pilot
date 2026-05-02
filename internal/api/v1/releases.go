@@ -129,16 +129,39 @@ type grabOutput struct {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// isGrabbedTerminalFailure returns true for download statuses where the
+// grab effectively didn't deliver a usable file — failed, stalled
+// (timed out before a peer ever appeared), or removed (user purged).
+// The search-time "already grabbed" guardrail skips these so a user
+// who got a dud release still sees a clean Grab button on retry,
+// not a misleading "Already grabbed" pill that suggests the work is
+// done.
+func isGrabbedTerminalFailure(status string) bool {
+	switch status {
+	case "failed", "stalled", "removed":
+		return true
+	}
+	return false
+}
+
 // indexLatestGrabsByGUID returns a map of release GUID → most-recent
 // grab row for that GUID. The search handler uses this to badge
 // releases the user has already grabbed (see "Already grabbed" guardrail).
 //
+// Failed-class grabs (failed/stalled/removed) are excluded — they
+// represent attempts the user almost certainly wants to retry, not
+// suppress. If every grab for a GUID is failed-class, the map will
+// have no entry for that GUID and no badge will render.
+//
 // "Most recent" is determined by GrabbedAt string comparison. The
-// column stores RFC3339 UTC timestamps which sort lexically the same as
-// chronologically, so a string compare is the right tiebreaker.
+// column stores RFC3339 UTC timestamps which sort lexically the same
+// as chronologically, so a string compare is the right tiebreaker.
 func indexLatestGrabsByGUID(rows []db.GrabHistory) map[string]db.GrabHistory {
 	out := make(map[string]db.GrabHistory, len(rows))
 	for _, gr := range rows {
+		if isGrabbedTerminalFailure(gr.DownloadStatus) {
+			continue
+		}
 		if existing, ok := out[gr.ReleaseGuid]; !ok || gr.GrabbedAt > existing.GrabbedAt {
 			out[gr.ReleaseGuid] = gr
 		}
