@@ -279,15 +279,22 @@ function HaulBadge({ record, onReimport }: { record: HaulRecord; onReimport?: (i
   );
 }
 
-// OrphanedGrabBadge renders when grab_history has a completed grab
-// for this episode but the episode_file isn't linked. Click anywhere
-// on the badge to trigger /api/v1/grabs/{id}/reimport, which looks
-// up the file in Haul by info_hash and runs the importer.
+// OrphanedGrabBadge renders the latest non-failure grab for an
+// episode that doesn't have a file linked. Status drives both the
+// label and whether the badge is clickable:
 //
-// Visually matches Missing/Downloaded/Haul pills: subtle-bg, no
-// border, no icon. The whole pill is the click target, so it
-// stays compact in the 160px-wide status column. Hover reveals
-// the grab timestamp.
+//   completed   → yellow "Grabbed · Import" button. The grab
+//                 finished but the file wasn't auto-linked (the
+//                 anime-importer bug class). Click runs
+//                 /api/v1/grabs/{id}/reimport.
+//   downloading → blue "Downloading" pill, no action. The grab is in
+//                 flight in Haul; the user shouldn't double-grab.
+//   queued      → muted "Queued" pill, no action. Pilot has the grab
+//                 row but Haul hasn't started it yet.
+//
+// Visually all three match the existing Missing/Downloaded/Haul
+// pills: subtle-bg, no border, no icon. The whole pill is the click
+// target when actionable.
 function OrphanedGrabBadge({
   grab, onReimportGrab,
 }: {
@@ -297,16 +304,39 @@ function OrphanedGrabBadge({
   const grabbedDate = grab.grabbed_at
     ? new Date(grab.grabbed_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
     : "";
-  const tooltip = `Grabbed ${grabbedDate} but not linked into the library. Click to re-run the importer against the file in Haul.`;
-  if (!onReimportGrab) {
+
+  if (grab.download_status === "downloading") {
     return (
-      <span style={badgeStyle} title={tooltip}>Grabbed</span>
+      <span
+        style={badgeStyle("var(--color-accent)")}
+        title={`Downloading in Haul — grabbed ${grabbedDate}`}
+      >
+        Downloading
+      </span>
     );
+  }
+  if (grab.download_status === "queued") {
+    return (
+      <span
+        style={badgeStyle("var(--color-text-muted)")}
+        title={`Queued — grabbed ${grabbedDate}, waiting for the download client`}
+      >
+        Queued
+      </span>
+    );
+  }
+  // Default: treat as completed-but-orphaned. Anything other than the
+  // statuses above (or "completed" explicitly) is unexpected; render
+  // it as the actionable orphan badge so the user can recover.
+  const tooltip = `Grabbed ${grabbedDate} but not linked into the library. Click to re-run the importer against the file in Haul.`;
+  const orphanStyle = badgeStyle("var(--color-warning)");
+  if (!onReimportGrab) {
+    return <span style={orphanStyle} title={tooltip}>Grabbed</span>;
   }
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onReimportGrab(grab.id); }}
-      style={{ ...badgeStyle, border: "none", cursor: "pointer" }}
+      style={{ ...orphanStyle, border: "none", cursor: "pointer" }}
       title={tooltip}
     >
       Grabbed · Import
@@ -314,12 +344,14 @@ function OrphanedGrabBadge({
   );
 }
 
-const badgeStyle: React.CSSProperties = {
-  display: "inline-flex", alignItems: "center",
-  padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-  background: "color-mix(in srgb, var(--color-warning) 10%, transparent)",
-  color: "var(--color-warning)",
-};
+function badgeStyle(color: string): React.CSSProperties {
+  return {
+    display: "inline-flex", alignItems: "center",
+    padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+    background: `color-mix(in srgb, ${color} 10%, transparent)`,
+    color,
+  };
+}
 
 function StatusBadge({ episode, file, aired }: { episode: Episode; file?: EpisodeFile; aired: boolean }) {
   // Downloaded
