@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Shell from "@/layouts/Shell";
 import Dashboard from "@/pages/dashboard/Dashboard";
 import SeriesDetail from "@/pages/series/SeriesDetail";
+import EpisodeDetail from "@/pages/series/EpisodeDetail";
 import LibraryList from "@/pages/settings/libraries/LibraryList";
 import QualityProfileList from "@/pages/settings/quality-profiles/QualityProfileList";
 import IndexerList from "@/pages/settings/indexers/IndexerList";
@@ -48,6 +49,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="discover" element={<DiscoverPage />} />
             <Route path="series/:id" element={<SeriesDetail />} />
+            <Route path="series/:id/episodes/:episodeId" element={<EpisodeDetail />} />
 
             {/* Nav */}
             <Route path="activity" element={<ActivityPage />} />

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 import type { Episode, EpisodeFile } from "@/types";
@@ -83,10 +84,25 @@ export default function EpisodeRow({
           {epNum}
         </span>
 
-        {/* Title */}
-        <span style={{ fontSize: 13, color: "var(--color-text-primary)", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {/* Title — links to episode detail page. Carry display values
+            via state so cour-shaped anime renders "S03E01" on detail
+            instead of the TMDB-relative "S01E48". */}
+        <Link
+          to={`/series/${ep.series_id}/episodes/${ep.id}`}
+          state={{
+            displaySeasonNumber: seasonNumber,
+            displayEpisodeNumber: displayedEpisode,
+          }}
+          style={{
+            fontSize: 13, color: "var(--color-text-primary)", fontWeight: 500,
+            flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            textDecoration: "none",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--color-accent)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "var(--color-text-primary)"; }}
+        >
           {ep.title || "TBA"}
-        </span>
+        </Link>
 
         {/* Air date */}
         <span style={{ fontSize: 12, color: "var(--color-text-muted)", width: 90, flexShrink: 0, textAlign: "right" }}>

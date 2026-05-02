@@ -177,6 +177,10 @@ type getEpisodeListInput struct {
 	SeasonNumber int    `path:"seasonNumber"`
 }
 
+type getEpisodeInput struct {
+	ID string `path:"id"`
+}
+
 type updateEpisodeInput struct {
 	ID   string `path:"id"`
 	Body struct {
@@ -553,6 +557,24 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 			bodies[i] = episodeToBody(e)
 		}
 		return &episodeListOutput{Body: bodies}, nil
+	})
+
+	// GET /api/v1/episodes/{id}
+	huma.Register(api, huma.Operation{
+		OperationID: "get-episode",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/episodes/{id}",
+		Summary:     "Get a single episode by UUID",
+		Tags:        []string{"Episodes"},
+	}, func(ctx context.Context, input *getEpisodeInput) (*episodeOutput, error) {
+		ep, err := showSvc.GetEpisode(ctx, input.ID)
+		if err != nil {
+			if errors.Is(err, show.ErrNotFound) {
+				return nil, huma.Error404NotFound("episode not found")
+			}
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to get episode", err)
+		}
+		return &episodeOutput{Body: episodeToBody(ep)}, nil
 	})
 
 	// PUT /api/v1/episodes/{id}

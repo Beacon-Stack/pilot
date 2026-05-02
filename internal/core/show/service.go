@@ -784,6 +784,19 @@ func (s *Service) GetEpisodes(ctx context.Context, seasonID string) ([]Episode, 
 	return episodes, nil
 }
 
+// GetEpisode returns a single episode by its UUID. Returns ErrNotFound
+// when no row exists. Used by the episode-detail page route.
+func (s *Service) GetEpisode(ctx context.Context, episodeID string) (Episode, error) {
+	row, err := s.q.GetEpisode(ctx, episodeID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Episode{}, ErrNotFound
+		}
+		return Episode{}, fmt.Errorf("get episode: %w", err)
+	}
+	return rowToEpisode(row), nil
+}
+
 // UpdateEpisodeMonitored sets the monitored flag on a single episode.
 func (s *Service) UpdateEpisodeMonitored(ctx context.Context, episodeID string, monitored bool) error {
 	if err := s.q.UpdateEpisodeMonitored(ctx, db.UpdateEpisodeMonitoredParams{
