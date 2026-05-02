@@ -177,6 +177,18 @@ export function useEpisodes(seriesId: string, seasonNumber: number) {
   });
 }
 
+// useEpisode loads a single episode by its UUID. Used by the episode
+// detail page route — the season-list endpoint requires knowing the
+// season number ahead of time, but the deep link only carries the
+// episode UUID.
+export function useEpisode(episodeId: string) {
+  return useQuery({
+    queryKey: ["episodes", episodeId],
+    queryFn: () => apiFetch<Episode>(`/episodes/${episodeId}`),
+    enabled: !!episodeId,
+  });
+}
+
 export function useUpdateEpisodeMonitored(seriesId: string) {
   const qc = useQueryClient();
   return useMutation({
