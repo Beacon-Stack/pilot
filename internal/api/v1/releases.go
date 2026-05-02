@@ -553,23 +553,26 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		if downloaderSvc != nil {
 			clientID, itemID, addErr := downloaderSvc.Add(ctx, release, nil)
 			if addErr != nil {
+				// Mark the grab as failed so the search-time guardrail
+				// doesn't keep surfacing "already grabbed" on a release
+				// that never actually made it to the download client.
+				_ = indexerSvc.UpdateGrabStatus(ctx, row.ID, "failed")
 				return nil, huma.NewError(http.StatusBadGateway, "failed to send to download client: "+addErr.Error())
-			} else {
-				_ = indexerSvc.UpdateGrabDownloadClient(ctx, db.UpdateGrabDownloadClientParams{
-					ID:               row.ID,
-					DownloadClientID: sql.NullString{String: clientID, Valid: clientID != ""},
-					ClientItemID:     sql.NullString{String: itemID, Valid: itemID != ""},
-				})
-				// For torrent clients (Haul), itemID is the info_hash.
-				// Record it on the grab so the stall watcher can correlate
-				// Haul's reports back to this grab.
-				if itemID != "" && release.Protocol == plugin.ProtocolTorrent {
-					_ = indexerSvc.UpdateGrabInfoHash(ctx, row.ID, itemID)
-					row.InfoHash = sql.NullString{String: itemID, Valid: true}
-				}
-				row.DownloadClientID = sql.NullString{String: clientID, Valid: clientID != ""}
-				row.ClientItemID = sql.NullString{String: itemID, Valid: itemID != ""}
 			}
+			_ = indexerSvc.UpdateGrabDownloadClient(ctx, db.UpdateGrabDownloadClientParams{
+				ID:               row.ID,
+				DownloadClientID: sql.NullString{String: clientID, Valid: clientID != ""},
+				ClientItemID:     sql.NullString{String: itemID, Valid: itemID != ""},
+			})
+			// For torrent clients (Haul), itemID is the info_hash.
+			// Record it on the grab so the stall watcher can correlate
+			// Haul's reports back to this grab.
+			if itemID != "" && release.Protocol == plugin.ProtocolTorrent {
+				_ = indexerSvc.UpdateGrabInfoHash(ctx, row.ID, itemID)
+				row.InfoHash = sql.NullString{String: itemID, Valid: true}
+			}
+			row.DownloadClientID = sql.NullString{String: clientID, Valid: clientID != ""}
+			row.ClientItemID = sql.NullString{String: itemID, Valid: itemID != ""}
 		}
 
 		return &grabOutput{Body: grabToBody(row)}, nil
@@ -740,6 +743,10 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		if downloaderSvc != nil {
 			clientID, itemID, addErr := downloaderSvc.Add(ctx, release, nil)
 			if addErr != nil {
+				// Mark the grab as failed so the search-time guardrail
+				// doesn't keep surfacing "already grabbed" on a release
+				// that never actually made it to the download client.
+				_ = indexerSvc.UpdateGrabStatus(ctx, row.ID, "failed")
 				// nilerr: we intentionally return the rejection as a
 				// structured "no_match" body instead of a 500 so the UI
 				// can show the user why the grab failed.
