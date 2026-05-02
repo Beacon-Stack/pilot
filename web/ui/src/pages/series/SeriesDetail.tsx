@@ -176,7 +176,15 @@ function SeasonEpisodeList({
     return sum;
   }, [episodes, fileMap]);
 
-  // Build episode_id → orphaned grab map for THIS season's episodes.
+  // Build episode_id → latest non-failure grab map for THIS season's
+  // episodes. Used by EpisodeRow to surface a grab-state badge that
+  // distinguishes:
+  //   - completed grab + no file → "Grabbed · Import" (orphan to fix)
+  //   - downloading / queued grab → "Downloading" / "Queued" (in flight)
+  // Failed-class grabs (failed/stalled/removed) are excluded; the user
+  // wants those rows to look freshly-grabbable, not haunted by a
+  // misleading status pill.
+  //
   // Two match paths per row:
   //   1. grab.episode_id is set → direct hit
   //   2. grab.episode_id is empty → parse the release title for an
@@ -187,8 +195,9 @@ function SeasonEpisodeList({
   const orphanedGrabMap = useMemo(() => {
     const m = new Map<string, SeriesGrabHistoryItem>();
     if (!grabRows || !episodes) return m;
+    const failureStatuses = new Set(["failed", "stalled", "removed"]);
     for (const g of grabRows) {
-      if (g.download_status !== "completed") continue;
+      if (failureStatuses.has(g.download_status)) continue;
       let epId = g.episode_id;
       if (!epId) {
         const parsed = parseEpisodeFromReleaseTitle(g.release_title);
