@@ -9,7 +9,7 @@
 // The legacy event-firehose timeline isn't surfaced here anymore; it's
 // still reachable via the /api/v1/activity REST endpoint for debugging.
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowDownToLine,
@@ -587,6 +587,11 @@ function BackgroundTasksRail() {
 
 export default function ActivityPage() {
   const idx = useSeriesIndex();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const grabIdFilter = searchParams.get("grab_id") ?? "";
+  const episodeIdFilter = searchParams.get("episode_id") ?? "";
+  const isFiltered = !!(grabIdFilter || episodeIdFilter);
+
   return (
     <div style={{ padding: 24, maxWidth: 980, display: "flex", flexDirection: "column", gap: 16 }}>
       <PageHeader
@@ -607,10 +612,139 @@ export default function ActivityPage() {
         }
       />
 
+      {isFiltered && (
+        <FilterChip
+          grabIdFilter={grabIdFilter}
+          episodeIdFilter={episodeIdFilter}
+          onClear={() => setSearchParams({})}
+        />
+      )}
+
       <BackgroundTasksRail />
-      <DownloadingRail idx={idx} />
-      <NeedsAttentionRail idx={idx} />
-      <RecentlyImportedRail idx={idx} />
+      {isFiltered ? (
+        <FilteredGrabActivity grabId={grabIdFilter} episodeId={episodeIdFilter} idx={idx} />
+      ) : (
+        <>
+          <DownloadingRail idx={idx} />
+          <NeedsAttentionRail idx={idx} />
+          <RecentlyImportedRail idx={idx} />
+        </>
+      )}
     </div>
+  );
+}
+
+// FilterChip — surface the active filter so the user knows why
+// they're seeing a single-grab view, with one-click clear.
+function FilterChip({
+  grabIdFilter, episodeIdFilter, onClear,
+}: {
+  grabIdFilter: string;
+  episodeIdFilter: string;
+  onClear: () => void;
+}) {
+  const label = grabIdFilter ? `grab ${grabIdFilter.slice(0, 8)}…` : `episode ${episodeIdFilter.slice(0, 8)}…`;
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 12px",
+        background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)",
+        borderRadius: 999,
+        fontSize: 12,
+        color: "var(--color-accent)",
+        alignSelf: "flex-start",
+      }}
+    >
+      <span>Filtering by {label}</span>
+      <button
+        onClick={onClear}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "inherit",
+          cursor: "pointer",
+          padding: 0,
+          fontSize: 12,
+          textDecoration: "underline",
+        }}
+      >
+        clear
+      </button>
+    </div>
+  );
+}
+
+// FilteredGrabActivity — chronological view of every activity event
+// matching the supplied grab_id and/or episode_id. Surfaces the full
+// life of one grab: queued → downloading → completed → import_attempted
+// → import_failed/import_complete → stall events, etc.
+function FilteredGrabActivity({
+  grabId, episodeId, idx,
+}: {
+  grabId: string;
+  episodeId: string;
+  idx: Map<string, Series>;
+}) {
+  const { data, isLoading } = useActivity({ limit: 200 });
+  const items = useMemo<ActivityEntry[]>(() => {
+    const list = data?.activities ?? [];
+    // ActivityEntry doesn't have grab_id/episode_id at the top level —
+    // they live in the `detail` map (e.g. importer publishes
+    // detail.grab_id, stallwatcher publishes detail.episode_id). Pull
+    // them out for filtering. This is a temporary squint; long-term
+    // those should be promoted to indexed columns on the activity row
+    // so the filter can run server-side.
+    return list.filter((a) => {
+      const detail = (a.detail as Record<string, unknown> | undefined) ?? {};
+      if (grabId && detail.grab_id === grabId) return true;
+      if (episodeId && detail.episode_id === episodeId) return true;
+      return false;
+    });
+  }, [data, grabId, episodeId]);
+
+  return (
+    <Rail title={`Events for this ${grabId ? "grab" : "episode"}`} count={items.length}>
+      {isLoading ? (
+        <Empty>Loading…</Empty>
+      ) : items.length === 0 ? (
+        <Empty>No events. The grab may pre-date activity logging.</Empty>
+      ) : (
+        <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+          {items.map((a, i) => {
+            const series = a.series_id ? idx.get(a.series_id) : undefined;
+            return (
+              <li
+                key={`${a.type}:${a.created_at}:${i}`}
+                style={{
+                  padding: "10px 12px",
+                  borderBottom: "1px solid var(--color-border-subtle)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <strong>{a.type}</strong>
+                  <span style={{ color: "var(--color-text-muted)", fontSize: 12 }}>
+                    {timeAgo(a.created_at)}
+                  </span>
+                </div>
+                {(series || a.title) && (
+                  <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                    {series ? series.title : ""}
+                    {series && a.title ? " — " : ""}
+                    {a.title}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Rail>
   );
 }

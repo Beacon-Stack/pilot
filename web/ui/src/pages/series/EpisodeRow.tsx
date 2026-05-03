@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 import type { Episode, EpisodeFile } from "@/types";
-import type { HaulRecord, SeriesGrabHistoryItem } from "@/api/haul";
+import { useGrabFileStatus, type HaulRecord, type SeriesGrabHistoryItem } from "@/api/haul";
 
 interface Props {
   episode: Episode;
@@ -305,6 +305,16 @@ function OrphanedGrabBadge({
     ? new Date(grab.grabbed_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })
     : "";
 
+  // Only check file existence for grabs that LOOK ready to import
+  // (status=completed, has info_hash). Skipping for downloading /
+  // queued / no-hash avoids hammering the endpoint for grabs we
+  // already know we won't render Import for.
+  const shouldCheckFile =
+    grab.download_status === "completed" &&
+    !!grab.info_hash &&
+    !!onReimportGrab;
+  const fileStatus = useGrabFileStatus(grab.id, shouldCheckFile);
+
   if (grab.download_status === "downloading") {
     return (
       <span
@@ -325,22 +335,65 @@ function OrphanedGrabBadge({
       </span>
     );
   }
-  // Default: treat as completed-but-orphaned. Anything other than the
-  // statuses above (or "completed" explicitly) is unexpected; render
-  // it as the actionable orphan badge so the user can recover.
-  const tooltip = `Grabbed ${grabbedDate} but not linked into the library. Click to re-run the importer against the file in Haul.`;
-  const orphanStyle = badgeStyle("var(--color-warning)");
-  if (!onReimportGrab) {
-    return <span style={orphanStyle} title={tooltip}>Grabbed</span>;
+
+  // Grab without info_hash: never has a path to an actual file. Render
+  // a non-clickable muted pill so the user knows it's there but
+  // doesn't waste a click on a 409.
+  if (!grab.info_hash) {
+    return (
+      <Link
+        to={`/activity?grab_id=${grab.id}`}
+        style={{ ...badgeStyle("var(--color-text-muted)"), textDecoration: "none" }}
+        title={`Grabbed ${grabbedDate} but Pilot never received an info_hash from the download client. Click to investigate.`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        Grabbed (no hash)
+      </Link>
+    );
   }
+
+  // Default: completed with info_hash. The file SHOULD be on disk;
+  // verify with the file-status endpoint before offering Import.
+  const orphanStyle = badgeStyle("var(--color-warning)");
+  const investigateStyle = badgeStyle("var(--color-danger)");
+
+  // While we're waiting on the file-status response, render the
+  // optimistic Import button (matches the previous behavior). Better
+  // to flicker to "Investigate" if the file's missing than to flicker
+  // to nothing.
+  if (fileStatus.isLoading || fileStatus.data?.exists !== false) {
+    if (!onReimportGrab) {
+      return <span style={orphanStyle} title={`Grabbed ${grabbedDate} but not linked into the library.`}>Grabbed</span>;
+    }
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); onReimportGrab(grab.id); }}
+        style={{ ...orphanStyle, border: "none", cursor: "pointer" }}
+        title={`Grabbed ${grabbedDate} but not linked into the library. Click to re-run the importer against the file in Haul.`}
+      >
+        Grabbed · Import
+      </button>
+    );
+  }
+
+  // File-status came back negative — file is missing or Haul lost
+  // track. Render Investigate instead of a button that would 409.
+  const reasonText: Record<string, string> = {
+    not_in_haul_history: "Haul has no record of this download anymore",
+    file_missing_on_disk: "the file is gone from the download dir",
+    haul_unreachable: "couldn't reach Haul to verify",
+    no_haul_client: "no Haul download client configured",
+  };
+  const reason = reasonText[fileStatus.data?.reason ?? ""] ?? "the file isn't where Haul says it is";
   return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onReimportGrab(grab.id); }}
-      style={{ ...orphanStyle, border: "none", cursor: "pointer" }}
-      title={tooltip}
+    <Link
+      to={`/activity?grab_id=${grab.id}`}
+      style={{ ...investigateStyle, textDecoration: "none" }}
+      title={`Grabbed ${grabbedDate} but ${reason}. Click to see the activity log for this grab.`}
+      onClick={(e) => e.stopPropagation()}
     >
-      Grabbed · Import
-    </button>
+      Grabbed · Investigate
+    </Link>
   );
 }
 

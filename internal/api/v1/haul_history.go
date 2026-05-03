@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -53,6 +54,29 @@ type importFromHaulOutput struct {
 
 type reimportGrabInput struct {
 	GrabID string `path:"grab_id" doc:"Grab history UUID"`
+}
+
+type grabFileStatusInput struct {
+	GrabID string `path:"grab_id" doc:"Grab UUID"`
+}
+
+type grabFileStatusOutput struct {
+	Body struct {
+		// Exists is true when a real file was found at the path Haul
+		// reports. False means: no info_hash, no Haul record, or
+		// os.Stat failed (file missing on disk).
+		Exists bool `json:"exists"`
+		// Reason explains why exists is false. One of: "no_info_hash",
+		// "no_haul_client", "haul_unreachable", "not_in_haul_history",
+		// "file_missing_on_disk", or empty when Exists is true.
+		Reason string `json:"reason,omitempty"`
+		// Path is the resolved path Haul claims has the file. May be
+		// set even when Exists is false (the file SHOULD live there
+		// but doesn't).
+		Path string `json:"path,omitempty"`
+		// Size is the file size in bytes when Exists is true.
+		Size int64 `json:"size,omitempty"`
+	}
 }
 
 // validateReimportGrab returns an HTTP error string if the grab is
@@ -154,6 +178,61 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 
 		out := &importFromHaulOutput{}
 		out.Body.Status = "imported"
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "grab-file-status",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/grabs/{grab_id}/file-status",
+		Summary:     "Check whether a grab's downloaded file actually exists on disk",
+		Description: "Resolves grab → info_hash → Haul history record → expected file path → os.Stat. The frontend uses this to decide whether to render an Import button (file present) or an Investigate link (file missing or Haul lost track) on a `completed`-but-not-imported grab. Returns 404 if the grab itself doesn't exist; otherwise always returns 200 with `exists` + a `reason` describing the failure mode when it's false.",
+		Tags:        []string{"Haul"},
+	}, func(ctx context.Context, input *grabFileStatusInput) (*grabFileStatusOutput, error) {
+		out := &grabFileStatusOutput{}
+		grab, err := q.GetGrabByID(ctx, input.GrabID)
+		if err != nil {
+			return nil, huma.Error404NotFound("grab not found")
+		}
+		if !grab.InfoHash.Valid || grab.InfoHash.String == "" {
+			out.Body.Exists = false
+			out.Body.Reason = "no_info_hash"
+			return out, nil
+		}
+		client, clientErr := firstHaulClient(ctx, downloaderSvc)
+		if clientErr != nil || client == nil {
+			out.Body.Exists = false
+			out.Body.Reason = "no_haul_client"
+			return out, nil //nolint:nilerr // intentional: surface as exists=false to caller
+		}
+		rec, lookupErr := client.LookupHistoryByHash(ctx, grab.InfoHash.String)
+		if lookupErr != nil {
+			// Degrade gracefully — report exists=false with a reason
+			// rather than 500ing. The UI then renders Investigate
+			// instead of Import, which is still the right action.
+			out.Body.Exists = false
+			out.Body.Reason = "haul_unreachable"
+			return out, nil //nolint:nilerr // intentional: surface as exists=false to caller
+		}
+		if rec == nil {
+			out.Body.Exists = false
+			out.Body.Reason = "not_in_haul_history"
+			return out, nil
+		}
+		// Haul reports SavePath + Name; the file (or directory) lives at
+		// the join. We stat the join — for multi-file torrents that's a
+		// dir, which still reports as Exists. UI distinguishes only on
+		// existence, not file vs dir.
+		path := filepath.Join(rec.SavePath, rec.Name)
+		out.Body.Path = path
+		fi, statErr := os.Stat(path)
+		if statErr != nil {
+			out.Body.Exists = false
+			out.Body.Reason = "file_missing_on_disk"
+			return out, nil //nolint:nilerr // intentional: surface as exists=false to caller
+		}
+		out.Body.Exists = true
+		out.Body.Size = fi.Size()
 		return out, nil
 	})
 
