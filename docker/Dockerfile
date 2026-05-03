@@ -31,6 +31,10 @@ COPY . .
 # Overwrite web/static/ with the freshly built frontend
 COPY --from=frontend /app/web/static/ ./web/static/
 
+# Guard against silent keyless builds — see Dockerfile.beacon for the
+# rationale.
+RUN [ -n "${TMDB_API_KEY}" ] || (echo >&2 "ERROR: TMDB_API_KEY is empty. Refusing to bake a keyless binary. Set PILOT_TMDB_API_KEY in your shell before rebuilding." && exit 1)
+
 # XOR-obfuscate provider keys so recognizable strings can't be recovered
 # from the binary via `strings | grep`. ./tools/obfuscate emits base64
 # ciphertext + XOR key as -X ldflag fragments; defaults.go deobfuscates

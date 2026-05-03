@@ -40,6 +40,14 @@ RUN go mod download
 # Overwrite web/static/ with the freshly built frontend
 COPY --from=frontend /app/web/static/ ./web/static/
 
+# Guard against silent keyless builds. If TMDB_API_KEY is unset, the
+# obfuscate tool emits empty ldflag values and the resulting binary
+# 503s on every metadata lookup at runtime — visible only when an end
+# user searches and gets nothing back. Fail at build time instead so
+# the operator finds out before the bad binary is deployed. See
+# deploy/README.md for the maintainer rebuild flow.
+RUN [ -n "${TMDB_API_KEY}" ] || (echo >&2 "ERROR: TMDB_API_KEY is empty. Refusing to bake a keyless binary. Set PILOT_TMDB_API_KEY in your shell before rebuilding." && exit 1)
+
 # XOR-obfuscate the provider keys before baking them into the binary.
 # Emitting the raw TMDB/Trakt secrets as -X ldflag values would leave
 # recognizable strings in the binary that `strings pilot | grep` can
