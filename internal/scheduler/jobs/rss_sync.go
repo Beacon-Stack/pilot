@@ -16,6 +16,16 @@ import (
 	"github.com/beacon-stack/pilot/internal/scheduler"
 )
 
+// completedSkipWindow is how long a `completed` grab for an episode
+// suppresses fresh RSS grabs. The original Maul S01E07 failure mode:
+// a grab completed but the importer didn't flip has_file=true, and
+// every 15-minute RSS tick re-grabbed the same release for ~3 hours,
+// leaving 11 duplicate grab_history rows. 6 hours is generous enough
+// for any real importer to finish or surface a failure, while short
+// enough that a genuinely-failed release can be retried via RSS the
+// same day.
+const completedSkipWindow = 6 * time.Hour
+
 // RSSSync returns a Job that polls all enabled indexers for recent releases,
 // matches them against monitored series/episodes, and automatically grabs
 // wanted episodes. Runs every 15 minutes.
@@ -83,15 +93,43 @@ func runRSSSync(
 		seriesByTitle[normalizeRSSTitle(s.Title)] = s
 	}
 
-	// 4. Build a set of series IDs that already have an active grab so we
-	//    don't queue duplicate downloads.
+	// 4. Build per-episode dedup sets so we don't queue duplicate downloads.
+	//
+	// Two cohorts skip a release:
+	//
+	//  a. activeEpisodes — an in-flight grab already exists for this
+	//     specific episode. Was previously keyed by series_id, which
+	//     blocked legitimate parallel grabs of different episodes in
+	//     the same series. More importantly, the inverse hole let RSS
+	//     re-grab the SAME episode after a grab terminated as
+	//     "completed" but the importer didn't flip has_file=true (the
+	//     11-dupe Maul S01E07 failure mode — see plans/lifecycle-trust.md).
+	//
+	//  b. recentlyCompletedEpisodes — the same episode had a `completed`
+	//     grab within the last completedSkipWindow. Even if has_file is
+	//     false, we don't fire a fresh grab — the importer can be
+	//     stuck or the file may be inflight in haul. Without this guard,
+	//     RSS hammers a release every 15 minutes generating duplicate
+	//     grab_history rows. The window is intentionally short relative
+	//     to typical RSS refresh — the assumption is that 6h is plenty
+	//     for a real importer to finish or surface a failure.
 	activeGrabs, err := q.ListActiveGrabs(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("listing active grabs: %w", err)
 	}
-	activeSeries := make(map[string]bool, len(activeGrabs))
+	activeEpisodes := make(map[string]bool, len(activeGrabs))
 	for _, g := range activeGrabs {
-		activeSeries[g.SeriesID] = true
+		if g.EpisodeID.Valid && g.EpisodeID.String != "" {
+			activeEpisodes[g.EpisodeID.String] = true
+		}
+	}
+	recentlyCompletedEpisodes, err := buildRecentlyCompletedEpisodes(ctx, q, time.Now().UTC().Add(-completedSkipWindow))
+	if err != nil {
+		// Non-fatal: log and continue with active-only dedup. Worst case
+		// we miss the second-line guardrail and rely on the unique index
+		// (QW4) to backstop.
+		logger.Warn("rss_sync: could not build recently-completed set", "error", err)
+		recentlyCompletedEpisodes = map[string]bool{}
 	}
 
 	// 5. Process each release.
@@ -110,11 +148,8 @@ func runRSSSync(
 			continue
 		}
 
-		if activeSeries[matched.ID] {
-			continue // already downloading something for this series
-		}
-
 		// Load all episodes for the series and find the specific one.
+		// (Per-episode dedup needs the episode ID — series-level skip is gone.)
 		episodes, err := q.ListEpisodesBySeriesID(ctx, matched.ID)
 		if err != nil {
 			logger.Warn("rss_sync: could not list episodes",
@@ -132,6 +167,14 @@ func runRSSSync(
 		// Only grab if episode is monitored and has no file.
 		if !ep.Monitored || ep.HasFile {
 			continue
+		}
+
+		// Per-episode guards (the dedup change). See cohort comment above.
+		if activeEpisodes[ep.ID] {
+			continue // already in flight for this exact episode
+		}
+		if recentlyCompletedEpisodes[ep.ID] {
+			continue // recently completed; importer is the right place to recover, not RSS
 		}
 
 		// Submit to a download client.
@@ -201,7 +244,9 @@ func runRSSSync(
 			"release", rel.Title,
 		)
 		grabbed++
-		activeSeries[matched.ID] = true
+		// Mark this episode as in-flight so a later release in the same
+		// RSS batch doesn't double-grab.
+		activeEpisodes[ep.ID] = true
 	}
 
 	return grabbed, nil
@@ -272,6 +317,29 @@ func extractEpisodeNumbers(title string) (season, episode int, ok bool) {
 		return sn, en, true
 	}
 	return 0, 0, false
+}
+
+// buildRecentlyCompletedEpisodes queries grab_history for `completed`
+// rows newer than the cutoff and returns a set of their episode IDs.
+// Used by RSS sync to skip re-grabbing episodes whose previous attempt
+// is recently completed (regardless of has_file) — preventing the
+// "importer hasn't run / file in flight" race that produced 11
+// duplicate grab_history rows for one release in production.
+func buildRecentlyCompletedEpisodes(ctx context.Context, q db.Querier, since time.Time) (map[string]bool, error) {
+	rows, err := q.ListGrabHistoryByStatusSince(ctx, db.ListGrabHistoryByStatusSinceParams{
+		Status: "completed",
+		Since:  since.Format(time.RFC3339),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(rows))
+	for _, g := range rows {
+		if g.EpisodeID.Valid && g.EpisodeID.String != "" {
+			out[g.EpisodeID.String] = true
+		}
+	}
+	return out, nil
 }
 
 // normalizeRSSTitle lowercases a string, converts common separators to spaces,
