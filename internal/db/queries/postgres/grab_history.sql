@@ -38,6 +38,24 @@ UPDATE grab_history SET info_hash = $1 WHERE id = $2;
 -- name: ListActiveGrabs :many
 SELECT * FROM grab_history WHERE download_status NOT IN ('completed', 'failed', 'removed', 'stalled') ORDER BY grabbed_at DESC;
 
+-- name: ListStaleActiveGrabs :many
+-- Stuck-downloading grabs that the stallwatcher should expire because
+-- they can't make progress. Two cohorts:
+--   1. info_hash IS NULL/empty: pilot recorded the grab but never got an
+--      info_hash back from the download client. The stallwatcher's
+--      info_hash-keyed pipeline is blind to these — they sit in
+--      `downloading` forever. We expire them by age.
+--   2. info_hash IS set: stallwatcher already has a better signal (haul
+--      reports the stall reason). Those are handled by the haul-stall
+--      path; not returned here.
+-- Returned rows are old enough that the operator's expectation is "this
+-- should have completed by now or be reported as stalled."
+SELECT * FROM grab_history
+ WHERE download_status IN ('downloading', 'queued', 'pending')
+   AND (info_hash IS NULL OR info_hash = '')
+   AND grabbed_at < sqlc.arg('older_than')::text
+ ORDER BY grabbed_at ASC;
+
 -- name: GetGrabByClientItemID :one
 SELECT * FROM grab_history WHERE client_item_id = $1 LIMIT 1;
 

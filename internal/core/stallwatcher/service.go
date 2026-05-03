@@ -60,6 +60,15 @@ type downloadClientLister interface {
 // release for an episode happens to be dead.
 const MaxStallRetriesPerEpisode = 3
 
+// StaleGrabAge is how long a grab can sit in `downloading` / `queued` /
+// `pending` without an info_hash before the sweep marks it failed. The
+// info_hash-less branch is invisible to the haul-stall path (haul keys
+// stalls by info_hash), so the only signal we have is age. 24h is well
+// past any normal "metadata fetch + tracker announce + first peer"
+// startup, and it leaves a generous window for genuinely-slow first
+// connects on remote VPN endpoints.
+const StaleGrabAge = 24 * time.Hour
+
 // startupGrace is how long after the watcher starts before it will
 // actually blocklist anything. A Pilot restart races with Haul — a grab
 // from 10 minutes ago might already have been archived by Haul and show
@@ -124,6 +133,17 @@ func (s *Service) Tick(ctx context.Context) error {
 	// We still poll and log, but skip the side effects.
 	inGrace := time.Since(s.startedAt) < startupGrace
 
+	// First: sweep stuck grabs that have no info_hash. Those never make
+	// it into haul's stall reporting (haul keys by info_hash), so the
+	// info_hash-keyed path below is blind to them. They sit in
+	// `downloading` indefinitely and the UI keeps rendering them as
+	// active. Cheap query — runs every tick regardless of haul state.
+	if !inGrace {
+		if err := s.sweepStaleGrabs(ctx); err != nil {
+			s.logger.Warn("stallwatcher: stale-grab sweep", "error", err)
+		}
+	}
+
 	client, err := s.resolveHaulClient(ctx)
 	if err != nil {
 		if errors.Is(err, errNoHaulConfigured) {
@@ -153,6 +173,60 @@ func (s *Service) Tick(ctx context.Context) error {
 				"info_hash", st.InfoHash, "reason", st.Reason, "error", err)
 		}
 	}
+	return nil
+}
+
+// sweepStaleGrabs marks grab_history rows as `failed` when they're
+// stuck in a non-terminal state (`downloading`, `queued`, `pending`)
+// AND have no info_hash AND are older than StaleGrabAge.
+//
+// Why this is needed: a grab that gets recorded but never has its
+// info_hash populated (download client never responded, or the grab
+// raced with a haul restart that lost the in-memory torrent before the
+// hash plumbed back to pilot) is invisible to the haul-stall path.
+// The haul-stall path queries grab_history by info_hash; without one,
+// there's no row to update. So these grabs sit in `downloading`
+// forever and the UI shows them as active.
+//
+// 24h is intentionally conservative — the operator's expectation is
+// "this should have completed by now." If we see >0 sweeps, there's
+// either a flaky download client, a race in the grab handler, or a
+// haul restart that lost state. Any of those is worth knowing about.
+func (s *Service) sweepStaleGrabs(ctx context.Context) error {
+	// grab_history.grabbed_at is RFC3339 text; lexicographic ordering
+	// is timestamp-correct. Compute the cutoff in the same format.
+	cutoff := time.Now().UTC().Add(-StaleGrabAge).Format(time.RFC3339)
+
+	stale, err := s.q.ListStaleActiveGrabs(ctx, cutoff)
+	if err != nil {
+		return fmt.Errorf("listing stale grabs: %w", err)
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+
+	// Mark each as failed. We don't blocklist (no info_hash, no release
+	// to ban — and the user may legitimately re-grab the same release
+	// later through a different path that does record the hash).
+	for _, g := range stale {
+		if err := s.q.UpdateGrabStatus(ctx, db.UpdateGrabStatusParams{
+			DownloadStatus:  "failed",
+			DownloadedBytes: g.DownloadedBytes,
+			ID:              g.ID,
+		}); err != nil {
+			s.logger.Warn("stallwatcher: failed to mark stale grab failed",
+				"grab_id", g.ID, "error", err)
+			continue
+		}
+		s.logger.Info("stallwatcher: expired stuck-active grab",
+			"grab_id", g.ID,
+			"release_title", g.ReleaseTitle,
+			"prior_status", g.DownloadStatus,
+			"grabbed_at", g.GrabbedAt,
+			"reason", "no info_hash + age > "+StaleGrabAge.String())
+	}
+	s.logger.Info("stallwatcher: stale-grab sweep complete",
+		"expired", len(stale), "cutoff", cutoff)
 	return nil
 }
 

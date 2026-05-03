@@ -463,6 +463,71 @@ func (q *Queries) ListGrabHistoryByStatusSince(ctx context.Context, arg ListGrab
 	return items, nil
 }
 
+const listStaleActiveGrabs = `-- name: ListStaleActiveGrabs :many
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history
+ WHERE download_status IN ('downloading', 'queued', 'pending')
+   AND (info_hash IS NULL OR info_hash = '')
+   AND grabbed_at < $1::text
+ ORDER BY grabbed_at ASC
+`
+
+// Stuck-downloading grabs that the stallwatcher should expire because
+// they can't make progress. Two cohorts:
+//  1. info_hash IS NULL/empty: pilot recorded the grab but never got an
+//     info_hash back from the download client. The stallwatcher's
+//     info_hash-keyed pipeline is blind to these — they sit in
+//     `downloading` forever. We expire them by age.
+//  2. info_hash IS set: stallwatcher already has a better signal (haul
+//     reports the stall reason). Those are handled by the haul-stall
+//     path; not returned here.
+//
+// Returned rows are old enough that the operator's expectation is "this
+// should have completed by now or be reported as stalled."
+func (q *Queries) ListStaleActiveGrabs(ctx context.Context, olderThan string) ([]GrabHistory, error) {
+	rows, err := q.db.QueryContext(ctx, listStaleActiveGrabs, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GrabHistory
+	for rows.Next() {
+		var i GrabHistory
+		if err := rows.Scan(
+			&i.ID,
+			&i.SeriesID,
+			&i.EpisodeID,
+			&i.SeasonNumber,
+			&i.IndexerID,
+			&i.ReleaseGuid,
+			&i.ReleaseTitle,
+			&i.ReleaseSource,
+			&i.ReleaseResolution,
+			&i.ReleaseCodec,
+			&i.ReleaseHdr,
+			&i.Protocol,
+			&i.Size,
+			&i.DownloadClientID,
+			&i.ClientItemID,
+			&i.DownloadStatus,
+			&i.DownloadedBytes,
+			&i.ScoreBreakdown,
+			&i.GrabbedAt,
+			&i.Source,
+			&i.InfoHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markGrabRemoved = `-- name: MarkGrabRemoved :exec
 UPDATE grab_history SET download_status = 'removed' WHERE id = $1
 `

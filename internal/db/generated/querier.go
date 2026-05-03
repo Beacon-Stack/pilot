@@ -136,6 +136,18 @@ type Querier interface {
 	ListSeasonsBySeriesID(ctx context.Context, seriesID string) ([]Season, error)
 	ListSeries(ctx context.Context, arg ListSeriesParams) ([]Series, error)
 	ListSeriesByLibrary(ctx context.Context, arg ListSeriesByLibraryParams) ([]Series, error)
+	// Stuck-downloading grabs that the stallwatcher should expire because
+	// they can't make progress. Two cohorts:
+	//   1. info_hash IS NULL/empty: pilot recorded the grab but never got an
+	//      info_hash back from the download client. The stallwatcher's
+	//      info_hash-keyed pipeline is blind to these — they sit in
+	//      `downloading` forever. We expire them by age.
+	//   2. info_hash IS set: stallwatcher already has a better signal (haul
+	//      reports the stall reason). Those are handled by the haul-stall
+	//      path; not returned here.
+	// Returned rows are old enough that the operator's expectation is "this
+	// should have completed by now or be reported as stalled."
+	ListStaleActiveGrabs(ctx context.Context, olderThan string) ([]GrabHistory, error)
 	ListStatsSnapshots(ctx context.Context, limit int32) ([]StatsSnapshot, error)
 	MarkGrabRemoved(ctx context.Context, id string) error
 	PruneActivities(ctx context.Context, createdAt string) error

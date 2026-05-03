@@ -172,6 +172,33 @@ func (m *mockQuerier) CountRecentStallsForEpisode(ctx context.Context, arg db.Co
 	return m.stallCountsByEpisode[key], nil
 }
 
+// ListStaleActiveGrabs returns rows whose grabbed_at is older than the
+// supplied cutoff AND match the no-info_hash + non-terminal-status
+// constraint. Tests that don't seed any stale grabs get an empty slice
+// (the production behavior most tests want — sweep is a no-op).
+func (m *mockQuerier) ListStaleActiveGrabs(ctx context.Context, olderThan string) ([]db.GrabHistory, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	nonTerminal := map[string]bool{"downloading": true, "queued": true, "pending": true}
+	var out []db.GrabHistory
+	// Iterate the same in-memory map the other queries use. Tests that
+	// want to seed stale grabs put them in `grabByInfoHash` keyed by ""
+	// (empty string = no info_hash) — see TestSweepStaleGrabs_*.
+	for _, g := range m.grabByInfoHash {
+		if !nonTerminal[g.DownloadStatus] {
+			continue
+		}
+		if g.InfoHash.Valid && g.InfoHash.String != "" {
+			continue // has info_hash — handled by the haul-stall path
+		}
+		if g.GrabbedAt >= olderThan {
+			continue // not stale yet
+		}
+		out = append(out, g)
+	}
+	return out, nil
+}
+
 //nolint:revive // param name must match sqlc-generated Querier interface
 func (m *mockQuerier) DeleteBlocklistEntryByGUID(ctx context.Context, releaseGuid string) error {
 	m.mu.Lock()
@@ -615,6 +642,127 @@ func TestTick_HaulUnreachable(t *testing.T) {
 	}
 	if len(rig.mock.blocklistByGUID) != 0 {
 		t.Error("blocklist touched after Haul failure — should not be")
+	}
+}
+
+// ── Stale-grab sweep tests ────────────────────────────────────────────
+// The sweep handles the case where a grab gets recorded but never has
+// its info_hash populated (download client never responded, or the
+// grab raced with a haul restart). Those grabs are invisible to the
+// haul-stall path (which keys by info_hash) and would sit in
+// `downloading` forever without this sweep.
+
+// TestTick_SweepsStuckGrabsWithoutInfoHash — the headline case for
+// today's bug: a grab in `downloading` for >24h with no info_hash
+// gets marked failed.
+func TestTick_SweepsStuckGrabsWithoutInfoHash(t *testing.T) {
+	rig := newRig(t)
+
+	// Seed a stale grab — keyed by "" so the sweep query finds it via
+	// the "no info_hash" filter.
+	staleGrabbed := time.Now().Add(-30 * time.Hour).UTC().Format(time.RFC3339)
+	rig.mock.grabByInfoHash[""] = db.GrabHistory{
+		ID:             "stale-grab-1",
+		SeriesID:       "series-1",
+		EpisodeID:      sql.NullString{String: "ep-1", Valid: true},
+		ReleaseGuid:    "guid-stale",
+		ReleaseTitle:   "Star.Wars.Maul.S01E07.WEB.h264-ETHEL",
+		Protocol:       "torrent",
+		DownloadStatus: "downloading",
+		Source:         "auto_search",
+		InfoHash:       sql.NullString{Valid: false}, // explicit no-hash
+		GrabbedAt:      staleGrabbed,
+	}
+
+	if err := rig.stall.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	// Should have seen exactly one UpdateGrabStatus("failed", ...) for the stale grab.
+	if len(rig.mock.updatedStatuses) != 1 {
+		t.Fatalf("expected 1 status update, got %d: %+v", len(rig.mock.updatedStatuses), rig.mock.updatedStatuses)
+	}
+	got := rig.mock.updatedStatuses[0]
+	if got.GrabID != "stale-grab-1" {
+		t.Errorf("wrong grab updated: got %q want stale-grab-1", got.GrabID)
+	}
+	if got.DownloadStatus != "failed" {
+		t.Errorf("wrong terminal status: got %q want failed", got.DownloadStatus)
+	}
+	if len(rig.mock.blocklistByGUID) != 0 {
+		t.Errorf("sweep should NOT blocklist — no info_hash to ban; got %d entries", len(rig.mock.blocklistByGUID))
+	}
+}
+
+// TestTick_SweepLeavesFreshGrabsAlone — a grab without info_hash that's
+// fresh (within the 24h cutoff) should NOT be touched, since we don't
+// want to false-fail genuinely-slow startups (VPN port forwarding,
+// remote tracker latency, etc).
+func TestTick_SweepLeavesFreshGrabsAlone(t *testing.T) {
+	rig := newRig(t)
+
+	freshGrabbed := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+	rig.mock.grabByInfoHash[""] = db.GrabHistory{
+		ID:             "fresh-grab-1",
+		DownloadStatus: "downloading",
+		InfoHash:       sql.NullString{Valid: false},
+		GrabbedAt:      freshGrabbed,
+	}
+
+	if err := rig.stall.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if len(rig.mock.updatedStatuses) != 0 {
+		t.Errorf("sweep touched a fresh grab: %+v", rig.mock.updatedStatuses)
+	}
+}
+
+// TestTick_SweepIgnoresGrabsWithInfoHash — grabs that DO have an
+// info_hash are handled by the haul-stall path (they show up in
+// /api/v1/stalls and get classified there). The sweep mustn't double-
+// dip on them or there'd be two writers fighting over the same row.
+func TestTick_SweepIgnoresGrabsWithInfoHash(t *testing.T) {
+	rig := newRig(t)
+
+	staleGrabbed := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
+	rig.mock.grabByInfoHash["abcd1234"] = db.GrabHistory{
+		ID:             "with-hash-grab-1",
+		DownloadStatus: "downloading",
+		InfoHash:       sql.NullString{String: "abcd1234", Valid: true},
+		GrabbedAt:      staleGrabbed,
+	}
+
+	if err := rig.stall.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	for _, u := range rig.mock.updatedStatuses {
+		if u.GrabID == "with-hash-grab-1" {
+			t.Errorf("sweep updated a grab that has an info_hash — that grab should be left for the haul-stall path: %+v", u)
+		}
+	}
+}
+
+// TestTick_SweepRespectsStartupGrace — the sweep mustn't fire during
+// the 2-minute startup grace, same as the haul-stall path. A pilot
+// restart with grabs in flight should NOT see them all expired before
+// haul has a chance to report on them.
+func TestTick_SweepRespectsStartupGrace(t *testing.T) {
+	rig := newRig(t)
+	rig.stall.startedAt = time.Now().Add(-30 * time.Second) // inside grace
+
+	staleGrabbed := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
+	rig.mock.grabByInfoHash[""] = db.GrabHistory{
+		ID:             "would-be-stale",
+		DownloadStatus: "downloading",
+		InfoHash:       sql.NullString{Valid: false},
+		GrabbedAt:      staleGrabbed,
+	}
+
+	if err := rig.stall.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if len(rig.mock.updatedStatuses) != 0 {
+		t.Errorf("sweep ran during startup grace: %+v", rig.mock.updatedStatuses)
 	}
 }
 
