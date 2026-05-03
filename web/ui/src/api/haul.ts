@@ -66,6 +66,11 @@ export interface SeriesGrabHistoryItem {
   size: number;
   download_status: string;
   grabbed_at: string;
+  // Set when Pilot received the info_hash back from the download
+  // client. Absent for grabs the client never confirmed (race during
+  // a haul restart, etc) — those are invisible to the haul-stall path
+  // and visible to the stallwatcher's age-sweep instead.
+  info_hash?: string;
 }
 
 // useSeriesGrabHistory loads Pilot's own grab_history rows for the
@@ -78,6 +83,28 @@ export function useSeriesGrabHistory(seriesId: string) {
     queryFn: () =>
       apiFetch<SeriesGrabHistoryItem[]>(`/series/${seriesId}/grab-history`),
     enabled: !!seriesId,
+    throwOnError: false,
+  });
+}
+
+export interface GrabFileStatus {
+  exists: boolean;
+  reason?: "no_info_hash" | "no_haul_client" | "haul_unreachable" | "not_in_haul_history" | "file_missing_on_disk" | "";
+  path?: string;
+  size?: number;
+}
+
+// useGrabFileStatus checks whether a grab's downloaded file actually
+// exists on disk. Used by the OrphanedGrabBadge to choose between
+// rendering an Import button (file present) or an Investigate link
+// (file missing or Haul lost track). Cached for 30s — re-checking on
+// every render would hammer Haul's history endpoint.
+export function useGrabFileStatus(grabId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["grabs", grabId, "file-status"],
+    queryFn: () => apiFetch<GrabFileStatus>(`/grabs/${grabId}/file-status`),
+    enabled: !!grabId && enabled,
+    staleTime: 30_000,
     throwOnError: false,
   });
 }
