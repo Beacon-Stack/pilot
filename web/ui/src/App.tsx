@@ -13,6 +13,7 @@ import LibraryList from "@/pages/settings/libraries/LibraryList";
 import QualityProfileList from "@/pages/settings/quality-profiles/QualityProfileList";
 import IndexerList from "@/pages/settings/indexers/IndexerList";
 import SystemSettings from "@/pages/settings/system/SystemSettings";
+import LogsPage from "@/pages/settings/system/Logs";
 import AppSettings from "@/pages/settings/app/AppSettings";
 import ProvidersSettings from "@/pages/settings/providers/ProvidersSettings";
 import DownloadClientList from "@/pages/settings/download-clients/DownloadClientList";
@@ -74,6 +75,7 @@ export default function App() {
             <Route path="settings/blocklist" element={<BlocklistPage />} />
             <Route path="settings/import" element={<ImportPage />} />
             <Route path="settings/system" element={<SystemSettings />} />
+            <Route path="settings/system/logs" element={<LogsPage />} />
             <Route path="settings/app" element={<AppSettings />} />
             <Route path="settings/providers" element={<ProvidersSettings />} />
           </Route>
