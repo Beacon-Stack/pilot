@@ -10,6 +10,7 @@ import {
   Calendar as CalendarDays,
   Compass,
   Download,
+  FileText,
   Film,
   Gauge,
   History,
@@ -58,6 +59,7 @@ const settingsNav: NavItem[] = [
   { to: "/settings/import", icon: ArrowDownToLine, label: "Import" },
   { to: "/settings/providers", icon: KeyRound, label: "Providers" },
   { to: "/settings/system", icon: Server, label: "System" },
+  { to: "/settings/system/logs", icon: FileText, label: "Logs" },
   { to: "/settings/app", icon: Paintbrush, label: "App Settings" },
 ];
 

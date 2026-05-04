@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { Library, SlidersHorizontal, Server, Paintbrush, SearchCode, ListPlus, ArrowDownToLine } from "lucide-react";
+import { Library, SlidersHorizontal, Server, Paintbrush, SearchCode, ListPlus, ArrowDownToLine, FileText } from "lucide-react";
 
 interface SettingsNavItem {
   to: string;
@@ -14,6 +14,7 @@ const settingsNav: SettingsNavItem[] = [
   { to: "/settings/import-lists",     icon: ListPlus,          label: "Import Lists" },
   { to: "/settings/import",           icon: ArrowDownToLine,   label: "Import" },
   { to: "/settings/system",           icon: Server,            label: "System" },
+  { to: "/settings/system/logs",      icon: FileText,          label: "Logs" },
   { to: "/settings/app",              icon: Paintbrush,        label: "App Settings" },
 ];
 
