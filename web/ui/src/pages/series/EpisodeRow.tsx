@@ -336,18 +336,20 @@ function OrphanedGrabBadge({
     );
   }
 
-  // Grab without info_hash: never has a path to an actual file. Render
-  // a non-clickable muted pill so the user knows it's there but
-  // doesn't waste a click on a 409.
+  // Grab without info_hash: there's a grab record but the download
+  // client never confirmed receipt, so we have nothing to import. Same
+  // user-visible meaning as the file-missing case below: something's
+  // off, click to dig in. Surface as Investigate (red) — the tooltip
+  // explains the underlying reason for anyone who wants the detail.
   if (!grab.info_hash) {
     return (
       <Link
         to={`/activity?grab_id=${grab.id}`}
-        style={{ ...badgeStyle("var(--color-text-muted)"), textDecoration: "none" }}
-        title={`Grabbed ${grabbedDate} but Pilot never received an info_hash from the download client. Click to investigate.`}
+        style={{ ...badgeStyle("var(--color-danger)"), textDecoration: "none" }}
+        title={`Grabbed ${grabbedDate} but the download client never confirmed receipt. Click to see the activity log for this grab.`}
         onClick={(e) => e.stopPropagation()}
       >
-        Grabbed (no hash)
+        Investigate
       </Link>
     );
   }
@@ -392,7 +394,7 @@ function OrphanedGrabBadge({
       title={`Grabbed ${grabbedDate} but ${reason}. Click to see the activity log for this grab.`}
       onClick={(e) => e.stopPropagation()}
     >
-      Grabbed · Investigate
+      Investigate
     </Link>
   );
 }
