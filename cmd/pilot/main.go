@@ -76,7 +76,6 @@ import (
 	"github.com/beacon-stack/pilot/internal/db"
 	dbgen "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
-	"github.com/beacon-stack/pilot/internal/logging"
 	"github.com/beacon-stack/pilot/internal/metadata/animelist"
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
 	pulseint "github.com/beacon-stack/pilot/internal/pulse"
@@ -87,6 +86,9 @@ import (
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
 	"github.com/beacon-stack/pilot/internal/trakt"
 	"github.com/beacon-stack/pilot/internal/version"
+	beaconlog "github.com/beacon-stack/pulse/pkg/log"
+	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
+	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
 )
 
 func main() {
@@ -108,8 +110,42 @@ func run() error {
 	}
 
 	// ── Logger ────────────────────────────────────────────────────────────────
-	logger, logBuffer := logging.New(cfg.Log.Level, cfg.Log.Format)
+	// Shared module from pulse/pkg/log — stdout JSON, ring buffer
+	// behind /api/v1/system/logs, pluggable sinks (Loki, file)
+	// configured via env vars.
+	logger, logSystem := beaconlog.New(beaconlog.Config{
+		Service: "pilot",
+		Level:   cfg.Log.Level,
+		Format:  cfg.Log.Format,
+	})
 	slog.SetDefault(logger)
+	defer logSystem.Close(context.Background())
+
+	if url := os.Getenv("BEACON_LOG_LOKI_URL"); url != "" {
+		p, err := loki.New(loki.Config{
+			Service:   "pilot",
+			URL:       url,
+			TenantID:  os.Getenv("BEACON_LOG_LOKI_TENANT"),
+			BasicUser: os.Getenv("BEACON_LOG_LOKI_USER"),
+			BasicPass: os.Getenv("BEACON_LOG_LOKI_PASS"),
+		})
+		if err != nil {
+			logger.Warn("loki plugin disabled", "error", err)
+		} else {
+			logSystem.Add(p)
+			logger.Info("log sink: loki", "url", url)
+		}
+	}
+	if path := os.Getenv("BEACON_LOG_FILE_PATH"); path != "" {
+		p, err := file.New(file.Config{Path: path})
+		if err != nil {
+			logger.Warn("file log plugin disabled", "error", err)
+		} else {
+			logSystem.Add(p)
+			logger.Info("log sink: file", "path", path)
+		}
+	}
+	dockerLogs := beaconlog.NewDockerLogsReader()
 
 	// Advisory config file permission check.
 	checkPath := cfg.ConfigFile
@@ -313,7 +349,8 @@ func run() error {
 		ConfigFile:             cfg.ConfigFile,
 		TMDBKeyConfigured:      !cfg.TMDB.APIKey.IsEmpty(),
 		TMDBKeyIsDefault:       cfg.TMDBKeyIsDefault,
-		LogBuffer:              logBuffer,
+		LogSystem:              logSystem,
+		DockerLogs:             dockerLogs,
 		Queries:                queries,
 		ShowService:            showSvc,
 		QualityService:         qualitySvc,
