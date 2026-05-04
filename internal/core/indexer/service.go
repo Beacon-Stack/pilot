@@ -755,6 +755,15 @@ func (s *Service) UpdateGrabInfoHash(ctx context.Context, grabID, infoHash strin
 	return nil
 }
 
+// GetGrabByInfoHash returns the most-recent grab for the given
+// info_hash. Returns sql.ErrNoRows when none matches — callers map
+// that to 404 at the API edge. Used by the /grabs/by-hash/{hash}/research
+// endpoint to find the original grab so it can blocklist the dead
+// release and retry.
+func (s *Service) GetGrabByInfoHash(ctx context.Context, infoHash string) (db.GrabHistory, error) {
+	return s.q.GetGrabByInfoHash(ctx, sql.NullString{String: infoHash, Valid: infoHash != ""})
+}
+
 func rowToConfig(row db.IndexerConfig) (Config, error) {
 	createdAt, err := time.Parse(time.RFC3339, row.CreatedAt)
 	if err != nil {

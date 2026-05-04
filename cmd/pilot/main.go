@@ -293,7 +293,7 @@ func run() error {
 	sched.Add(jobs.ActivityPrune(activitySvc, logger))
 
 	// ── Pulse integration (optional) ──────────────────────────────────────────
-	pulseIntegration, err := pulseint.New(cfg.Pulse, cfg.Server.Host, cfg.Server.Port, logger)
+	pulseIntegration, err := pulseint.New(cfg.Pulse, cfg.Server.Host, cfg.Server.Port, cfg.Auth.APIKey.Value(), logger)
 	if err != nil {
 		logger.Warn("pulse integration failed — continuing without it", "error", err)
 	}

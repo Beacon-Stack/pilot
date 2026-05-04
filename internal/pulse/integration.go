@@ -26,7 +26,7 @@ type Integration struct {
 //
 // If only the URL is set (no API key), it will attempt to auto-discover
 // the key from Pulse's config file at ~/.config/pulse/config.yaml.
-func New(cfg config.PulseConfig, serverHost string, serverPort int, logger *slog.Logger) (*Integration, error) {
+func New(cfg config.PulseConfig, serverHost string, serverPort int, serviceAPIKey string, logger *slog.Logger) (*Integration, error) {
 	if cfg.URL == "" {
 		logger.Info("pulse integration disabled (no URL configured)")
 		return nil, nil
@@ -62,13 +62,14 @@ func New(cfg config.PulseConfig, serverHost string, serverPort int, logger *slog
 	}
 
 	client, err := sdk.NewWithRetry(sdk.Config{
-		PulseURL:    cfg.URL,
-		APIKey:      apiKey,
-		ServiceName: "pilot",
-		ServiceType: "media-manager",
-		APIURL:      apiURL,
-		HealthURL:   healthURL,
-		Version:     version.Version,
+		PulseURL:      cfg.URL,
+		APIKey:        apiKey,
+		ServiceName:   "pilot",
+		ServiceType:   "media-manager",
+		APIURL:        apiURL,
+		HealthURL:     healthURL,
+		Version:       version.Version,
+		ServiceAPIKey: serviceAPIKey,
 		Capabilities: []string{
 			"supports_torrent",
 			"supports_usenet",
