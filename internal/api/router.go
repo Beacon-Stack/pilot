@@ -33,11 +33,11 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stats"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
-	"github.com/beacon-stack/pilot/internal/logging"
 	"github.com/beacon-stack/pilot/internal/scheduler"
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
 	"github.com/beacon-stack/pilot/internal/version"
 	"github.com/beacon-stack/pilot/web"
+	beaconlog "github.com/beacon-stack/pulse/pkg/log"
 )
 
 // RouterConfig holds everything the router needs to function.
@@ -51,7 +51,8 @@ type RouterConfig struct {
 	ConfigFile             string
 	TMDBKeyConfigured      bool
 	TMDBKeyIsDefault       bool
-	LogBuffer              *logging.RingBuffer
+	LogSystem              *beaconlog.System
+	DockerLogs             *beaconlog.DockerLogsReader
 	Queries                db.Querier
 	ShowService            *show.Service
 	QualityService         *quality.Service
@@ -168,8 +169,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	v1.RegisterEnvRoutes(humaAPI)
 	v1.RegisterFilesystemRoutes(humaAPI)
 
-	if cfg.LogBuffer != nil {
-		v1.RegisterLogRoutes(humaAPI, cfg.LogBuffer)
+	if cfg.LogSystem != nil {
+		beaconlog.RegisterRoutesWithDocker(humaAPI, cfg.LogSystem, cfg.DockerLogs)
 	}
 
 	if cfg.ShowService != nil {
