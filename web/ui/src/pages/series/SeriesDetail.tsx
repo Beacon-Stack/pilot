@@ -15,7 +15,7 @@ import type { Episode, EpisodeFile, Season } from "@/types";
 import SeasonPills from "./SeasonPills";
 import SeasonHeader from "./SeasonHeader";
 import type { EpisodeFilter } from "./SeasonHeader";
-import EpisodeRow from "./EpisodeRow";
+import EpisodeRow, { EpisodeStatusLegend } from "./EpisodeRow";
 import AllSeasonsView, { buildSeasonSummaries } from "./AllSeasonsView";
 import type { SeasonSummary } from "./AllSeasonsView";
 import BulkActionBar from "./BulkActionBar";
@@ -270,8 +270,10 @@ function SeasonEpisodeList({
           {filter === "all" ? "No episodes." : `No ${filter} episodes.`}
         </div>
       ) : (
-        <div style={{ border: "1px solid var(--color-border-subtle)", borderRadius: 8, overflow: "hidden" }}>
-          {filtered.map((ep: Episode) => (
+        <>
+          <EpisodeStatusLegend />
+          <div style={{ border: "1px solid var(--color-border-subtle)", borderRadius: 8, overflow: "hidden" }}>
+            {filtered.map((ep: Episode) => (
             <EpisodeRow
               key={ep.id}
               episode={ep}
@@ -303,7 +305,8 @@ function SeasonEpisodeList({
               onReimportGrab={onReimportGrab}
             />
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       <BulkActionBar

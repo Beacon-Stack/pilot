@@ -406,18 +406,84 @@ function badgeStyle(color: string): React.CSSProperties {
   };
 }
 
+// EpisodeStatusLegend — once-per-season-view caption mapping pill
+// colors to states. Lets us strip explanatory text from individual
+// episode rows (a Downloaded row says only "2160p"; the green color
+// is what tells you it's downloaded). The legend sits at the top of
+// the episode list so a glance reading establishes context before
+// scanning the rows.
+//
+// Each item is a small color swatch + label. Items inline as a flex
+// row, so on narrow viewports they wrap to a second line. Tooltip on
+// each item explains the state in more detail.
+export function EpisodeStatusLegend() {
+  const items = [
+    { color: "var(--color-success)", label: "Downloaded", tooltip: "File is in the library" },
+    { color: "var(--color-accent)", label: "Downloading", tooltip: "Active in Haul" },
+    { color: "var(--color-warning)", label: "Grabbed", tooltip: "Downloaded but not yet imported into the library" },
+    { color: "var(--color-danger)", label: "Investigate", tooltip: "Grab status unclear — file may be missing" },
+    { color: "var(--color-danger)", label: "Missing", tooltip: "Aired and monitored but no file", muted: true },
+    { color: "var(--color-text-muted)", label: "Unaired / Unmonitored", tooltip: "Episode hasn't aired yet, or monitoring is off" },
+  ];
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: 12,
+        padding: "8px 12px",
+        marginBottom: 8,
+        fontSize: 11,
+        color: "var(--color-text-muted)",
+        background: "var(--color-bg-elevated)",
+        border: "1px solid var(--color-border-subtle)",
+        borderRadius: 6,
+      }}
+    >
+      <span style={{ fontWeight: 500, opacity: 0.7 }}>Legend:</span>
+      {items.map((item, i) => (
+        <span
+          key={i}
+          title={item.tooltip}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 2,
+              background: `color-mix(in srgb, ${item.color} ${item.muted ? 30 : 50}%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${item.color} 80%, transparent)`,
+              flexShrink: 0,
+            }}
+          />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function StatusBadge({ episode, file, aired }: { episode: Episode; file?: EpisodeFile; aired: boolean }) {
-  // Downloaded
+  // Downloaded — green pill with just the resolution. State (downloaded) is
+  // conveyed by color (legend at top of list); codec + size live in the
+  // expanded detail row to keep the at-a-glance view clean.
   if (episode.has_file && file) {
-    const qual = [file.quality.resolution, file.quality.codec].filter(Boolean).join(" ");
+    const label = file.quality.resolution || "Downloaded";
+    const tooltip = `${[file.quality.source, file.quality.resolution, file.quality.codec].filter(Boolean).join(" · ") || "Downloaded"} · ${formatBytes(file.size_bytes)}`;
     return (
-      <span style={{
-        display: "inline-flex", alignItems: "center", gap: 4,
-        padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-        background: "color-mix(in srgb, var(--color-success) 12%, transparent)",
-        color: "var(--color-success)",
-      }}>
-        {qual || "Downloaded"} · {formatBytes(file.size_bytes)}
+      <span
+        title={tooltip}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+          background: "color-mix(in srgb, var(--color-success) 12%, transparent)",
+          color: "var(--color-success)",
+        }}
+      >
+        {label}
       </span>
     );
   }
