@@ -588,12 +588,6 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		}
 	}
 
-	type autoSearchResultBody struct {
-		Result       string `json:"result"` // "grabbed", "no_match"
-		ReleaseTitle string `json:"release_title,omitempty"`
-		Reason       string `json:"reason,omitempty"`
-	}
-
 	type autoSearchOutput struct {
 		Body *autoSearchResultBody
 	}
@@ -606,171 +600,241 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		Description: "Searches all enabled indexers and grabs the highest-scored result. Uses quality profile scoring to pick the best match.",
 		Tags:        []string{"Releases"},
 	}, func(ctx context.Context, input *autoSearchInput) (*autoSearchOutput, error) {
-		series, err := showSvc.Get(ctx, input.SeriesID)
-		if err != nil {
-			if errors.Is(err, show.ErrNotFound) {
-				return nil, huma.Error404NotFound("series not found")
-			}
-			return nil, huma.NewError(http.StatusInternalServerError, "failed to get series", err)
-		}
-
-		// Anime context: same rationale as the manual-search path above —
-		// only fetch absolute number when the series is anime AND a
-		// specific episode is being searched.
-		var absoluteEp int
-		var tvdbToAbs func(int, int) int
-		isAnime := series.SeriesType == "anime"
-		if isAnime && input.Body.Season > 0 && input.Body.Episode > 0 {
-			absoluteEp, _ = showSvc.GetEpisodeAbsoluteNumber(ctx, input.SeriesID, input.Body.Season, input.Body.Episode)
-			tmdbID := series.TMDBID
-			tvdbToAbs = func(s, e int) int {
-				abs, _ := showSvc.TVDBSeasonToAbsolute(tmdbID, s, e)
-				return abs
-			}
-		}
-		queries := buildEpisodeQueries(series.Title, input.Body.Season, input.Body.Episode, absoluteEp, isAnime)
-		results, searchErr := searchAllQueries(ctx, indexerSvc, queries, input.Body.Season, input.Body.Episode)
-
-		// Filter results to only include the requested series and season/episode.
-		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Body.Season, input.Body.Episode, absoluteEp, tvdbToAbs)
-
-		// Tag releases outside the series' quality profile. For auto-search
-		// these tags also gate the viable set further down, so the auto-grab
-		// never picks a release rejected by the profile.
-		if qualitySvc != nil && series.QualityProfileID != "" {
-			if profile, err := qualitySvc.Get(ctx, series.QualityProfileID); err == nil {
-				applyQualityProfile(results, &profile)
-			}
-		}
-
-		if len(results) == 0 {
-			reason := "no results from any indexer"
-			if searchErr != nil {
-				reason = searchErr.Error()
-			}
-			return &autoSearchOutput{Body: &autoSearchResultBody{
-				Result: "no_match",
-				Reason: reason,
-			}}, nil
-		}
-
-		// Auto-search honors the per-indexer min_seeders filter and the
-		// blocklist filter. Search() already populates FilterReasons for
-		// min_seeders violations; we additionally check blocklist here.
-		// A release is "viable" for auto-grab if it has no filter reasons.
-		var viable []indexer.SearchResult
-		for _, r := range results {
-			if len(r.FilterReasons) > 0 {
-				continue
-			}
-			if blocklistSvc != nil {
-				ok, bErr := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, r.GUID, "")
-				if bErr == nil && ok {
-					continue
-				}
-			}
-			viable = append(viable, r)
-		}
-
-		if len(viable) == 0 {
-			return &autoSearchOutput{Body: &autoSearchResultBody{
-				Result: "no_match",
-				Reason: fmt.Sprintf("found %d results but all were filtered (below min_seeders or on blocklist)", len(results)),
-			}}, nil
-		}
-
-		// Prefer results that appear on multiple indexers (higher confidence
-		// that the seed count is accurate).
-		best := viable[0]
-		if len(viable) > 1 {
-			titleCounts := make(map[string]int)
-			for _, r := range viable {
-				titleCounts[r.Title]++
-			}
-			for _, r := range viable {
-				if titleCounts[r.Title] > 1 && titleCounts[r.Title] > titleCounts[best.Title] {
-					best = r
-					break
-				}
-			}
-		}
-
-		// Look up series for TMDB id + title (used by Haul's history
-		// index and rename-on-complete). Best-effort; fall back to
-		// whatever we already had if the lookup fails.
-		var seriesTitle string
-		var seriesYear int
-		var seriesTMDBID int
-		if s, sErr := showSvc.Get(ctx, input.SeriesID); sErr == nil {
-			seriesTitle = s.Title
-			seriesYear = s.Year
-			seriesTMDBID = int(s.TMDBID)
-		}
-
-		release := plugin.Release{
-			GUID:         best.GUID,
-			Title:        best.Title,
-			Protocol:     best.Protocol,
-			DownloadURL:  best.DownloadURL,
-			Size:         best.Size,
-			Quality:      best.Quality,
-			MediaType:    "tv",
-			MediaTitle:   seriesTitle,
-			MediaYear:    seriesYear,
-			SeasonNumber: input.Body.Season,
-			// Arr-side identity for Haul's history lookup.
-			TMDBID:    seriesTMDBID,
+		body, err := runAutoSearchAndGrab(ctx, autoSearchDeps{
+			ShowSvc:       showSvc,
+			IndexerSvc:    indexerSvc,
+			DownloaderSvc: downloaderSvc,
+			BlocklistSvc:  blocklistSvc,
+			QualitySvc:    qualitySvc,
+		}, autoSearchParams{
 			SeriesID:  input.SeriesID,
+			Season:    input.Body.Season,
+			Episode:   input.Body.Episode,
 			EpisodeID: input.Body.EpisodeID,
-		}
-
-		// Record the grab. Source is "auto_search" so stall watcher is
-		// allowed to auto-re-search on failure (with circuit breaker).
-		seasonNum := input.Body.Season
-		row, err := indexerSvc.CreateGrab(ctx, indexer.GrabRequest{
-			SeriesID:     input.SeriesID,
-			EpisodeID:    input.Body.EpisodeID,
-			SeasonNumber: seasonNum,
-			Release:      release,
-			IndexerID:    best.IndexerID,
-			Source:       "auto_search",
+			Source:    "auto_search",
 		})
 		if err != nil {
-			return nil, huma.NewError(http.StatusInternalServerError, "failed to record grab", err)
+			return nil, err
 		}
-
-		// Submit to download client.
-		if downloaderSvc != nil {
-			clientID, itemID, addErr := downloaderSvc.Add(ctx, release, nil)
-			if addErr != nil {
-				// Mark the grab as failed so the search-time guardrail
-				// doesn't keep surfacing "already grabbed" on a release
-				// that never actually made it to the download client.
-				_ = indexerSvc.UpdateGrabStatus(ctx, row.ID, "failed")
-				// nilerr: we intentionally return the rejection as a
-				// structured "no_match" body instead of a 500 so the UI
-				// can show the user why the grab failed.
-				return &autoSearchOutput{Body: &autoSearchResultBody{ //nolint:nilerr
-					Result:       "no_match",
-					ReleaseTitle: best.Title,
-					Reason:       "download client rejected: " + addErr.Error(),
-				}}, nil
-			}
-			_ = indexerSvc.UpdateGrabDownloadClient(ctx, db.UpdateGrabDownloadClientParams{
-				ID:               row.ID,
-				DownloadClientID: sql.NullString{String: clientID, Valid: clientID != ""},
-				ClientItemID:     sql.NullString{String: itemID, Valid: itemID != ""},
-			})
-			if itemID != "" && release.Protocol == plugin.ProtocolTorrent {
-				_ = indexerSvc.UpdateGrabInfoHash(ctx, row.ID, itemID)
-			}
-		}
-
-		return &autoSearchOutput{Body: &autoSearchResultBody{
-			Result:       "grabbed",
-			ReleaseTitle: best.Title,
-		}}, nil
+		return &autoSearchOutput{Body: body}, nil
 	})
+
+	registerResearchEndpoint(api, indexerSvc, showSvc, downloaderSvc, blocklistSvc, qualitySvc)
+}
+
+// autoSearchDeps gathers the services runAutoSearchAndGrab needs. Lifted
+// out of the handler closure so the same flow can be reused by the
+// /grabs/by-hash/{hash}/research endpoint, which calls it after
+// blocklisting the dead release.
+type autoSearchDeps struct {
+	ShowSvc       *show.Service
+	IndexerSvc    *indexer.Service
+	DownloaderSvc *downloader.Service
+	BlocklistSvc  *blocklist.Service
+	QualitySvc    *quality.Service
+}
+
+// autoSearchParams scopes one auto-search call to a single (series,
+// season[, episode]) target. Source is recorded on the resulting
+// grab row — "auto_search" makes the stall watcher eligible to
+// auto-re-search; "manual_research" stamps user-driven retries so the
+// circuit breaker treats them as off-band.
+type autoSearchParams struct {
+	SeriesID  string
+	Season    int
+	Episode   int
+	EpisodeID string
+	Source    string
+}
+
+// autoSearchResultBody is shared between the public auto-search
+// handler and the research handler.
+type autoSearchResultBody struct {
+	Result       string `json:"result"` // "grabbed", "no_match"
+	ReleaseTitle string `json:"release_title,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+// runAutoSearchAndGrab executes the full search → filter → grab → submit
+// flow. Returns a structured result body for "no_match" cases and a
+// huma error for fatal ones (series not found, DB errors). Caller wraps
+// the body in whatever output struct it needs.
+func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearchParams) (*autoSearchResultBody, error) {
+	showSvc := deps.ShowSvc
+	indexerSvc := deps.IndexerSvc
+	downloaderSvc := deps.DownloaderSvc
+	blocklistSvc := deps.BlocklistSvc
+	qualitySvc := deps.QualitySvc
+
+	source := p.Source
+	if source == "" {
+		source = "auto_search"
+	}
+
+	series, err := showSvc.Get(ctx, p.SeriesID)
+	if err != nil {
+		if errors.Is(err, show.ErrNotFound) {
+			return nil, huma.Error404NotFound("series not found")
+		}
+		return nil, huma.NewError(http.StatusInternalServerError, "failed to get series", err)
+	}
+
+	// Anime context: same rationale as the manual-search path above —
+	// only fetch absolute number when the series is anime AND a
+	// specific episode is being searched.
+	var absoluteEp int
+	var tvdbToAbs func(int, int) int
+	isAnime := series.SeriesType == "anime"
+	if isAnime && p.Season > 0 && p.Episode > 0 {
+		absoluteEp, _ = showSvc.GetEpisodeAbsoluteNumber(ctx, p.SeriesID, p.Season, p.Episode)
+		tmdbID := series.TMDBID
+		tvdbToAbs = func(s, e int) int {
+			abs, _ := showSvc.TVDBSeasonToAbsolute(tmdbID, s, e)
+			return abs
+		}
+	}
+	queries := buildEpisodeQueries(series.Title, p.Season, p.Episode, absoluteEp, isAnime)
+	results, searchErr := searchAllQueries(ctx, indexerSvc, queries, p.Season, p.Episode)
+
+	// Filter results to only include the requested series and season/episode.
+	results = filterByEpisode(results, series.Title, series.AlternateTitles, p.Season, p.Episode, absoluteEp, tvdbToAbs)
+
+	// Tag releases outside the series' quality profile. For auto-search
+	// these tags also gate the viable set further down, so the auto-grab
+	// never picks a release rejected by the profile.
+	if qualitySvc != nil && series.QualityProfileID != "" {
+		if profile, err := qualitySvc.Get(ctx, series.QualityProfileID); err == nil {
+			applyQualityProfile(results, &profile)
+		}
+	}
+
+	if len(results) == 0 {
+		reason := "no results from any indexer"
+		if searchErr != nil {
+			reason = searchErr.Error()
+		}
+		return &autoSearchResultBody{
+			Result: "no_match",
+			Reason: reason,
+		}, nil
+	}
+
+	// Auto-search honors the per-indexer min_seeders filter and the
+	// blocklist filter. Search() already populates FilterReasons for
+	// min_seeders violations; we additionally check blocklist here.
+	// A release is "viable" for auto-grab if it has no filter reasons.
+	var viable []indexer.SearchResult
+	for _, r := range results {
+		if len(r.FilterReasons) > 0 {
+			continue
+		}
+		if blocklistSvc != nil {
+			ok, bErr := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, r.GUID, "")
+			if bErr == nil && ok {
+				continue
+			}
+		}
+		viable = append(viable, r)
+	}
+
+	if len(viable) == 0 {
+		return &autoSearchResultBody{
+			Result: "no_match",
+			Reason: fmt.Sprintf("found %d results but all were filtered (below min_seeders or on blocklist)", len(results)),
+		}, nil
+	}
+
+	// Prefer results that appear on multiple indexers (higher confidence
+	// that the seed count is accurate).
+	best := viable[0]
+	if len(viable) > 1 {
+		titleCounts := make(map[string]int)
+		for _, r := range viable {
+			titleCounts[r.Title]++
+		}
+		for _, r := range viable {
+			if titleCounts[r.Title] > 1 && titleCounts[r.Title] > titleCounts[best.Title] {
+				best = r
+				break
+			}
+		}
+	}
+
+	// Look up series for TMDB id + title (used by Haul's history
+	// index and rename-on-complete). Best-effort; fall back to
+	// whatever we already had if the lookup fails.
+	var seriesTitle string
+	var seriesYear int
+	var seriesTMDBID int
+	if s, sErr := showSvc.Get(ctx, p.SeriesID); sErr == nil {
+		seriesTitle = s.Title
+		seriesYear = s.Year
+		seriesTMDBID = int(s.TMDBID)
+	}
+
+	release := plugin.Release{
+		GUID:         best.GUID,
+		Title:        best.Title,
+		Protocol:     best.Protocol,
+		DownloadURL:  best.DownloadURL,
+		Size:         best.Size,
+		Quality:      best.Quality,
+		MediaType:    "tv",
+		MediaTitle:   seriesTitle,
+		MediaYear:    seriesYear,
+		SeasonNumber: p.Season,
+		// Arr-side identity for Haul's history lookup.
+		TMDBID:    seriesTMDBID,
+		SeriesID:  p.SeriesID,
+		EpisodeID: p.EpisodeID,
+	}
+
+	// Record the grab. Source is whatever the caller said — stall
+	// watcher uses this to decide whether to auto-re-search on later
+	// failure ("auto_search" yes; "manual_research" or anything else no).
+	row, err := indexerSvc.CreateGrab(ctx, indexer.GrabRequest{
+		SeriesID:     p.SeriesID,
+		EpisodeID:    p.EpisodeID,
+		SeasonNumber: p.Season,
+		Release:      release,
+		IndexerID:    best.IndexerID,
+		Source:       source,
+	})
+	if err != nil {
+		return nil, huma.NewError(http.StatusInternalServerError, "failed to record grab", err)
+	}
+
+	// Submit to download client.
+	if downloaderSvc != nil {
+		clientID, itemID, addErr := downloaderSvc.Add(ctx, release, nil)
+		if addErr != nil {
+			// Mark the grab as failed so the search-time guardrail
+			// doesn't keep surfacing "already grabbed" on a release
+			// that never actually made it to the download client.
+			_ = indexerSvc.UpdateGrabStatus(ctx, row.ID, "failed")
+			// nilerr: we intentionally return the rejection as a
+			// structured "no_match" body instead of a 500 so the UI
+			// can show the user why the grab failed.
+			return &autoSearchResultBody{ //nolint:nilerr
+				Result:       "no_match",
+				ReleaseTitle: best.Title,
+				Reason:       "download client rejected: " + addErr.Error(),
+			}, nil
+		}
+		_ = indexerSvc.UpdateGrabDownloadClient(ctx, db.UpdateGrabDownloadClientParams{
+			ID:               row.ID,
+			DownloadClientID: sql.NullString{String: clientID, Valid: clientID != ""},
+			ClientItemID:     sql.NullString{String: itemID, Valid: itemID != ""},
+		})
+		if itemID != "" && release.Protocol == plugin.ProtocolTorrent {
+			_ = indexerSvc.UpdateGrabInfoHash(ctx, row.ID, itemID)
+		}
+	}
+
+	return &autoSearchResultBody{
+		Result:       "grabbed",
+		ReleaseTitle: best.Title,
+	}, nil
 }
 
 // filterByEpisode removes results that don't match the requested series and
@@ -901,4 +965,109 @@ func grabToBody(row db.GrabHistory) *grabHistoryBody {
 		DownloadStatus: row.DownloadStatus,
 		GrabbedAt:      grabbedAt,
 	}
+}
+
+// registerResearchEndpoint wires POST /api/v1/grabs/by-hash/{hash}/research.
+//
+// Story: a torrent has gone dead (paused-and-stalled by Haul) and the
+// user wants Pilot to pick a different release for the same episode.
+// The existing auto-search-episode endpoint can do the search itself,
+// but the caller (Haul UI) only knows the info_hash — so this endpoint
+// looks the grab up, blocklists the dead release, and forwards into
+// the same flow with source="manual_research" so the stall watcher's
+// circuit breaker treats it as user-initiated rather than counting it
+// as another auto-retry.
+func registerResearchEndpoint(
+	api huma.API,
+	indexerSvc *indexer.Service,
+	showSvc *show.Service,
+	downloaderSvc *downloader.Service,
+	blocklistSvc *blocklist.Service,
+	qualitySvc *quality.Service,
+) {
+	type input struct {
+		Hash string `path:"hash" doc:"BitTorrent info hash of the dead grab"`
+	}
+	type output struct {
+		Body *autoSearchResultBody
+	}
+
+	huma.Register(api, huma.Operation{
+		OperationID: "research-by-info-hash",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/grabs/by-hash/{hash}/research",
+		Summary:     "Re-search and grab an alternative release for a stalled torrent",
+		Description: "Looks up the grab by info_hash, blocklists the dead release, then runs the auto-search flow to pick a different release for the same episode. Bypasses the stall-watcher circuit breaker since the request is user-initiated.",
+		Tags:        []string{"Releases"},
+	}, func(ctx context.Context, in *input) (*output, error) {
+		// 1. Look up the grab.
+		grab, err := indexerSvc.GetGrabByInfoHash(ctx, in.Hash)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, huma.Error404NotFound("no grab found for info_hash")
+			}
+			return nil, huma.NewError(http.StatusInternalServerError, "lookup grab failed", err)
+		}
+
+		// 2. Blocklist the dead release. user_marked semantics — the
+		// user explicitly said "this one's bad". Idempotent: if the
+		// stall watcher already added it, swallow the duplicate.
+		if blocklistSvc != nil {
+			addErr := blocklistSvc.Add(
+				ctx,
+				grab.SeriesID,
+				grab.EpisodeID.String,
+				grab.ReleaseGuid,
+				grab.ReleaseTitle,
+				grab.IndexerID.String,
+				grab.Protocol,
+				int64(grab.Size),
+				"user-initiated research from Haul stalled list",
+			)
+			if addErr != nil && !errors.Is(addErr, blocklist.ErrAlreadyBlocklisted) {
+				return nil, huma.NewError(http.StatusInternalServerError, "failed to blocklist dead release", addErr)
+			}
+		}
+
+		// 3. Remove the original torrent from the download client so the
+		// user doesn't end up with the dead release AND the new one both
+		// running. Best-effort: if the download client is gone or the
+		// torrent has already been removed, log and continue — losing
+		// the alternative grab because the dead one's gone is worse.
+		if downloaderSvc != nil && grab.DownloadClientID.Valid && grab.ClientItemID.Valid {
+			client, cErr := downloaderSvc.ClientFor(ctx, grab.DownloadClientID.String)
+			if cErr == nil {
+				if rErr := client.Remove(ctx, grab.ClientItemID.String, false); rErr != nil {
+					// keep_files=false would also delete files on disk
+					// — but the user might want to manually rescue
+					// partial data, so we err on the safe side and only
+					// remove from the engine.
+					_ = rErr
+				}
+			}
+		}
+
+		// 4. Mark the original grab as failed so it stops surfacing as
+		// "currently downloading" anywhere. Best-effort.
+		_ = indexerSvc.UpdateGrabStatus(ctx, grab.ID, "failed")
+
+		// 5. Run the same flow as the auto-search endpoint.
+		body, err := runAutoSearchAndGrab(ctx, autoSearchDeps{
+			ShowSvc:       showSvc,
+			IndexerSvc:    indexerSvc,
+			DownloaderSvc: downloaderSvc,
+			BlocklistSvc:  blocklistSvc,
+			QualitySvc:    qualitySvc,
+		}, autoSearchParams{
+			SeriesID:  grab.SeriesID,
+			Season:    int(grab.SeasonNumber.Int32),
+			Episode:   0, // grab_history doesn't carry episode-number; let auto-search find any episode in the season
+			EpisodeID: grab.EpisodeID.String,
+			Source:    "manual_research",
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &output{Body: body}, nil
+	})
 }
