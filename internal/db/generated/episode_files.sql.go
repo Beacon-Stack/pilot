@@ -147,6 +147,49 @@ func (q *Queries) ListAllEpisodeFilePaths(ctx context.Context) ([]string, error)
 	return items, nil
 }
 
+const listAllEpisodeFiles = `-- name: ListAllEpisodeFiles :many
+SELECT id, episode_id, series_id, path FROM episode_files
+`
+
+type ListAllEpisodeFilesRow struct {
+	ID        string `json:"id"`
+	EpisodeID string `json:"episodeId"`
+	SeriesID  string `json:"seriesId"`
+	Path      string `json:"path"`
+}
+
+// Used by the file-existence reconciler (QW5) to walk every recorded
+// file and stat it. Selects the minimum surface area — adding columns
+// here is fine, but the reconciler only needs id/episode_id/path to
+// decide whether to delete the row.
+func (q *Queries) ListAllEpisodeFiles(ctx context.Context) ([]ListAllEpisodeFilesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllEpisodeFiles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllEpisodeFilesRow
+	for rows.Next() {
+		var i ListAllEpisodeFilesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EpisodeID,
+			&i.SeriesID,
+			&i.Path,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEpisodeFilesByEpisodeID = `-- name: ListEpisodeFilesByEpisodeID :many
 SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE episode_id = $1 ORDER BY path ASC
 `

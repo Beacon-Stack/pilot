@@ -97,6 +97,11 @@ type Querier interface {
 	// type from `$1 IS NULL` alone and fails with SQLSTATE 42P08.
 	ListActivities(ctx context.Context, arg ListActivitiesParams) ([]ActivityLog, error)
 	ListAllEpisodeFilePaths(ctx context.Context) ([]string, error)
+	// Used by the file-existence reconciler (QW5) to walk every recorded
+	// file and stat it. Selects the minimum surface area — adding columns
+	// here is fine, but the reconciler only needs id/episode_id/path to
+	// decide whether to delete the row.
+	ListAllEpisodeFiles(ctx context.Context) ([]ListAllEpisodeFilesRow, error)
 	ListAllTMDBIDs(ctx context.Context) ([]int32, error)
 	ListAnimeCourMonitored(ctx context.Context, seriesID string) ([]AnimeCourMonitored, error)
 	ListBlocklist(ctx context.Context, arg ListBlocklistParams) ([]ListBlocklistRow, error)
@@ -161,6 +166,11 @@ type Querier interface {
 	// absolute_number = NULL and need to be filled in retroactively.
 	UpdateEpisodeAbsoluteNumber(ctx context.Context, arg UpdateEpisodeAbsoluteNumberParams) error
 	UpdateEpisodeFilePath(ctx context.Context, arg UpdateEpisodeFilePathParams) error
+	// Focused setter for the file-existence reconciler (QW5), which flips
+	// has_file=FALSE when the underlying file is gone. Adding it instead
+	// of reusing UpdateEpisode avoids a read-modify-write of every metadata
+	// field for what is logically a single-bit change.
+	UpdateEpisodeHasFile(ctx context.Context, arg UpdateEpisodeHasFileParams) error
 	UpdateEpisodeMonitored(ctx context.Context, arg UpdateEpisodeMonitoredParams) error
 	UpdateEpisodesMonitoredBySeason(ctx context.Context, arg UpdateEpisodesMonitoredBySeasonParams) error
 	UpdateGrabDownloadClient(ctx context.Context, arg UpdateGrabDownloadClientParams) error

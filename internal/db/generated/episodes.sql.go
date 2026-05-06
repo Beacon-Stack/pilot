@@ -475,6 +475,24 @@ func (q *Queries) UpdateEpisodeAbsoluteNumber(ctx context.Context, arg UpdateEpi
 	return err
 }
 
+const updateEpisodeHasFile = `-- name: UpdateEpisodeHasFile :exec
+UPDATE episodes SET has_file = $1 WHERE id = $2
+`
+
+type UpdateEpisodeHasFileParams struct {
+	HasFile bool   `json:"hasFile"`
+	ID      string `json:"id"`
+}
+
+// Focused setter for the file-existence reconciler (QW5), which flips
+// has_file=FALSE when the underlying file is gone. Adding it instead
+// of reusing UpdateEpisode avoids a read-modify-write of every metadata
+// field for what is logically a single-bit change.
+func (q *Queries) UpdateEpisodeHasFile(ctx context.Context, arg UpdateEpisodeHasFileParams) error {
+	_, err := q.db.ExecContext(ctx, updateEpisodeHasFile, arg.HasFile, arg.ID)
+	return err
+}
+
 const updateEpisodeMonitored = `-- name: UpdateEpisodeMonitored :exec
 UPDATE episodes SET monitored = $1 WHERE id = $2
 `
