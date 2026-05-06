@@ -27,5 +27,12 @@ SELECT COUNT(*) FROM episode_files WHERE series_id = $1;
 -- name: ListAllEpisodeFilePaths :many
 SELECT path FROM episode_files;
 
+-- name: ListAllEpisodeFiles :many
+-- Used by the file-existence reconciler (QW5) to walk every recorded
+-- file and stat it. Selects the minimum surface area — adding columns
+-- here is fine, but the reconciler only needs id/episode_id/path to
+-- decide whether to delete the row.
+SELECT id, episode_id, series_id, path FROM episode_files;
+
 -- name: UpdateEpisodeFilePath :exec
 UPDATE episode_files SET path = $1 WHERE id = $2;

@@ -22,6 +22,7 @@ const (
 	TypeDownloadDone      Type = "download_done"
 	TypeImportComplete    Type = "import_complete"
 	TypeImportFailed      Type = "import_failed"
+	TypeImportRetryNeeded Type = "import_retry_needed" // file-existence reconciler flipped has_file or found a completed-without-file grab
 	TypeHealthIssue       Type = "health_issue"
 	TypeHealthOK          Type = "health_ok"
 	TypeTaskStarted       Type = "task_started"

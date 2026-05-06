@@ -33,6 +33,13 @@ RETURNING *;
 -- name: UpdateEpisodeMonitored :exec
 UPDATE episodes SET monitored = $1 WHERE id = $2;
 
+-- name: UpdateEpisodeHasFile :exec
+-- Focused setter for the file-existence reconciler (QW5), which flips
+-- has_file=FALSE when the underlying file is gone. Adding it instead
+-- of reusing UpdateEpisode avoids a read-modify-write of every metadata
+-- field for what is logically a single-bit change.
+UPDATE episodes SET has_file = $1 WHERE id = $2;
+
 -- name: UpdateEpisodeAbsoluteNumber :exec
 -- Backfill or correct the absolute episode number. Used by the refresh
 -- path when a series is newly flagged as anime — its existing rows have
