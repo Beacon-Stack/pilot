@@ -145,6 +145,31 @@ func (s *Service) pollClient(ctx context.Context, clientID string, grabs []db.Gr
 
 		item, err := client.Status(ctx, g.ClientItemID.String)
 		if err != nil {
+			// If the client says the item is definitively gone (not a
+			// transient network error), mark the grab as removed so the
+			// unique-active-grab index frees up and the user can grab
+			// another release for this episode. Without this, a user
+			// who removes a torrent directly in Haul would be permanently
+			// stuck on the old grab in the UI's "downloading" state. See
+			// the ErrItemNotFound contract in pkg/plugin/downloader.go.
+			if errors.Is(err, plugin.ErrItemNotFound) {
+				s.logger.Info("queue: item gone from download client, marking grab removed",
+					"grab_id", g.ID,
+					"series_id", g.SeriesID,
+					"release", g.ReleaseTitle,
+					"client_id", clientID,
+					"client_item_id", g.ClientItemID.String,
+				)
+				if mErr := s.q.MarkGrabRemoved(ctx, g.ID); mErr != nil {
+					s.logger.Warn("queue: failed to mark grab removed",
+						"grab_id", g.ID,
+						"error", mErr,
+					)
+				}
+				continue
+			}
+			// Transient error — log at debug and retry next poll cycle.
+			// A brief haul restart or network blip must not clear the queue.
 			s.logger.Debug("could not get status for item",
 				"client_id", clientID,
 				"client_item_id", g.ClientItemID.String,

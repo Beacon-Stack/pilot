@@ -1,6 +1,20 @@
 package plugin
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrItemNotFound is returned by DownloadClient implementations when the
+// item asked about no longer exists in the client (e.g. the user removed it
+// directly in the client's UI, or the client forgot it after a restart).
+//
+// Callers that persist grab history (queue sync, stall watchers) should
+// distinguish this from transient errors: on ErrItemNotFound the grab is
+// definitively gone and should be marked removed, whereas on any other
+// error the correct behaviour is to log and retry on the next poll — a
+// brief network blip must not nuke the queue.
+var ErrItemNotFound = errors.New("download client: item not found")
 
 // DownloadStatus is the state of an item in the download client.
 type DownloadStatus string

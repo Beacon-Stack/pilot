@@ -251,7 +251,11 @@ func (c *Client) Status(ctx context.Context, clientItemID string) (plugin.QueueI
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return plugin.QueueItem{}, fmt.Errorf("torrent %q not found in Haul", clientItemID)
+		// Wrap plugin.ErrItemNotFound so callers can distinguish "torrent
+		// gone from Haul" (definitive — mark grab removed) from transient
+		// HTTP errors (log and retry). See pkg/plugin/downloader.go for
+		// the contract.
+		return plugin.QueueItem{}, fmt.Errorf("haul: %w (%q)", plugin.ErrItemNotFound, clientItemID)
 	}
 
 	var t torrentInfo
