@@ -31,6 +31,7 @@ type mockQuerier struct {
 
 	activeGrabs   []db.GrabHistory
 	statusUpdates []db.UpdateGrabStatusParams
+	removedGrabs  []string
 
 	mu sync.Mutex
 }
@@ -46,11 +47,26 @@ func (m *mockQuerier) UpdateGrabStatus(_ context.Context, p db.UpdateGrabStatusP
 	return nil
 }
 
+func (m *mockQuerier) MarkGrabRemoved(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.removedGrabs = append(m.removedGrabs, id)
+	return nil
+}
+
 func (m *mockQuerier) updates() []db.UpdateGrabStatusParams {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]db.UpdateGrabStatusParams, len(m.statusUpdates))
 	copy(out, m.statusUpdates)
+	return out
+}
+
+func (m *mockQuerier) removed() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, len(m.removedGrabs))
+	copy(out, m.removedGrabs)
 	return out
 }
 
@@ -72,6 +88,7 @@ func (m *mockDownloader) ClientFor(_ context.Context, _ string) (plugin.Download
 type mockClient struct {
 	statusByItemID map[string]plugin.QueueItem
 	statusErr      error
+	statusErrByID  map[string]error // per-item override; nil falls through to statusByItemID
 }
 
 func (m *mockClient) Name() string              { return "mock" }
@@ -82,6 +99,9 @@ func (m *mockClient) Add(_ context.Context, _ plugin.Release) (string, error) {
 }
 
 func (m *mockClient) Status(_ context.Context, itemID string) (plugin.QueueItem, error) {
+	if err, ok := m.statusErrByID[itemID]; ok {
+		return plugin.QueueItem{}, err
+	}
 	if m.statusErr != nil {
 		return plugin.QueueItem{}, m.statusErr
 	}
@@ -299,6 +319,110 @@ func TestPollAndUpdate_FailedDoesNotFireDownloadDone(t *testing.T) {
 	// But the status WAS updated.
 	if len(q.updates()) != 1 || q.updates()[0].DownloadStatus != "failed" {
 		t.Errorf("expected the failed status to be persisted; updates = %+v", q.updates())
+	}
+}
+
+// Headline QW3 test: when Haul says "I don't know that hash" via
+// plugin.ErrItemNotFound, the poller MUST mark the grab removed.
+// Before this contract existed, a torrent the user removed directly
+// in Haul would leave the grab stuck in `downloading` forever — the
+// UI would keep offering "downloading" status with no underlying
+// torrent, and (post-QW4) the unique-active-grab index would block
+// the user from grabbing a replacement release. The error wrapper
+// uses %w so errors.Is must traverse the wrap.
+func TestPollAndUpdate_ErrItemNotFoundMarksGrabRemoved(t *testing.T) {
+	q := &mockQuerier{
+		activeGrabs: []db.GrabHistory{activeGrab("g-gone", "hash-gone", "downloading")},
+	}
+	dl := &mockDownloader{
+		client: &mockClient{
+			statusErrByID: map[string]error{
+				// The wrap matches what plugins/downloaders/haul/haul.go
+				// actually returns; using the real wrapper here proves
+				// errors.Is traverses it.
+				"hash-gone": errors.Join(errors.New("haul: extra context"), plugin.ErrItemNotFound),
+			},
+		},
+	}
+	svc := NewService(q, dl, events.New(discardLogger()), discardLogger())
+
+	if err := svc.PollAndUpdate(context.Background()); err != nil {
+		t.Fatalf("PollAndUpdate: %v", err)
+	}
+
+	removed := q.removed()
+	if len(removed) != 1 || removed[0] != "g-gone" {
+		t.Fatalf("expected grab g-gone marked removed; got %v", removed)
+	}
+	// And the row was NOT re-status-updated — the grab is gone, not
+	// transitioning to a new active state.
+	if got := len(q.updates()); got != 0 {
+		t.Errorf("expected zero status updates for a removed grab; got %d (%+v)", got, q.updates())
+	}
+}
+
+// Counterpart: a transient error (anything that is NOT
+// plugin.ErrItemNotFound) leaves the grab alone. A brief Haul restart
+// or network blip MUST NOT clear the queue. Without this safeguard a
+// 30-second VPN reconnect would drop every active download.
+func TestPollAndUpdate_TransientErrorDoesNotMarkRemoved(t *testing.T) {
+	q := &mockQuerier{
+		activeGrabs: []db.GrabHistory{activeGrab("g-flaky", "item-flaky", "downloading")},
+	}
+	dl := &mockDownloader{
+		client: &mockClient{
+			statusErrByID: map[string]error{
+				"item-flaky": errors.New("haul: connection refused"),
+			},
+		},
+	}
+	svc := NewService(q, dl, events.New(discardLogger()), discardLogger())
+
+	if err := svc.PollAndUpdate(context.Background()); err != nil {
+		t.Fatalf("PollAndUpdate: %v", err)
+	}
+
+	if len(q.removed()) != 0 {
+		t.Errorf("transient error must NOT mark grab removed; got removed=%v", q.removed())
+	}
+	if len(q.updates()) != 0 {
+		t.Errorf("transient error must NOT trigger UpdateGrabStatus; got updates=%v", q.updates())
+	}
+}
+
+// One bad item (whether ErrItemNotFound or transient) must not stop
+// the poll loop — other items in the same client must still be
+// processed. Verifies the early-continue branch is correctly placed
+// inside the per-item loop, not above it.
+func TestPollAndUpdate_ErrItemNotFoundDoesNotBreakLoop(t *testing.T) {
+	q := &mockQuerier{
+		activeGrabs: []db.GrabHistory{
+			activeGrab("g-gone", "hash-gone", "downloading"),
+			activeGrab("g-good", "good-item", "downloading"),
+		},
+	}
+	dl := &mockDownloader{
+		client: &mockClient{
+			statusByItemID: map[string]plugin.QueueItem{
+				"good-item": {ClientItemID: "good-item", Status: plugin.StatusCompleted, Downloaded: 999, ContentPath: "/c"},
+			},
+			statusErrByID: map[string]error{
+				"hash-gone": plugin.ErrItemNotFound,
+			},
+		},
+	}
+	svc := NewService(q, dl, events.New(discardLogger()), discardLogger())
+
+	if err := svc.PollAndUpdate(context.Background()); err != nil {
+		t.Fatalf("PollAndUpdate: %v", err)
+	}
+
+	if removed := q.removed(); len(removed) != 1 || removed[0] != "g-gone" {
+		t.Errorf("expected only g-gone marked removed; got %v", removed)
+	}
+	updates := q.updates()
+	if len(updates) != 1 || updates[0].ID != "g-good" {
+		t.Errorf("expected only g-good status update; got %+v", updates)
 	}
 }
 
