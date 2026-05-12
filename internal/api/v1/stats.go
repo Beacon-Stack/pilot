@@ -59,11 +59,11 @@ func RegisterStatsRoutes(humaAPI huma.API, svc *stats.Service) {
 		return &statsStorageOutput{Body: s}, nil
 	})
 
-	// GET /api/v1/stats/quality/tiers
+	// GET /api/v1/stats/quality-tiers
 	huma.Register(humaAPI, huma.Operation{
 		OperationID: "get-stats-quality-tiers",
 		Method:      http.MethodGet,
-		Path:        "/api/v1/stats/quality/tiers",
+		Path:        "/api/v1/stats/quality-tiers",
 		Summary:     "Quality distribution grouped by resolution+source",
 		Tags:        []string{"Statistics"},
 	}, func(ctx context.Context, _ *struct{}) (*statsQualityTiersOutput, error) {
