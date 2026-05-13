@@ -29,10 +29,20 @@ type StorageStat struct {
 	FileCount  int64 `json:"file_count"`
 }
 
-// QualityTier is a resolution+source group with a deduplicated episode file count.
+// QualityTier is a resolution+source group with a unique-series count.
 type QualityTier struct {
 	Resolution string `json:"resolution"`
 	Source     string `json:"source"`
+	Count      int64  `json:"count"`
+}
+
+// QualityBucket is a full quality breakdown (resolution+source+codec+hdr)
+// with a unique-series count. Used by the "By Dimension" view.
+type QualityBucket struct {
+	Resolution string `json:"resolution"`
+	Source     string `json:"source"`
+	Codec      string `json:"codec"`
+	HDR        string `json:"hdr"`
 	Count      int64  `json:"count"`
 }
 
@@ -110,20 +120,21 @@ func (s *Service) Storage(ctx context.Context) (StorageStat, error) {
 	}, nil
 }
 
-// QualityTiers returns unique episode file counts grouped by resolution+source.
-// Quality JSON is decoded in Go to avoid SQLite JSON function limitations.
+// QualityTiers returns unique series counts grouped by resolution+source.
+// A series with multiple files at the same tier is counted once. Mirrors
+// the bar counts shown on the Stats page and the drilldown result count.
 func (s *Service) QualityTiers(ctx context.Context) ([]QualityTier, error) {
-	rows, err := s.q.ListEpisodeFileQualities(ctx)
+	rows, err := s.q.ListEpisodeFileQualitiesWithSeriesIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing episode file qualities: %w", err)
 	}
 
 	type tierKey struct{ resolution, source string }
-	counts := make(map[tierKey]int64)
+	tierSeries := make(map[tierKey]map[string]bool)
 
-	for _, qualityJSON := range rows {
+	for _, row := range rows {
 		var q plugin.Quality
-		if err := json.Unmarshal([]byte(qualityJSON), &q); err != nil {
+		if err := json.Unmarshal([]byte(row.QualityJson), &q); err != nil {
 			continue
 		}
 		res := string(q.Resolution)
@@ -134,18 +145,119 @@ func (s *Service) QualityTiers(ctx context.Context) ([]QualityTier, error) {
 		if src == "" {
 			src = "unknown"
 		}
-		counts[tierKey{res, src}]++
+		k := tierKey{res, src}
+		if tierSeries[k] == nil {
+			tierSeries[k] = make(map[string]bool)
+		}
+		tierSeries[k][row.SeriesID] = true
 	}
 
-	tiers := make([]QualityTier, 0, len(counts))
-	for k, count := range counts {
+	tiers := make([]QualityTier, 0, len(tierSeries))
+	for k, series := range tierSeries {
 		tiers = append(tiers, QualityTier{
 			Resolution: k.resolution,
 			Source:     k.source,
-			Count:      count,
+			Count:      int64(len(series)),
 		})
 	}
 	return tiers, nil
+}
+
+// Quality returns unique series counts grouped by the full quality
+// breakdown (resolution+source+codec+hdr). Powers the "By Dimension" view.
+func (s *Service) Quality(ctx context.Context) ([]QualityBucket, error) {
+	rows, err := s.q.ListEpisodeFileQualitiesWithSeriesIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing episode file qualities: %w", err)
+	}
+
+	type bucketKey struct {
+		Resolution string
+		Source     string
+		Codec      string
+		HDR        string
+	}
+	bucketSeries := make(map[bucketKey]map[string]bool)
+
+	for _, row := range rows {
+		var q plugin.Quality
+		if err := json.Unmarshal([]byte(row.QualityJson), &q); err != nil {
+			continue
+		}
+		res := string(q.Resolution)
+		if res == "" {
+			res = "unknown"
+		}
+		src := string(q.Source)
+		if src == "" {
+			src = "unknown"
+		}
+		codec := string(q.Codec)
+		if codec == "" {
+			codec = "unknown"
+		}
+		hdr := string(q.HDR)
+		if hdr == "" {
+			hdr = "none"
+		}
+		k := bucketKey{res, src, codec, hdr}
+		if bucketSeries[k] == nil {
+			bucketSeries[k] = make(map[string]bool)
+		}
+		bucketSeries[k][row.SeriesID] = true
+	}
+
+	buckets := make([]QualityBucket, 0, len(bucketSeries))
+	for k, series := range bucketSeries {
+		buckets = append(buckets, QualityBucket{
+			Resolution: k.Resolution,
+			Source:     k.Source,
+			Codec:      k.Codec,
+			HDR:        k.HDR,
+			Count:      int64(len(series)),
+		})
+	}
+	return buckets, nil
+}
+
+// SeriesIDsByQualityTier returns series IDs that have ANY file matching the
+// given resolution and/or source. Mirrors QualityTiers' bucketing — empty
+// filter values match any value.
+func (s *Service) SeriesIDsByQualityTier(ctx context.Context, resolution, source string) ([]string, error) {
+	rows, err := s.q.ListEpisodeFileQualitiesWithSeriesIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing episode file qualities: %w", err)
+	}
+
+	matched := make(map[string]bool)
+
+	for _, row := range rows {
+		var q plugin.Quality
+		if err := json.Unmarshal([]byte(row.QualityJson), &q); err != nil {
+			continue
+		}
+		res := string(q.Resolution)
+		if res == "" {
+			res = "unknown"
+		}
+		src := string(q.Source)
+		if src == "" {
+			src = "unknown"
+		}
+		if resolution != "" && res != resolution {
+			continue
+		}
+		if source != "" && src != source {
+			continue
+		}
+		matched[row.SeriesID] = true
+	}
+
+	ids := make([]string, 0, len(matched))
+	for id := range matched {
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // Snapshot records a point-in-time stats snapshot.

@@ -20,6 +20,14 @@ export interface QualityTier {
   count: number;
 }
 
+export interface QualityBucket {
+  resolution: string;
+  source: string;
+  codec: string;
+  hdr: string;
+  count: number;
+}
+
 export interface GrowthPoint {
   snapshot_at: string;
   total_series: number;
@@ -57,5 +65,24 @@ export function useGrowthStats() {
     queryKey: ["stats", "growth"],
     queryFn: () => apiFetch<GrowthPoint[]>("/stats/growth"),
     staleTime: 60_000,
+  });
+}
+
+export function useQualityStats() {
+  return useQuery({
+    queryKey: ["stats", "quality"],
+    queryFn: () => apiFetch<QualityBucket[]>("/stats/quality"),
+    staleTime: 60_000,
+  });
+}
+
+export function useSeriesByQualityTier(resolution: string, source: string, enabled: boolean) {
+  const params = new URLSearchParams();
+  if (resolution) params.set("resolution", resolution);
+  if (source) params.set("source", source);
+  return useQuery({
+    queryKey: ["stats", "quality-series", resolution, source],
+    queryFn: () => apiFetch<string[]>(`/stats/quality-series?${params.toString()}`),
+    enabled: enabled && (!!resolution || !!source),
   });
 }

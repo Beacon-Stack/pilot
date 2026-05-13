@@ -31,3 +31,6 @@ SELECT COUNT(*) FROM episode_files;
 
 -- name: ListEpisodeFileQualities :many
 SELECT quality_json FROM episode_files;
+
+-- name: ListEpisodeFileQualitiesWithSeriesIDs :many
+SELECT series_id, quality_json FROM episode_files;

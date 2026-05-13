@@ -134,6 +134,38 @@ func (q *Queries) ListEpisodeFileQualities(ctx context.Context) ([]string, error
 	return items, nil
 }
 
+const listEpisodeFileQualitiesWithSeriesIDs = `-- name: ListEpisodeFileQualitiesWithSeriesIDs :many
+SELECT series_id, quality_json FROM episode_files
+`
+
+type ListEpisodeFileQualitiesWithSeriesIDsRow struct {
+	SeriesID    string `json:"seriesId"`
+	QualityJson string `json:"qualityJson"`
+}
+
+func (q *Queries) ListEpisodeFileQualitiesWithSeriesIDs(ctx context.Context) ([]ListEpisodeFileQualitiesWithSeriesIDsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEpisodeFileQualitiesWithSeriesIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEpisodeFileQualitiesWithSeriesIDsRow
+	for rows.Next() {
+		var i ListEpisodeFileQualitiesWithSeriesIDsRow
+		if err := rows.Scan(&i.SeriesID, &i.QualityJson); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStatsSnapshots = `-- name: ListStatsSnapshots :many
 SELECT id, total_series, total_episodes, monitored_episodes, with_file, missing, total_size_bytes, snapshot_at FROM stats_snapshots
 ORDER BY snapshot_at DESC
