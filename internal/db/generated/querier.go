@@ -112,6 +112,7 @@ type Querier interface {
 	ListEnabledMediaServers(ctx context.Context) ([]MediaServerConfig, error)
 	ListEnabledNotifications(ctx context.Context) ([]NotificationConfig, error)
 	ListEpisodeFileQualities(ctx context.Context) ([]string, error)
+	ListEpisodeFileQualitiesWithSeriesIDs(ctx context.Context) ([]ListEpisodeFileQualitiesWithSeriesIDsRow, error)
 	ListEpisodeFilesByEpisodeID(ctx context.Context, episodeID string) ([]EpisodeFile, error)
 	ListEpisodeFilesBySeriesID(ctx context.Context, seriesID string) ([]EpisodeFile, error)
 	ListEpisodesByAirDateRange(ctx context.Context, arg ListEpisodesByAirDateRangeParams) ([]ListEpisodesByAirDateRangeRow, error)

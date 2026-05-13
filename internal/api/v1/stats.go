@@ -23,6 +23,19 @@ type statsQualityTiersOutput struct {
 	Body []stats.QualityTier
 }
 
+type statsQualityOutput struct {
+	Body []stats.QualityBucket
+}
+
+type statsQualitySeriesInput struct {
+	Resolution string `query:"resolution" doc:"Filter by resolution (e.g. 1080p, 2160p)"`
+	Source     string `query:"source" doc:"Filter by source (e.g. Bluray, WEBDL, Remux)"`
+}
+
+type statsQualitySeriesOutput struct {
+	Body []string
+}
+
 type statsGrowthOutput struct {
 	Body []stats.GrowthPoint
 }
@@ -64,7 +77,7 @@ func RegisterStatsRoutes(humaAPI huma.API, svc *stats.Service) {
 		OperationID: "get-stats-quality-tiers",
 		Method:      http.MethodGet,
 		Path:        "/api/v1/stats/quality-tiers",
-		Summary:     "Quality distribution grouped by resolution+source",
+		Summary:     "Quality distribution grouped by resolution+source with deduplicated series counts",
 		Tags:        []string{"Statistics"},
 	}, func(ctx context.Context, _ *struct{}) (*statsQualityTiersOutput, error) {
 		tiers, err := svc.QualityTiers(ctx)
@@ -75,6 +88,42 @@ func RegisterStatsRoutes(humaAPI huma.API, svc *stats.Service) {
 			tiers = []stats.QualityTier{}
 		}
 		return &statsQualityTiersOutput{Body: tiers}, nil
+	})
+
+	// GET /api/v1/stats/quality
+	huma.Register(humaAPI, huma.Operation{
+		OperationID: "get-stats-quality",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/stats/quality",
+		Summary:     "Quality buckets grouped by resolution+source+codec+hdr",
+		Tags:        []string{"Statistics"},
+	}, func(ctx context.Context, _ *struct{}) (*statsQualityOutput, error) {
+		buckets, err := svc.Quality(ctx)
+		if err != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to get quality buckets", err)
+		}
+		if buckets == nil {
+			buckets = []stats.QualityBucket{}
+		}
+		return &statsQualityOutput{Body: buckets}, nil
+	})
+
+	// GET /api/v1/stats/quality-series — list series IDs matching a quality tier
+	huma.Register(humaAPI, huma.Operation{
+		OperationID: "get-stats-quality-series",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/stats/quality-series",
+		Summary:     "List series IDs matching a quality tier (resolution and/or source filter)",
+		Tags:        []string{"Statistics"},
+	}, func(ctx context.Context, input *statsQualitySeriesInput) (*statsQualitySeriesOutput, error) {
+		ids, err := svc.SeriesIDsByQualityTier(ctx, input.Resolution, input.Source)
+		if err != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to get series for quality tier", err)
+		}
+		if ids == nil {
+			ids = []string{}
+		}
+		return &statsQualitySeriesOutput{Body: ids}, nil
 	})
 
 	// GET /api/v1/stats/growth
