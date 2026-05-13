@@ -1,14 +1,41 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import {
   useCollectionStats,
   useStorageStats,
+  useQualityStats,
   useQualityTiers,
   useGrowthStats,
   type CollectionStats,
   type StorageStats,
+  type QualityBucket,
   type QualityTier,
   type GrowthPoint,
 } from "@/api/stats";
 import { formatBytes } from "@/lib/utils";
+
+const tooltipStyle = {
+  contentStyle: {
+    background: "var(--color-bg-elevated)",
+    border: "1px solid var(--color-border-subtle)",
+    borderRadius: 8,
+    fontSize: 12,
+    color: "var(--color-text-primary)",
+  },
+  wrapperStyle: { transition: "none" },
+  cursor: { fill: "color-mix(in srgb, var(--color-accent) 8%, transparent)" },
+};
+
+const axisStyle = { fontSize: 11, fill: "var(--color-text-muted)" };
 
 // ── Card shell ────────────────────────────────────────────────────────────────
 
@@ -130,14 +157,118 @@ function StorageCard({ data }: { data: StorageStats }) {
   );
 }
 
-// ── Quality tiers card (CSS bar chart — no recharts) ──────────────────────────
+// ── Quality card (dimension/tier dual-view, recharts) ────────────────────────
 
-function QualityTiersCard({ data }: { data: QualityTier[] }) {
-  const sorted = [...data]
-    .filter((t) => t.count > 0)
-    .sort((a, b) => b.count - a.count);
+const RESOLUTION_ORDER = ["2160p", "1080p", "720p", "SD", "unknown"];
+const SOURCE_ORDER = ["Remux", "Bluray", "WEBDL", "WEBRip", "HDTV", "DVD", "unknown"];
+const CODEC_ORDER = ["AV1", "x265", "HEVC", "x264", "H264", "unknown"];
+const HDR_ORDER = ["DolbyVision", "HDR10", "HDR10+", "HLG", "none", "unknown"];
 
-  if (sorted.length === 0) {
+function aggregateBy(buckets: QualityBucket[], key: keyof QualityBucket) {
+  const map: Record<string, number> = {};
+  for (const b of buckets) {
+    const k = b[key] as string;
+    map[k] = (map[k] ?? 0) + b.count;
+  }
+  return Object.entries(map).map(([label, count]) => ({ label, count }));
+}
+
+function sortedGroup(
+  buckets: QualityBucket[],
+  key: keyof QualityBucket,
+  order: string[]
+) {
+  const items = aggregateBy(buckets, key);
+  return items
+    .sort((a, b) => {
+      const ai = order.indexOf(a.label);
+      const bi = order.indexOf(b.label);
+      if (ai === -1 && bi === -1) return b.count - a.count;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    })
+    .filter((it) => it.count > 0);
+}
+
+type QualityDimension = "dimension" | "tier";
+
+function QualityMiniChart({
+  title,
+  data,
+  onBarClick,
+}: {
+  title: string;
+  data: { label: string; count: number }[];
+  onBarClick?: (label: string) => void;
+}) {
+  if (data.length === 0) return null;
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: "var(--color-text-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.07em",
+          marginBottom: 8,
+        }}
+      >
+        {title}
+      </div>
+      <ResponsiveContainer width="100%" height={data.length * 28 + 8}>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 0, right: 40, left: 0, bottom: 0 }}
+          style={onBarClick ? { cursor: "pointer" } : undefined}
+        >
+          <XAxis type="number" hide />
+          <YAxis
+            type="category"
+            dataKey="label"
+            tick={axisStyle}
+            axisLine={false}
+            tickLine={false}
+            width={84}
+          />
+          <Tooltip
+            contentStyle={tooltipStyle.contentStyle}
+            wrapperStyle={tooltipStyle.wrapperStyle}
+            cursor={tooltipStyle.cursor}
+            formatter={(v: number | undefined) => [(v ?? 0).toLocaleString(), "Series"]}
+          />
+          <Bar
+            dataKey="count"
+            fill="var(--color-accent)"
+            radius={[0, 4, 4, 0]}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onClick={onBarClick ? (entry: any) => {
+              const label = entry?.payload?.label;
+              if (label) onBarClick(String(label));
+            } : undefined}
+          >
+            {data.map((_, i) => (
+              <Cell
+                key={i}
+                fill="var(--color-accent)"
+                fillOpacity={1 - i * (0.5 / Math.max(data.length - 1, 1))}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function QualityCard({ data, tierData }: { data: QualityBucket[]; tierData?: QualityTier[] }) {
+  const navigate = useNavigate();
+  const [view, setView] = useState<QualityDimension>("dimension");
+
+  const total = data.reduce((s, b) => s + b.count, 0);
+  if (total === 0) {
     return (
       <Card title="Quality Distribution">
         <p style={{ color: "var(--color-text-muted)", fontSize: 13, margin: 0 }}>
@@ -147,62 +278,86 @@ function QualityTiersCard({ data }: { data: QualityTier[] }) {
     );
   }
 
-  const max = sorted[0].count;
+  const resolutions = sortedGroup(data, "resolution", RESOLUTION_ORDER);
+  const sources = sortedGroup(data, "source", SOURCE_ORDER);
+  const codecs = sortedGroup(data, "codec", CODEC_ORDER);
+  const hdrs = sortedGroup(data, "hdr", HDR_ORDER);
+
+  const tiers = (tierData ?? [])
+    .filter((t) => t.count > 0)
+    .sort((a, b) => {
+      const ra = RESOLUTION_ORDER.indexOf(a.resolution);
+      const rb = RESOLUTION_ORDER.indexOf(b.resolution);
+      if (ra !== rb) {
+        if (ra === -1) return 1;
+        if (rb === -1) return -1;
+        return ra - rb;
+      }
+      const sa = SOURCE_ORDER.indexOf(a.source);
+      const sb = SOURCE_ORDER.indexOf(b.source);
+      if (sa === -1 && sb === -1) return b.count - a.count;
+      if (sa === -1) return 1;
+      if (sb === -1) return -1;
+      return sa - sb;
+    })
+    .map((t) => ({ label: `${t.resolution} ${t.source}`, count: t.count, resolution: t.resolution, source: t.source }));
+
+  function handleTierClick(label: string) {
+    const tier = tiers.find((t) => t.label === label);
+    if (!tier) return;
+    const params = new URLSearchParams();
+    params.set("quality_resolution", tier.resolution);
+    params.set("quality_source", tier.source);
+    navigate(`/?${params.toString()}`);
+  }
+
+  const toggleStyle = (active: boolean): React.CSSProperties => ({
+    background: active ? "var(--color-bg-elevated)" : "transparent",
+    border: active ? "1px solid var(--color-border-default)" : "1px solid transparent",
+    borderRadius: 5,
+    padding: "3px 10px",
+    fontSize: 11,
+    fontWeight: active ? 600 : 400,
+    color: active ? "var(--color-text-primary)" : "var(--color-text-muted)",
+    cursor: "pointer",
+  });
 
   return (
     <Card title="Quality Distribution">
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {sorted.map((tier) => {
-          const label = [tier.resolution, tier.source].filter(Boolean).join(" ");
-          const pct = max > 0 ? (tier.count / max) * 100 : 0;
-          return (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div
-                style={{
-                  width: 100,
-                  fontSize: 12,
-                  color: "var(--color-text-secondary)",
-                  flexShrink: 0,
-                  textAlign: "right",
-                  fontWeight: 500,
-                }}
-              >
-                {label || "Unknown"}
-              </div>
-              <div
-                style={{
-                  flex: 1,
-                  height: 8,
-                  borderRadius: 4,
-                  background: "var(--color-bg-surface)",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${pct}%`,
-                    borderRadius: 4,
-                    background: "var(--color-accent)",
-                    transition: "width 400ms ease",
-                  }}
-                />
-              </div>
-              <div
-                style={{
-                  width: 36,
-                  fontSize: 12,
-                  color: "var(--color-text-muted)",
-                  flexShrink: 0,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {tier.count.toLocaleString()}
-              </div>
-            </div>
-          );
-        })}
+      <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+        <button style={toggleStyle(view === "dimension")} onClick={() => setView("dimension")}>
+          By Dimension
+        </button>
+        <button style={toggleStyle(view === "tier")} onClick={() => setView("tier")}>
+          By Tier
+        </button>
       </div>
+
+      {view === "dimension" ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 24,
+          }}
+        >
+          <QualityMiniChart title="Resolution" data={resolutions} />
+          <QualityMiniChart title="Source" data={sources} />
+          <QualityMiniChart title="Codec" data={codecs} />
+          <QualityMiniChart title="HDR" data={hdrs} />
+        </div>
+      ) : (
+        <div>
+          <p style={{ margin: "0 0 10px", fontSize: 11, color: "var(--color-text-muted)" }}>
+            Click a tier to filter the series library.
+          </p>
+          <QualityMiniChart
+            title="Resolution + Source"
+            data={tiers}
+            onBarClick={handleTierClick}
+          />
+        </div>
+      )}
     </Card>
   );
 }
@@ -272,6 +427,7 @@ function GrowthCard({ data }: { data: GrowthPoint[] }) {
 export default function StatsPage() {
   const collection = useCollectionStats();
   const storage = useStorageStats();
+  const quality = useQualityStats();
   const qualityTiers = useQualityTiers();
   const growth = useGrowthStats();
 
@@ -325,12 +481,12 @@ export default function StatsPage() {
         </div>
 
         {/* Quality distribution — full width */}
-        {qualityTiers.isLoading ? (
-          <CardSkeleton height={200} />
-        ) : qualityTiers.error ? (
+        {quality.isLoading ? (
+          <CardSkeleton height={260} />
+        ) : quality.error ? (
           <ErrorCard title="Quality Distribution" />
-        ) : qualityTiers.data ? (
-          <QualityTiersCard data={qualityTiers.data} />
+        ) : quality.data ? (
+          <QualityCard data={quality.data} tierData={qualityTiers.data} />
         ) : null}
       </div>
     </div>

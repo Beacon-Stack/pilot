@@ -1,6 +1,11 @@
-import { useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSeriesList } from "@/api/series";
-import { useCollectionStats, useStorageStats } from "@/api/stats";
+import {
+  useCollectionStats,
+  useStorageStats,
+  useSeriesByQualityTier,
+} from "@/api/stats";
 import { Poster } from "@/components/Poster";
 import { formatBytes } from "@/lib/utils";
 import type { Series } from "@/types";
@@ -159,9 +164,34 @@ function StatCard({
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data, isLoading, isError } = useSeriesList();
   const { data: collStats } = useCollectionStats();
   const { data: storStats } = useStorageStats();
+
+  const qualityResolution = searchParams.get("quality_resolution") ?? "";
+  const qualitySource = searchParams.get("quality_source") ?? "";
+  const hasQualityFilter = !!qualityResolution || !!qualitySource;
+  const { data: filterIDs } = useSeriesByQualityTier(
+    qualityResolution,
+    qualitySource,
+    hasQualityFilter,
+  );
+
+  const visibleSeries = useMemo(() => {
+    const all = data?.series ?? [];
+    if (!hasQualityFilter) return all;
+    if (!filterIDs) return [];
+    const allow = new Set(filterIDs);
+    return all.filter((s) => allow.has(s.id));
+  }, [data, hasQualityFilter, filterIDs]);
+
+  function clearQualityFilter() {
+    const next = new URLSearchParams(searchParams);
+    next.delete("quality_resolution");
+    next.delete("quality_source");
+    setSearchParams(next);
+  }
 
   return (
     <div style={{ padding: "24px 28px" }}>
@@ -187,7 +217,9 @@ export default function Dashboard() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {data && (
             <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-              {data.total} series
+              {hasQualityFilter
+                ? `${visibleSeries.length} of ${data.total} series`
+                : `${data.total} series`}
             </span>
           )}
           <button
@@ -207,6 +239,52 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* Active filter chip */}
+      {hasQualityFilter && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 16,
+            fontSize: 12,
+          }}
+        >
+          <span style={{ color: "var(--color-text-muted)" }}>Filtered by quality:</span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: "color-mix(in srgb, var(--color-accent) 14%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)",
+              color: "var(--color-text-primary)",
+              borderRadius: 999,
+              padding: "3px 8px 3px 10px",
+              fontWeight: 500,
+            }}
+          >
+            {[qualityResolution, qualitySource].filter(Boolean).join(" ")}
+            <button
+              onClick={clearQualityFilter}
+              aria-label="Clear quality filter"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--color-text-muted)",
+                cursor: "pointer",
+                fontSize: 14,
+                lineHeight: 1,
+                padding: 0,
+                marginLeft: 2,
+              }}
+            >
+              ×
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Stats summary row */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
@@ -245,11 +323,11 @@ export default function Dashboard() {
         >
           {isLoading
             ? Array.from({ length: 20 }).map((_, i) => <SkeletonCard key={i} />)
-            : (data?.series ?? []).map((s) => <SeriesCard key={s.id} series={s} />)}
+            : visibleSeries.map((s) => <SeriesCard key={s.id} series={s} />)}
         </div>
       )}
 
-      {!isLoading && !isError && data?.series.length === 0 && (
+      {!isLoading && !isError && visibleSeries.length === 0 && (
         <div
           style={{
             textAlign: "center",
@@ -257,13 +335,38 @@ export default function Dashboard() {
             color: "var(--color-text-muted)",
           }}
         >
-          <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>📺</div>
-          <p style={{ margin: 0, fontSize: 15, fontWeight: 500, color: "var(--color-text-secondary)" }}>
-            No series yet
-          </p>
-          <p style={{ margin: "8px 0 0", fontSize: 13 }}>
-            Add a series to get started.
-          </p>
+          {hasQualityFilter ? (
+            <>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 500, color: "var(--color-text-secondary)" }}>
+                No series match this quality filter
+              </p>
+              <button
+                onClick={clearQualityFilter}
+                style={{
+                  marginTop: 12,
+                  background: "transparent",
+                  border: "1px solid var(--color-border-default)",
+                  color: "var(--color-text-primary)",
+                  borderRadius: 6,
+                  padding: "5px 12px",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Clear filter
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>📺</div>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 500, color: "var(--color-text-secondary)" }}>
+                No series yet
+              </p>
+              <p style={{ margin: "8px 0 0", fontSize: 13 }}>
+                Add a series to get started.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>
