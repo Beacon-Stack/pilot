@@ -237,7 +237,7 @@ function QualityMiniChart({
             contentStyle={tooltipStyle.contentStyle}
             wrapperStyle={tooltipStyle.wrapperStyle}
             cursor={tooltipStyle.cursor}
-            formatter={(v: number | undefined) => [(v ?? 0).toLocaleString(), "Series"]}
+            formatter={(v) => [Number(v ?? 0).toLocaleString(), "Series"]}
           />
           <Bar
             dataKey="count"
