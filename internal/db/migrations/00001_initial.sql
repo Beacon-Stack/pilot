@@ -12,8 +12,13 @@ CREATE TABLE quality_profiles (
     min_custom_format_score INTEGER NOT NULL DEFAULT 0,
     upgrade_until_cf_score  INTEGER NOT NULL DEFAULT 0,
     created_at              TEXT NOT NULL,
-    updated_at              TEXT NOT NULL
+    updated_at              TEXT NOT NULL,
+    managed_by_pulse        BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+CREATE INDEX idx_quality_profiles_managed_by_pulse
+    ON quality_profiles(managed_by_pulse)
+    WHERE managed_by_pulse = TRUE;
 
 -- ── Libraries ────────────────────────────────────────────────────────────────
 
@@ -56,7 +61,8 @@ CREATE TABLE series (
     path                  TEXT,
     added_at              TEXT NOT NULL,
     updated_at            TEXT NOT NULL,
-    metadata_refreshed_at TEXT
+    metadata_refreshed_at TEXT,
+    alternate_titles      TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE INDEX idx_series_library_id ON series(library_id);
@@ -102,14 +108,15 @@ CREATE INDEX idx_episodes_monitored_has_file ON episodes(monitored, has_file);
 -- ── Indexer configs ──────────────────────────────────────────────────────────
 
 CREATE TABLE indexer_configs (
-    id         TEXT NOT NULL PRIMARY KEY,
-    name       TEXT NOT NULL,
-    kind       TEXT NOT NULL,
-    enabled    BOOLEAN NOT NULL DEFAULT TRUE,
-    priority   INTEGER NOT NULL DEFAULT 25,
-    settings   TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    id          TEXT NOT NULL PRIMARY KEY,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+    priority    INTEGER NOT NULL DEFAULT 25,
+    settings    TEXT NOT NULL DEFAULT '{}',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    min_seeders INTEGER NOT NULL DEFAULT 5
 );
 
 -- ── Grab history ─────────────────────────────────────────────────────────────
@@ -133,13 +140,24 @@ CREATE TABLE grab_history (
     download_status     TEXT NOT NULL DEFAULT 'pending',
     downloaded_bytes    INTEGER NOT NULL DEFAULT 0,
     score_breakdown     TEXT,
-    grabbed_at          TEXT NOT NULL
+    grabbed_at          TEXT NOT NULL,
+    source              TEXT NOT NULL DEFAULT 'interactive',
+    info_hash           TEXT
 );
 
 CREATE INDEX idx_grab_history_series_id ON grab_history(series_id);
 CREATE INDEX idx_grab_history_episode_id ON grab_history(episode_id);
 CREATE INDEX idx_grab_history_grabbed_at ON grab_history(grabbed_at DESC);
 CREATE INDEX idx_grab_history_download_status ON grab_history(download_status);
+CREATE INDEX idx_grab_history_info_hash
+    ON grab_history(info_hash) WHERE info_hash IS NOT NULL;
+
+-- Lifecycle Trust QW4: at most one active grab per (episode, release).
+-- Terminal states (failed/stalled/removed/completed) stay for activity
+-- history and are exempt from the dedup constraint.
+CREATE UNIQUE INDEX idx_grab_history_active_episode_release
+    ON grab_history (episode_id, release_guid)
+    WHERE download_status NOT IN ('failed', 'stalled', 'removed', 'completed');
 
 -- ── Download clients ─────────────────────────────────────────────────────────
 
@@ -190,13 +208,17 @@ CREATE TABLE blocklist (
     indexer_id    TEXT,
     protocol      TEXT NOT NULL DEFAULT '',
     size          INTEGER NOT NULL DEFAULT 0,
-    added_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    notes         TEXT NOT NULL DEFAULT ''
+    added_at      TEXT NOT NULL,
+    notes         TEXT NOT NULL DEFAULT '',
+    reason        TEXT NOT NULL DEFAULT 'user_marked',
+    info_hash     TEXT
 );
 
 CREATE INDEX idx_blocklist_series_id ON blocklist(series_id);
 CREATE INDEX idx_blocklist_episode_id ON blocklist(episode_id);
 CREATE UNIQUE INDEX idx_blocklist_guid ON blocklist(release_guid);
+CREATE INDEX idx_blocklist_info_hash
+    ON blocklist(info_hash) WHERE info_hash IS NOT NULL;
 
 -- ── Quality definitions ──────────────────────────────────────────────────────
 
@@ -250,14 +272,14 @@ INSERT INTO media_management (id) VALUES (1);
 -- ── Episode files ────────────────────────────────────────────────────────────
 
 CREATE TABLE episode_files (
-    id          TEXT NOT NULL PRIMARY KEY,
-    episode_id  TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
-    series_id   TEXT NOT NULL REFERENCES series(id) ON DELETE CASCADE,
-    path        TEXT NOT NULL UNIQUE,
-    size_bytes  BIGINT NOT NULL,
+    id           TEXT NOT NULL PRIMARY KEY,
+    episode_id   TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+    series_id    TEXT NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+    path         TEXT NOT NULL UNIQUE,
+    size_bytes   BIGINT NOT NULL,
     quality_json TEXT NOT NULL DEFAULT '{}',
-    imported_at TEXT NOT NULL,
-    indexed_at  TEXT NOT NULL
+    imported_at  TEXT NOT NULL,
+    indexed_at   TEXT NOT NULL
 );
 
 CREATE INDEX idx_episode_files_episode_id ON episode_files(episode_id);
@@ -321,8 +343,28 @@ CREATE TABLE import_exclusions (
     created_at TEXT NOT NULL
 );
 
+-- ── Settings ─────────────────────────────────────────────────────────────────
+
+CREATE TABLE settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- ── Anime cour monitored ─────────────────────────────────────────────────────
+
+CREATE TABLE anime_cour_monitored (
+    series_id   TEXT    NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+    tvdb_season INTEGER NOT NULL,
+    monitored   BOOLEAN NOT NULL,
+    updated_at  TEXT    NOT NULL,
+    PRIMARY KEY (series_id, tvdb_season)
+);
+
 -- +goose Down
 
+DROP TABLE IF EXISTS anime_cour_monitored;
+DROP TABLE IF EXISTS settings;
 DROP TABLE IF EXISTS import_exclusions;
 DROP TABLE IF EXISTS import_list_configs;
 DROP TABLE IF EXISTS stats_snapshots;

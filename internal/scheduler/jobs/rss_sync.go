@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
@@ -119,8 +119,8 @@ func runRSSSync(
 	}
 	activeEpisodes := make(map[string]bool, len(activeGrabs))
 	for _, g := range activeGrabs {
-		if g.EpisodeID.Valid && g.EpisodeID.String != "" {
-			activeEpisodes[g.EpisodeID.String] = true
+		if g.EpisodeID != nil && *g.EpisodeID != "" {
+			activeEpisodes[*g.EpisodeID] = true
 		}
 	}
 	recentlyCompletedEpisodes, err := buildRecentlyCompletedEpisodes(ctx, q, time.Now().UTC().Add(-completedSkipWindow))
@@ -216,17 +216,9 @@ func runRSSSync(
 
 		// Update grab with the download client assignment if we have a grab row.
 		if grabErr == nil && (dcID != "" || itemID != "") {
-			dcNS := sql.NullString{}
-			if dcID != "" {
-				dcNS = sql.NullString{String: dcID, Valid: true}
-			}
-			itemNS := sql.NullString{}
-			if itemID != "" {
-				itemNS = sql.NullString{String: itemID, Valid: true}
-			}
 			if err := idxSvc.UpdateGrabDownloadClient(ctx, db.UpdateGrabDownloadClientParams{
-				DownloadClientID: dcNS,
-				ClientItemID:     itemNS,
+				DownloadClientID: dbutil.NullableString(dcID),
+				ClientItemID:     dbutil.NullableString(itemID),
 				ID:               grab.ID,
 			}); err != nil {
 				logger.Warn("rss_sync: could not update grab download client",
@@ -335,8 +327,8 @@ func buildRecentlyCompletedEpisodes(ctx context.Context, q db.Querier, since tim
 	}
 	out := make(map[string]bool, len(rows))
 	for _, g := range rows {
-		if g.EpisodeID.Valid && g.EpisodeID.String != "" {
-			out[g.EpisodeID.String] = true
+		if g.EpisodeID != nil && *g.EpisodeID != "" {
+			out[*g.EpisodeID] = true
 		}
 	}
 	return out, nil

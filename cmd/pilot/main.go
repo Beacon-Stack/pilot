@@ -207,7 +207,7 @@ func run() error {
 		"version", version.Version,
 		"build_time", version.BuildTime,
 		"go", version.GoVersion(),
-		"db", cfg.Database.Driver,
+		"db_path", cfg.Database.Path,
 		"config_file", configFile,
 	)
 
@@ -230,9 +230,9 @@ func run() error {
 	}
 	defer database.Close()
 
-	logger.Info("database connected", "driver", database.Driver)
+	logger.Info("database connected", "path", cfg.Database.Path)
 
-	if err := db.Migrate(database.SQL, database.Driver); err != nil {
+	if err := db.Migrate(database.SQL); err != nil {
 		return fmt.Errorf("running migrations: %w", err)
 	}
 
@@ -345,7 +345,7 @@ func run() error {
 		Logger:                 logger,
 		StartTime:              startTime,
 		DB:                     database.SQL,
-		DBType:                 database.Driver,
+		DBType:                 "sqlite",
 		DBPath:                 cfg.Database.Path,
 		ConfigFile:             cfg.ConfigFile,
 		TMDBKeyConfigured:      !cfg.TMDB.APIKey.IsEmpty(),

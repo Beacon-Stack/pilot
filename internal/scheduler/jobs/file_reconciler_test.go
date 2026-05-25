@@ -10,7 +10,6 @@ package jobs
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log/slog"
 	"os"
@@ -98,6 +97,9 @@ func (m *reconcilerMockQuerier) flipped() []db.UpdateEpisodeHasFileParams {
 }
 
 func nullLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
+
+// ptrStr returns a pointer to s; used for *string nullable params.
+func ptrStr(s string) *string { return &s }
 
 // Headline test: a file that's definitively gone from disk MUST flip
 // has_file=FALSE and delete the episode_files row. Without this, the
@@ -237,7 +239,7 @@ func TestFileReconciler_CompletedGrabWithoutFileQueuesRetry(t *testing.T) {
 			{
 				ID:           "g-1",
 				SeriesID:     "s-1",
-				EpisodeID:    sql.NullString{String: "ep-orphan", Valid: true},
+				EpisodeID:    ptrStr("ep-orphan"),
 				ReleaseTitle: "Maul.S01E07",
 			},
 		},
@@ -276,7 +278,7 @@ func TestFileReconciler_CompletedGrabWithFileNoRetry(t *testing.T) {
 			{
 				ID:        "g-1",
 				SeriesID:  "s-1",
-				EpisodeID: sql.NullString{String: "ep-imported", Valid: true},
+				EpisodeID: ptrStr("ep-imported"),
 			},
 		},
 	}
@@ -306,7 +308,7 @@ func TestFileReconciler_DoesNotDoubleFireForSameEpisode(t *testing.T) {
 			{
 				ID:        "g-1",
 				SeriesID:  "s-1",
-				EpisodeID: sql.NullString{String: "ep-double", Valid: true},
+				EpisodeID: ptrStr("ep-double"),
 			},
 		},
 	}

@@ -7,11 +7,10 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 const countEpisodesBySeriesID = `-- name: CountEpisodesBySeriesID :one
-SELECT COUNT(*) FROM episodes WHERE series_id = $1
+SELECT COUNT(*) FROM episodes WHERE series_id = ?
 `
 
 func (q *Queries) CountEpisodesBySeriesID(ctx context.Context, seriesID string) (int64, error) {
@@ -22,7 +21,7 @@ func (q *Queries) CountEpisodesBySeriesID(ctx context.Context, seriesID string) 
 }
 
 const countEpisodesWithFileBySeriesID = `-- name: CountEpisodesWithFileBySeriesID :one
-SELECT COUNT(*) FROM episodes WHERE series_id = $1 AND has_file = TRUE
+SELECT COUNT(*) FROM episodes WHERE series_id = ? AND has_file = 1
 `
 
 func (q *Queries) CountEpisodesWithFileBySeriesID(ctx context.Context, seriesID string) (int64, error) {
@@ -33,7 +32,7 @@ func (q *Queries) CountEpisodesWithFileBySeriesID(ctx context.Context, seriesID 
 }
 
 const countMissingEpisodes = `-- name: CountMissingEpisodes :one
-SELECT COUNT(*) FROM episodes WHERE monitored = TRUE AND has_file = FALSE AND air_date IS NOT NULL AND air_date <= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+SELECT COUNT(*) FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= strftime('%Y-%m-%d', 'now')
 `
 
 func (q *Queries) CountMissingEpisodes(ctx context.Context) (int64, error) {
@@ -49,27 +48,27 @@ INSERT INTO episodes (
     absolute_number, air_date, title, overview, monitored, has_file,
     still_path, runtime_minutes
 ) VALUES (
-    $1, $2, $3, $4, $5,
-    $6, $7, $8, $9, $10, $11,
-    $12, $13
+    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?,
+    ?, ?
 )
 RETURNING id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes
 `
 
 type CreateEpisodeParams struct {
-	ID             string         `json:"id"`
-	SeriesID       string         `json:"seriesId"`
-	SeasonID       string         `json:"seasonId"`
-	SeasonNumber   int32          `json:"seasonNumber"`
-	EpisodeNumber  int32          `json:"episodeNumber"`
-	AbsoluteNumber sql.NullInt32  `json:"absoluteNumber"`
-	AirDate        sql.NullString `json:"airDate"`
-	Title          string         `json:"title"`
-	Overview       string         `json:"overview"`
-	Monitored      bool           `json:"monitored"`
-	HasFile        bool           `json:"hasFile"`
-	StillPath      string         `json:"stillPath"`
-	RuntimeMinutes int32          `json:"runtimeMinutes"`
+	ID             string  `json:"id"`
+	SeriesID       string  `json:"seriesId"`
+	SeasonID       string  `json:"seasonId"`
+	SeasonNumber   int64   `json:"seasonNumber"`
+	EpisodeNumber  int64   `json:"episodeNumber"`
+	AbsoluteNumber *int64  `json:"absoluteNumber"`
+	AirDate        *string `json:"airDate"`
+	Title          string  `json:"title"`
+	Overview       string  `json:"overview"`
+	Monitored      bool    `json:"monitored"`
+	HasFile        bool    `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
 }
 
 func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (Episode, error) {
@@ -108,7 +107,7 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (E
 }
 
 const deleteEpisodesBySeriesID = `-- name: DeleteEpisodesBySeriesID :exec
-DELETE FROM episodes WHERE series_id = $1
+DELETE FROM episodes WHERE series_id = ?
 `
 
 func (q *Queries) DeleteEpisodesBySeriesID(ctx context.Context, seriesID string) error {
@@ -117,7 +116,7 @@ func (q *Queries) DeleteEpisodesBySeriesID(ctx context.Context, seriesID string)
 }
 
 const getEpisode = `-- name: GetEpisode :one
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE id = $1
+SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE id = ?
 `
 
 func (q *Queries) GetEpisode(ctx context.Context, id string) (Episode, error) {
@@ -145,30 +144,30 @@ const listEpisodesByAirDateRange = `-- name: ListEpisodesByAirDateRange :many
 SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e
 JOIN series s ON s.id = e.series_id
-WHERE e.air_date >= $1 AND e.air_date <= $2
+WHERE e.air_date >= ? AND e.air_date <= ?
 ORDER BY e.air_date ASC, s.title ASC, e.episode_number ASC
 `
 
 type ListEpisodesByAirDateRangeParams struct {
-	AirDate   sql.NullString `json:"airDate"`
-	AirDate_2 sql.NullString `json:"airDate2"`
+	AirDate   *string `json:"airDate"`
+	AirDate_2 *string `json:"airDate2"`
 }
 
 type ListEpisodesByAirDateRangeRow struct {
-	ID             string         `json:"id"`
-	SeriesID       string         `json:"seriesId"`
-	SeasonID       string         `json:"seasonId"`
-	SeasonNumber   int32          `json:"seasonNumber"`
-	EpisodeNumber  int32          `json:"episodeNumber"`
-	AbsoluteNumber sql.NullInt32  `json:"absoluteNumber"`
-	AirDate        sql.NullString `json:"airDate"`
-	Title          string         `json:"title"`
-	Overview       string         `json:"overview"`
-	Monitored      bool           `json:"monitored"`
-	HasFile        bool           `json:"hasFile"`
-	StillPath      string         `json:"stillPath"`
-	RuntimeMinutes int32          `json:"runtimeMinutes"`
-	SeriesTitle    string         `json:"seriesTitle"`
+	ID             string  `json:"id"`
+	SeriesID       string  `json:"seriesId"`
+	SeasonID       string  `json:"seasonId"`
+	SeasonNumber   int64   `json:"seasonNumber"`
+	EpisodeNumber  int64   `json:"episodeNumber"`
+	AbsoluteNumber *int64  `json:"absoluteNumber"`
+	AirDate        *string `json:"airDate"`
+	Title          string  `json:"title"`
+	Overview       string  `json:"overview"`
+	Monitored      bool    `json:"monitored"`
+	HasFile        bool    `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
+	SeriesTitle    string  `json:"seriesTitle"`
 }
 
 func (q *Queries) ListEpisodesByAirDateRange(ctx context.Context, arg ListEpisodesByAirDateRangeParams) ([]ListEpisodesByAirDateRangeRow, error) {
@@ -210,7 +209,7 @@ func (q *Queries) ListEpisodesByAirDateRange(ctx context.Context, arg ListEpisod
 }
 
 const listEpisodesBySeasonID = `-- name: ListEpisodesBySeasonID :many
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE season_id = $1 ORDER BY episode_number ASC
+SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE season_id = ? ORDER BY episode_number ASC
 `
 
 func (q *Queries) ListEpisodesBySeasonID(ctx context.Context, seasonID string) ([]Episode, error) {
@@ -251,7 +250,7 @@ func (q *Queries) ListEpisodesBySeasonID(ctx context.Context, seasonID string) (
 }
 
 const listEpisodesBySeriesID = `-- name: ListEpisodesBySeriesID :many
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE series_id = $1 ORDER BY season_number ASC, episode_number ASC
+SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE series_id = ? ORDER BY season_number ASC, episode_number ASC
 `
 
 func (q *Queries) ListEpisodesBySeriesID(ctx context.Context, seriesID string) ([]Episode, error) {
@@ -292,13 +291,13 @@ func (q *Queries) ListEpisodesBySeriesID(ctx context.Context, seriesID string) (
 }
 
 const listMissingEpisodes = `-- name: ListMissingEpisodes :many
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE monitored = TRUE AND has_file = FALSE AND air_date IS NOT NULL AND air_date <= to_char(CURRENT_DATE, 'YYYY-MM-DD')
-ORDER BY air_date DESC LIMIT $1 OFFSET $2
+SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= strftime('%Y-%m-%d', 'now')
+ORDER BY air_date DESC LIMIT ? OFFSET ?
 `
 
 type ListMissingEpisodesParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
 }
 
 func (q *Queries) ListMissingEpisodes(ctx context.Context, arg ListMissingEpisodesParams) ([]Episode, error) {
@@ -342,31 +341,31 @@ const listMissingEpisodesWithSeries = `-- name: ListMissingEpisodesWithSeries :m
 SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e
 JOIN series s ON s.id = e.series_id
-WHERE e.monitored = TRUE AND e.has_file = FALSE AND e.air_date IS NOT NULL AND e.air_date <= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+WHERE e.monitored = 1 AND e.has_file = 0 AND e.air_date IS NOT NULL AND e.air_date <= strftime('%Y-%m-%d', 'now')
 ORDER BY e.air_date DESC
-LIMIT $1 OFFSET $2
+LIMIT ? OFFSET ?
 `
 
 type ListMissingEpisodesWithSeriesParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
 }
 
 type ListMissingEpisodesWithSeriesRow struct {
-	ID             string         `json:"id"`
-	SeriesID       string         `json:"seriesId"`
-	SeasonID       string         `json:"seasonId"`
-	SeasonNumber   int32          `json:"seasonNumber"`
-	EpisodeNumber  int32          `json:"episodeNumber"`
-	AbsoluteNumber sql.NullInt32  `json:"absoluteNumber"`
-	AirDate        sql.NullString `json:"airDate"`
-	Title          string         `json:"title"`
-	Overview       string         `json:"overview"`
-	Monitored      bool           `json:"monitored"`
-	HasFile        bool           `json:"hasFile"`
-	StillPath      string         `json:"stillPath"`
-	RuntimeMinutes int32          `json:"runtimeMinutes"`
-	SeriesTitle    string         `json:"seriesTitle"`
+	ID             string  `json:"id"`
+	SeriesID       string  `json:"seriesId"`
+	SeasonID       string  `json:"seasonId"`
+	SeasonNumber   int64   `json:"seasonNumber"`
+	EpisodeNumber  int64   `json:"episodeNumber"`
+	AbsoluteNumber *int64  `json:"absoluteNumber"`
+	AirDate        *string `json:"airDate"`
+	Title          string  `json:"title"`
+	Overview       string  `json:"overview"`
+	Monitored      bool    `json:"monitored"`
+	HasFile        bool    `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
+	SeriesTitle    string  `json:"seriesTitle"`
 }
 
 func (q *Queries) ListMissingEpisodesWithSeries(ctx context.Context, arg ListMissingEpisodesWithSeriesParams) ([]ListMissingEpisodesWithSeriesRow, error) {
@@ -409,24 +408,24 @@ func (q *Queries) ListMissingEpisodesWithSeries(ctx context.Context, arg ListMis
 
 const updateEpisode = `-- name: UpdateEpisode :one
 UPDATE episodes SET
-    title    = $1,
-    overview = $2,
-    air_date = $3,
-    has_file = $4,
-    still_path = $5,
-    runtime_minutes = $6
-WHERE id = $7
+    title    = ?,
+    overview = ?,
+    air_date = ?,
+    has_file = ?,
+    still_path = ?,
+    runtime_minutes = ?
+WHERE id = ?
 RETURNING id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes
 `
 
 type UpdateEpisodeParams struct {
-	Title          string         `json:"title"`
-	Overview       string         `json:"overview"`
-	AirDate        sql.NullString `json:"airDate"`
-	HasFile        bool           `json:"hasFile"`
-	StillPath      string         `json:"stillPath"`
-	RuntimeMinutes int32          `json:"runtimeMinutes"`
-	ID             string         `json:"id"`
+	Title          string  `json:"title"`
+	Overview       string  `json:"overview"`
+	AirDate        *string `json:"airDate"`
+	HasFile        bool    `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
+	ID             string  `json:"id"`
 }
 
 func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (Episode, error) {
@@ -459,16 +458,16 @@ func (q *Queries) UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (E
 }
 
 const updateEpisodeAbsoluteNumber = `-- name: UpdateEpisodeAbsoluteNumber :exec
-UPDATE episodes SET absolute_number = $1 WHERE id = $2
+UPDATE episodes SET absolute_number = ? WHERE id = ?
 `
 
 type UpdateEpisodeAbsoluteNumberParams struct {
-	AbsoluteNumber sql.NullInt32 `json:"absoluteNumber"`
-	ID             string        `json:"id"`
+	AbsoluteNumber *int64 `json:"absoluteNumber"`
+	ID             string `json:"id"`
 }
 
 // Backfill or correct the absolute episode number. Used by the refresh
-// path when a series is newly flagged as anime — its existing rows have
+// path when a series is newly flagged as anime - its existing rows have
 // absolute_number = NULL and need to be filled in retroactively.
 func (q *Queries) UpdateEpisodeAbsoluteNumber(ctx context.Context, arg UpdateEpisodeAbsoluteNumberParams) error {
 	_, err := q.db.ExecContext(ctx, updateEpisodeAbsoluteNumber, arg.AbsoluteNumber, arg.ID)
@@ -476,7 +475,7 @@ func (q *Queries) UpdateEpisodeAbsoluteNumber(ctx context.Context, arg UpdateEpi
 }
 
 const updateEpisodeHasFile = `-- name: UpdateEpisodeHasFile :exec
-UPDATE episodes SET has_file = $1 WHERE id = $2
+UPDATE episodes SET has_file = ? WHERE id = ?
 `
 
 type UpdateEpisodeHasFileParams struct {
@@ -494,7 +493,7 @@ func (q *Queries) UpdateEpisodeHasFile(ctx context.Context, arg UpdateEpisodeHas
 }
 
 const updateEpisodeMonitored = `-- name: UpdateEpisodeMonitored :exec
-UPDATE episodes SET monitored = $1 WHERE id = $2
+UPDATE episodes SET monitored = ? WHERE id = ?
 `
 
 type UpdateEpisodeMonitoredParams struct {
@@ -508,7 +507,7 @@ func (q *Queries) UpdateEpisodeMonitored(ctx context.Context, arg UpdateEpisodeM
 }
 
 const updateEpisodesMonitoredBySeason = `-- name: UpdateEpisodesMonitoredBySeason :exec
-UPDATE episodes SET monitored = $1 WHERE season_id = $2
+UPDATE episodes SET monitored = ? WHERE season_id = ?
 `
 
 type UpdateEpisodesMonitoredBySeasonParams struct {

@@ -20,7 +20,7 @@ type systemStatus struct {
 	BuildTime     string `json:"build_time"             doc:"UTC build timestamp"`
 	GoVersion     string `json:"go_version"             doc:"Go runtime version"`
 	DBType        string `json:"db_type"                doc:"Active database driver"`
-	DBPath        string `json:"db_path,omitempty"      doc:"SQLite database file path (sqlite only)"`
+	DBPath        string `json:"db_path,omitempty"      doc:"SQLite database file path"`
 	UptimeSeconds int64  `json:"uptime_seconds"         doc:"Seconds since startup"`
 	StartTime     string `json:"start_time"             doc:"UTC server start time"`
 }

@@ -58,9 +58,9 @@ func (s *DefinitionService) List(ctx context.Context) ([]Definition, error) {
 func (s *DefinitionService) BulkUpdate(ctx context.Context, updates []DefinitionSizeUpdate) error {
 	for _, u := range updates {
 		if err := s.q.UpdateQualityDefinitionSizes(ctx, db.UpdateQualityDefinitionSizesParams{
-			MinSize:       float32(u.MinSize),
-			MaxSize:       float32(u.MaxSize),
-			PreferredSize: float32(u.PreferredSize),
+			MinSize:       u.MinSize,
+			MaxSize:       u.MaxSize,
+			PreferredSize: u.PreferredSize,
 			ID:            u.ID,
 		}); err != nil {
 			return fmt.Errorf("update quality definition %q: %w", u.ID, err)
@@ -77,9 +77,9 @@ func rowToDefinition(r db.QualityDefinition) Definition {
 		Source:        r.Source,
 		Codec:         r.Codec,
 		HDR:           r.Hdr,
-		MinSize:       float64(r.MinSize),
-		MaxSize:       float64(r.MaxSize),
-		PreferredSize: float64(r.PreferredSize),
+		MinSize:       r.MinSize,
+		MaxSize:       r.MaxSize,
+		PreferredSize: r.PreferredSize,
 		SortOrder:     int(r.SortOrder),
 	}
 }

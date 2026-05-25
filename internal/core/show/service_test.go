@@ -141,7 +141,7 @@ func TestGetSeasons_EmptySeries(t *testing.T) {
 // ── rowToSeries: alternate_titles JSON parsing ───────────────────────────────
 
 func TestRowToSeries_AlternateTitlesEmptyArray(t *testing.T) {
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	got, err := rowToSeries(row)
 	if err != nil {
 		t.Fatalf("rowToSeries: %v", err)
@@ -154,7 +154,7 @@ func TestRowToSeries_AlternateTitlesEmptyArray(t *testing.T) {
 func TestRowToSeries_AlternateTitlesNullJSON(t *testing.T) {
 	// Defensive: a row written by an older code path could carry
 	// literal JSON null. Should produce empty slice, not crash.
-	row := mkSeriesRow("s1", []byte(`null`))
+	row := mkSeriesRow("s1", `null`)
 	got, err := rowToSeries(row)
 	if err != nil {
 		t.Fatalf("rowToSeries on null: %v", err)
@@ -166,7 +166,7 @@ func TestRowToSeries_AlternateTitlesNullJSON(t *testing.T) {
 
 func TestRowToSeries_AlternateTitlesEmptyBytes(t *testing.T) {
 	// Defensive: rare DB driver edge cases hand back zero-length JSON.
-	row := mkSeriesRow("s1", []byte(``))
+	row := mkSeriesRow("s1", ``)
 	got, err := rowToSeries(row)
 	if err != nil {
 		t.Fatalf("rowToSeries on empty bytes: %v", err)
@@ -180,7 +180,7 @@ func TestRowToSeries_AlternateTitlesMalformedJSON(t *testing.T) {
 	// Bad JSON in the column shouldn't fail series fetch — we
 	// gracefully degrade to empty alternates so the strict-title
 	// fallback still works.
-	row := mkSeriesRow("s1", []byte(`{not json`))
+	row := mkSeriesRow("s1", `{not json`)
 	got, err := rowToSeries(row)
 	if err != nil {
 		t.Fatalf("rowToSeries should tolerate bad JSON, got error: %v", err)
@@ -191,7 +191,7 @@ func TestRowToSeries_AlternateTitlesMalformedJSON(t *testing.T) {
 }
 
 func TestRowToSeries_AlternateTitlesPopulated(t *testing.T) {
-	row := mkSeriesRow("s1", []byte(`["Star Wars: Andor","Andor: A Star Wars Story"]`))
+	row := mkSeriesRow("s1", `["Star Wars: Andor","Andor: A Star Wars Story"]`)
 	got, err := rowToSeries(row)
 	if err != nil {
 		t.Fatalf("rowToSeries: %v", err)
@@ -209,7 +209,7 @@ func TestRowToSeries_AlternateTitlesPopulated(t *testing.T) {
 
 // mkSeriesRow returns a minimally-valid db.Series row with the supplied
 // alternate_titles JSON. All other fields are filled with safe defaults.
-func mkSeriesRow(id string, altTitles []byte) db.Series {
+func mkSeriesRow(id string, altTitles string) db.Series {
 	now := "2025-01-01T00:00:00Z"
 	return db.Series{
 		ID:              id,
@@ -251,7 +251,7 @@ type refreshMetadataMock struct {
 	updatedRow         db.Series
 	updateErr          error
 	updateCalled       bool
-	gotUpdateAlternate []byte
+	gotUpdateAlternate string
 
 	// Anime backfill capture: records calls so tests can assert that
 	// RefreshMetadata triggers the upgrade exactly once when warranted
@@ -353,7 +353,7 @@ func TestRefreshMetadata_GetSeriesDBFailure(t *testing.T) {
 }
 
 func TestRefreshMetadata_TMDBSeriesFetchFails(t *testing.T) {
-	mock := &refreshMetadataMock{getSeriesRow: mkSeriesRow("s1", []byte(`[]`))}
+	mock := &refreshMetadataMock{getSeriesRow: mkSeriesRow("s1", `[]`)}
 	meta := &stubMeta{getSeriesErr: errors.New("tmdb 503")}
 	svc := NewService(mock, meta, nil, nil, discardLogger())
 
@@ -370,7 +370,7 @@ func TestRefreshMetadata_AlternateTitlesFetchFails_StillUpdates(t *testing.T) {
 	// Per design: alt-titles fetch failure is non-fatal. The series row
 	// is still refreshed (with empty alternates). The user can retry
 	// later and pick up alternates if TMDB is healthy.
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	mock := &refreshMetadataMock{
 		getSeriesRow: row,
 		updatedRow:   row,
@@ -397,9 +397,9 @@ func TestRefreshMetadata_AlternateTitlesFetchFails_StillUpdates(t *testing.T) {
 }
 
 func TestRefreshMetadata_HappyPath_StoresAlternates(t *testing.T) {
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	updatedRow := row
-	updatedRow.AlternateTitles = []byte(`["Star Wars: Andor"]`)
+	updatedRow.AlternateTitles = `["Star Wars: Andor"]`
 	mock := &refreshMetadataMock{
 		getSeriesRow: row,
 		updatedRow:   updatedRow,
@@ -429,7 +429,7 @@ func TestRefreshMetadata_HappyPath_StoresAlternates(t *testing.T) {
 func TestRefreshMetadata_NilAlternatesMarshalsAsEmptyArray(t *testing.T) {
 	// Defensive: TMDB returns nil slice (not empty). We must persist
 	// "[]" not "null" so the JSONB column stays valid for queries.
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	mock := &refreshMetadataMock{getSeriesRow: row, updatedRow: row}
 	meta := &stubMeta{getSeriesResult: testSeriesDetail(), altTitles: nil}
 	svc := NewService(mock, meta, nil, nil, discardLogger())
@@ -462,7 +462,7 @@ func testSeriesDetail() *tmdbtv.SeriesDetail {
 // series_type flips to anime AND absolute_number gets populated 1..N
 // across non-special seasons.
 func TestRefreshMetadata_AnimeBackfill_FlipsTypeAndPopulatesAbsolute(t *testing.T) {
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	row.TmdbID = 95479 // Jujutsu Kaisen
 	row.SeriesType = "standard"
 	mock := &refreshMetadataMock{
@@ -495,8 +495,8 @@ func TestRefreshMetadata_AnimeBackfill_FlipsTypeAndPopulatesAbsolute(t *testing.
 		t.Fatalf("expected 3 absolute updates, got %d: %+v", len(mock.gotAbsoluteUpdates), mock.gotAbsoluteUpdates)
 	}
 	for i, u := range mock.gotAbsoluteUpdates {
-		want := int32(i + 1)
-		if !u.AbsoluteNumber.Valid || u.AbsoluteNumber.Int32 != want {
+		want := int64(i + 1)
+		if u.AbsoluteNumber == nil || *u.AbsoluteNumber != want {
 			t.Errorf("update[%d]: got %v, want %d", i, u.AbsoluteNumber, want)
 		}
 	}
@@ -506,7 +506,7 @@ func TestRefreshMetadata_AnimeBackfill_FlipsTypeAndPopulatesAbsolute(t *testing.
 // the series as anime — backfill should be additive, not destructive,
 // and the series_type write is gated on row.SeriesType == "standard".
 func TestRefreshMetadata_AnimeBackfill_SkipsAlreadyFlaggedSeries(t *testing.T) {
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	row.SeriesType = "anime" // already anime — should not re-fire the upgrade
 	mock := &refreshMetadataMock{getSeriesRow: row, updatedRow: row}
 	meta := &stubMeta{getSeriesResult: testSeriesDetail(), altTitles: []string{}}
@@ -527,7 +527,7 @@ func TestRefreshMetadata_AnimeBackfill_SkipsAlreadyFlaggedSeries(t *testing.T) {
 // Don't touch series that aren't in the anime list — upgrades should be
 // triggered by the lookup, not blanket-applied to every refresh.
 func TestRefreshMetadata_AnimeBackfill_SkipsWhenNotAnime(t *testing.T) {
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	row.SeriesType = "standard"
 	mock := &refreshMetadataMock{getSeriesRow: row, updatedRow: row}
 	meta := &stubMeta{getSeriesResult: testSeriesDetail(), altTitles: []string{}}
@@ -545,7 +545,7 @@ func TestRefreshMetadata_AnimeBackfill_SkipsWhenNotAnime(t *testing.T) {
 // AnimeLookup is allowed to be nil (deployments that don't run the
 // fetcher) — refresh must still work end-to-end without panicking.
 func TestRefreshMetadata_AnimeBackfill_NilLookupIsSafe(t *testing.T) {
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	row.SeriesType = "standard"
 	mock := &refreshMetadataMock{getSeriesRow: row, updatedRow: row}
 	meta := &stubMeta{getSeriesResult: testSeriesDetail(), altTitles: []string{}}
@@ -562,16 +562,19 @@ func TestRefreshMetadata_AnimeBackfill_NilLookupIsSafe(t *testing.T) {
 // Absolute backfill is idempotent — running it twice over a series with
 // already-correct values produces no extra writes.
 func TestRefreshMetadata_AnimeBackfill_IsIdempotent(t *testing.T) {
-	row := mkSeriesRow("s1", []byte(`[]`))
+	row := mkSeriesRow("s1", `[]`)
 	row.SeriesType = "anime" // already anime; the populate call still runs IF triggered.
 	row.TmdbID = 95479
 	mock := &refreshMetadataMock{
 		getSeriesRow: row,
 		updatedRow:   row,
-		episodes: []db.Episode{
-			{ID: "e1", SeasonNumber: 1, EpisodeNumber: 1, AbsoluteNumber: sql.NullInt32{Int32: 1, Valid: true}},
-			{ID: "e2", SeasonNumber: 1, EpisodeNumber: 2, AbsoluteNumber: sql.NullInt32{Int32: 2, Valid: true}},
-		},
+		episodes: func() []db.Episode {
+			v1, v2 := int64(1), int64(2)
+			return []db.Episode{
+				{ID: "e1", SeasonNumber: 1, EpisodeNumber: 1, AbsoluteNumber: &v1},
+				{ID: "e2", SeasonNumber: 1, EpisodeNumber: 2, AbsoluteNumber: &v2},
+			}
+		}(),
 	}
 	meta := &stubMeta{getSeriesResult: testSeriesDetail(), altTitles: []string{}}
 	anime := fakeAnimeLookup{hits: map[int]bool{95479: true}}

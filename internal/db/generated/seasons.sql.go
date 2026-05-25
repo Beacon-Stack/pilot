@@ -11,14 +11,14 @@ import (
 
 const createSeason = `-- name: CreateSeason :one
 INSERT INTO seasons (id, series_id, season_number, monitored)
-VALUES ($1, $2, $3, $4)
+VALUES (?, ?, ?, ?)
 RETURNING id, series_id, season_number, monitored
 `
 
 type CreateSeasonParams struct {
 	ID           string `json:"id"`
 	SeriesID     string `json:"seriesId"`
-	SeasonNumber int32  `json:"seasonNumber"`
+	SeasonNumber int64  `json:"seasonNumber"`
 	Monitored    bool   `json:"monitored"`
 }
 
@@ -40,7 +40,7 @@ func (q *Queries) CreateSeason(ctx context.Context, arg CreateSeasonParams) (Sea
 }
 
 const deleteSeasonsBySeriesID = `-- name: DeleteSeasonsBySeriesID :exec
-DELETE FROM seasons WHERE series_id = $1
+DELETE FROM seasons WHERE series_id = ?
 `
 
 func (q *Queries) DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error {
@@ -49,7 +49,7 @@ func (q *Queries) DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) 
 }
 
 const getSeason = `-- name: GetSeason :one
-SELECT id, series_id, season_number, monitored FROM seasons WHERE id = $1
+SELECT id, series_id, season_number, monitored FROM seasons WHERE id = ?
 `
 
 func (q *Queries) GetSeason(ctx context.Context, id string) (Season, error) {
@@ -65,7 +65,7 @@ func (q *Queries) GetSeason(ctx context.Context, id string) (Season, error) {
 }
 
 const listSeasonsBySeriesID = `-- name: ListSeasonsBySeriesID :many
-SELECT id, series_id, season_number, monitored FROM seasons WHERE series_id = $1 ORDER BY season_number ASC
+SELECT id, series_id, season_number, monitored FROM seasons WHERE series_id = ? ORDER BY season_number ASC
 `
 
 func (q *Queries) ListSeasonsBySeriesID(ctx context.Context, seriesID string) ([]Season, error) {
@@ -97,7 +97,7 @@ func (q *Queries) ListSeasonsBySeriesID(ctx context.Context, seriesID string) ([
 }
 
 const updateSeasonMonitored = `-- name: UpdateSeasonMonitored :exec
-UPDATE seasons SET monitored = $1 WHERE id = $2
+UPDATE seasons SET monitored = ? WHERE id = ?
 `
 
 type UpdateSeasonMonitoredParams struct {

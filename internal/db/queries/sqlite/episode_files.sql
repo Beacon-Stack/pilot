@@ -1,38 +1,38 @@
 -- name: CreateEpisodeFile :one
 INSERT INTO episode_files (id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetEpisodeFile :one
-SELECT * FROM episode_files WHERE id = $1;
+SELECT * FROM episode_files WHERE id = ?;
 
 -- name: GetEpisodeFileByPath :one
-SELECT * FROM episode_files WHERE path = $1;
+SELECT * FROM episode_files WHERE path = ?;
 
 -- name: ListEpisodeFilesBySeriesID :many
-SELECT * FROM episode_files WHERE series_id = $1 ORDER BY path ASC;
+SELECT * FROM episode_files WHERE series_id = ? ORDER BY path ASC;
 
 -- name: ListEpisodeFilesByEpisodeID :many
-SELECT * FROM episode_files WHERE episode_id = $1 ORDER BY path ASC;
+SELECT * FROM episode_files WHERE episode_id = ? ORDER BY path ASC;
 
 -- name: DeleteEpisodeFile :exec
-DELETE FROM episode_files WHERE id = $1;
+DELETE FROM episode_files WHERE id = ?;
 
 -- name: DeleteEpisodeFilesBySeriesID :exec
-DELETE FROM episode_files WHERE series_id = $1;
+DELETE FROM episode_files WHERE series_id = ?;
 
 -- name: CountEpisodeFilesBySeriesID :one
-SELECT COUNT(*) FROM episode_files WHERE series_id = $1;
+SELECT COUNT(*) FROM episode_files WHERE series_id = ?;
 
 -- name: ListAllEpisodeFilePaths :many
 SELECT path FROM episode_files;
 
 -- name: ListAllEpisodeFiles :many
 -- Used by the file-existence reconciler (QW5) to walk every recorded
--- file and stat it. Selects the minimum surface area — adding columns
+-- file and stat it. Selects the minimum surface area - adding columns
 -- here is fine, but the reconciler only needs id/episode_id/path to
 -- decide whether to delete the row.
 SELECT id, episode_id, series_id, path FROM episode_files;
 
 -- name: UpdateEpisodeFilePath :exec
-UPDATE episode_files SET path = $1 WHERE id = $2;
+UPDATE episode_files SET path = ? WHERE id = ?;

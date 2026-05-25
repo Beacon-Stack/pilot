@@ -273,9 +273,9 @@ func (s *Service) CreateExclusion(ctx context.Context, tmdbID int, title string,
 	now := time.Now().UTC().Format(time.RFC3339)
 	row, err := s.q.CreateImportExclusion(ctx, db.CreateImportExclusionParams{
 		ID:        uuid.New().String(),
-		TmdbID:    int32(tmdbID),
+		TmdbID:    int64(tmdbID),
 		Title:     title,
-		Year:      int32(year),
+		Year:      int64(year),
 		CreatedAt: now,
 	})
 	if err != nil {
@@ -360,7 +360,7 @@ func (s *Service) doSync(ctx context.Context, onlyID *string) SyncResult {
 		result.Errors = append(result.Errors, fmt.Sprintf("loading existing tmdb ids: %v", err))
 		return result
 	}
-	existingSet := make(map[int32]bool, len(existingIDs))
+	existingSet := make(map[int64]bool, len(existingIDs))
 	for _, id := range existingIDs {
 		existingSet[id] = true
 	}
@@ -371,7 +371,7 @@ func (s *Service) doSync(ctx context.Context, onlyID *string) SyncResult {
 		result.Errors = append(result.Errors, fmt.Sprintf("loading exclusions: %v", err))
 		return result
 	}
-	excludedSet := make(map[int32]bool, len(excludedIDs))
+	excludedSet := make(map[int64]bool, len(excludedIDs))
 	for _, id := range excludedIDs {
 		excludedSet[id] = true
 	}
@@ -406,7 +406,7 @@ func (s *Service) doSync(ctx context.Context, onlyID *string) SyncResult {
 			if item.TMDbID == 0 {
 				continue
 			}
-			tmdbID := int32(item.TMDbID)
+			tmdbID := int64(item.TMDbID)
 			if existingSet[tmdbID] {
 				result.SeriesSkipped++
 				continue

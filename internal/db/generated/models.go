@@ -4,42 +4,36 @@
 
 package db
 
-import (
-	"database/sql"
-	"encoding/json"
-	"time"
-)
-
 type ActivityLog struct {
-	ID        string         `json:"id"`
-	Type      string         `json:"type"`
-	Category  string         `json:"category"`
-	SeriesID  sql.NullString `json:"seriesId"`
-	Title     string         `json:"title"`
-	Detail    sql.NullString `json:"detail"`
-	CreatedAt string         `json:"createdAt"`
+	ID        string  `json:"id"`
+	Type      string  `json:"type"`
+	Category  string  `json:"category"`
+	SeriesID  *string `json:"seriesId"`
+	Title     string  `json:"title"`
+	Detail    *string `json:"detail"`
+	CreatedAt string  `json:"createdAt"`
 }
 
 type AnimeCourMonitored struct {
-	SeriesID   string    `json:"seriesId"`
-	TvdbSeason int32     `json:"tvdbSeason"`
-	Monitored  bool      `json:"monitored"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	SeriesID   string `json:"seriesId"`
+	TvdbSeason int64  `json:"tvdbSeason"`
+	Monitored  bool   `json:"monitored"`
+	UpdatedAt  string `json:"updatedAt"`
 }
 
 type Blocklist struct {
-	ID           string         `json:"id"`
-	SeriesID     string         `json:"seriesId"`
-	EpisodeID    sql.NullString `json:"episodeId"`
-	ReleaseGuid  string         `json:"releaseGuid"`
-	ReleaseTitle string         `json:"releaseTitle"`
-	IndexerID    sql.NullString `json:"indexerId"`
-	Protocol     string         `json:"protocol"`
-	Size         int32          `json:"size"`
-	AddedAt      time.Time      `json:"addedAt"`
-	Notes        string         `json:"notes"`
-	Reason       string         `json:"reason"`
-	InfoHash     sql.NullString `json:"infoHash"`
+	ID           string  `json:"id"`
+	SeriesID     string  `json:"seriesId"`
+	EpisodeID    *string `json:"episodeId"`
+	ReleaseGuid  string  `json:"releaseGuid"`
+	ReleaseTitle string  `json:"releaseTitle"`
+	IndexerID    *string `json:"indexerId"`
+	Protocol     string  `json:"protocol"`
+	Size         int64   `json:"size"`
+	AddedAt      string  `json:"addedAt"`
+	Notes        string  `json:"notes"`
+	Reason       string  `json:"reason"`
+	InfoHash     *string `json:"infoHash"`
 }
 
 type DownloadClientConfig struct {
@@ -47,26 +41,26 @@ type DownloadClientConfig struct {
 	Name      string `json:"name"`
 	Kind      string `json:"kind"`
 	Enabled   bool   `json:"enabled"`
-	Priority  int32  `json:"priority"`
+	Priority  int64  `json:"priority"`
 	Settings  string `json:"settings"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
 }
 
 type Episode struct {
-	ID             string         `json:"id"`
-	SeriesID       string         `json:"seriesId"`
-	SeasonID       string         `json:"seasonId"`
-	SeasonNumber   int32          `json:"seasonNumber"`
-	EpisodeNumber  int32          `json:"episodeNumber"`
-	AbsoluteNumber sql.NullInt32  `json:"absoluteNumber"`
-	AirDate        sql.NullString `json:"airDate"`
-	Title          string         `json:"title"`
-	Overview       string         `json:"overview"`
-	Monitored      bool           `json:"monitored"`
-	HasFile        bool           `json:"hasFile"`
-	StillPath      string         `json:"stillPath"`
-	RuntimeMinutes int32          `json:"runtimeMinutes"`
+	ID             string  `json:"id"`
+	SeriesID       string  `json:"seriesId"`
+	SeasonID       string  `json:"seasonId"`
+	SeasonNumber   int64   `json:"seasonNumber"`
+	EpisodeNumber  int64   `json:"episodeNumber"`
+	AbsoluteNumber *int64  `json:"absoluteNumber"`
+	AirDate        *string `json:"airDate"`
+	Title          string  `json:"title"`
+	Overview       string  `json:"overview"`
+	Monitored      bool    `json:"monitored"`
+	HasFile        bool    `json:"hasFile"`
+	StillPath      string  `json:"stillPath"`
+	RuntimeMinutes int64   `json:"runtimeMinutes"`
 }
 
 type EpisodeFile struct {
@@ -81,34 +75,34 @@ type EpisodeFile struct {
 }
 
 type GrabHistory struct {
-	ID                string         `json:"id"`
-	SeriesID          string         `json:"seriesId"`
-	EpisodeID         sql.NullString `json:"episodeId"`
-	SeasonNumber      sql.NullInt32  `json:"seasonNumber"`
-	IndexerID         sql.NullString `json:"indexerId"`
-	ReleaseGuid       string         `json:"releaseGuid"`
-	ReleaseTitle      string         `json:"releaseTitle"`
-	ReleaseSource     string         `json:"releaseSource"`
-	ReleaseResolution string         `json:"releaseResolution"`
-	ReleaseCodec      string         `json:"releaseCodec"`
-	ReleaseHdr        string         `json:"releaseHdr"`
-	Protocol          string         `json:"protocol"`
-	Size              int32          `json:"size"`
-	DownloadClientID  sql.NullString `json:"downloadClientId"`
-	ClientItemID      sql.NullString `json:"clientItemId"`
-	DownloadStatus    string         `json:"downloadStatus"`
-	DownloadedBytes   int32          `json:"downloadedBytes"`
-	ScoreBreakdown    sql.NullString `json:"scoreBreakdown"`
-	GrabbedAt         string         `json:"grabbedAt"`
-	Source            string         `json:"source"`
-	InfoHash          sql.NullString `json:"infoHash"`
+	ID                string  `json:"id"`
+	SeriesID          string  `json:"seriesId"`
+	EpisodeID         *string `json:"episodeId"`
+	SeasonNumber      *int64  `json:"seasonNumber"`
+	IndexerID         *string `json:"indexerId"`
+	ReleaseGuid       string  `json:"releaseGuid"`
+	ReleaseTitle      string  `json:"releaseTitle"`
+	ReleaseSource     string  `json:"releaseSource"`
+	ReleaseResolution string  `json:"releaseResolution"`
+	ReleaseCodec      string  `json:"releaseCodec"`
+	ReleaseHdr        string  `json:"releaseHdr"`
+	Protocol          string  `json:"protocol"`
+	Size              int64   `json:"size"`
+	DownloadClientID  *string `json:"downloadClientId"`
+	ClientItemID      *string `json:"clientItemId"`
+	DownloadStatus    string  `json:"downloadStatus"`
+	DownloadedBytes   int64   `json:"downloadedBytes"`
+	ScoreBreakdown    *string `json:"scoreBreakdown"`
+	GrabbedAt         string  `json:"grabbedAt"`
+	Source            string  `json:"source"`
+	InfoHash          *string `json:"infoHash"`
 }
 
 type ImportExclusion struct {
 	ID        string `json:"id"`
-	TmdbID    int32  `json:"tmdbId"`
+	TmdbID    int64  `json:"tmdbId"`
 	Title     string `json:"title"`
-	Year      int32  `json:"year"`
+	Year      int64  `json:"year"`
 	CreatedAt string `json:"createdAt"`
 }
 
@@ -132,28 +126,28 @@ type IndexerConfig struct {
 	Name       string `json:"name"`
 	Kind       string `json:"kind"`
 	Enabled    bool   `json:"enabled"`
-	Priority   int32  `json:"priority"`
+	Priority   int64  `json:"priority"`
 	Settings   string `json:"settings"`
 	CreatedAt  string `json:"createdAt"`
 	UpdatedAt  string `json:"updatedAt"`
-	MinSeeders int32  `json:"minSeeders"`
+	MinSeeders int64  `json:"minSeeders"`
 }
 
 type Library struct {
-	ID                      string         `json:"id"`
-	Name                    string         `json:"name"`
-	RootPath                string         `json:"rootPath"`
-	DefaultQualityProfileID string         `json:"defaultQualityProfileId"`
-	NamingFormat            sql.NullString `json:"namingFormat"`
-	FolderFormat            sql.NullString `json:"folderFormat"`
-	MinFreeSpaceGb          int32          `json:"minFreeSpaceGb"`
-	TagsJson                string         `json:"tagsJson"`
-	CreatedAt               string         `json:"createdAt"`
-	UpdatedAt               string         `json:"updatedAt"`
+	ID                      string  `json:"id"`
+	Name                    string  `json:"name"`
+	RootPath                string  `json:"rootPath"`
+	DefaultQualityProfileID string  `json:"defaultQualityProfileId"`
+	NamingFormat            *string `json:"namingFormat"`
+	FolderFormat            *string `json:"folderFormat"`
+	MinFreeSpaceGb          int64   `json:"minFreeSpaceGb"`
+	TagsJson                string  `json:"tagsJson"`
+	CreatedAt               string  `json:"createdAt"`
+	UpdatedAt               string  `json:"updatedAt"`
 }
 
 type MediaManagement struct {
-	ID                       int32  `json:"id"`
+	ID                       int64  `json:"id"`
 	RenameEpisodes           bool   `json:"renameEpisodes"`
 	StandardEpisodeFormat    string `json:"standardEpisodeFormat"`
 	DailyEpisodeFormat       string `json:"dailyEpisodeFormat"`
@@ -194,59 +188,59 @@ type QualityDefinition struct {
 	Source        string  `json:"source"`
 	Codec         string  `json:"codec"`
 	Hdr           string  `json:"hdr"`
-	MinSize       float32 `json:"minSize"`
-	MaxSize       float32 `json:"maxSize"`
-	PreferredSize float32 `json:"preferredSize"`
-	SortOrder     int32   `json:"sortOrder"`
+	MinSize       float64 `json:"minSize"`
+	MaxSize       float64 `json:"maxSize"`
+	PreferredSize float64 `json:"preferredSize"`
+	SortOrder     int64   `json:"sortOrder"`
 }
 
 type QualityProfile struct {
-	ID                   string         `json:"id"`
-	Name                 string         `json:"name"`
-	CutoffJson           string         `json:"cutoffJson"`
-	QualitiesJson        string         `json:"qualitiesJson"`
-	UpgradeAllowed       bool           `json:"upgradeAllowed"`
-	UpgradeUntilJson     sql.NullString `json:"upgradeUntilJson"`
-	MinCustomFormatScore int32          `json:"minCustomFormatScore"`
-	UpgradeUntilCfScore  int32          `json:"upgradeUntilCfScore"`
-	CreatedAt            string         `json:"createdAt"`
-	UpdatedAt            string         `json:"updatedAt"`
-	ManagedByPulse       bool           `json:"managedByPulse"`
+	ID                   string  `json:"id"`
+	Name                 string  `json:"name"`
+	CutoffJson           string  `json:"cutoffJson"`
+	QualitiesJson        string  `json:"qualitiesJson"`
+	UpgradeAllowed       bool    `json:"upgradeAllowed"`
+	UpgradeUntilJson     *string `json:"upgradeUntilJson"`
+	MinCustomFormatScore int64   `json:"minCustomFormatScore"`
+	UpgradeUntilCfScore  int64   `json:"upgradeUntilCfScore"`
+	CreatedAt            string  `json:"createdAt"`
+	UpdatedAt            string  `json:"updatedAt"`
+	ManagedByPulse       bool    `json:"managedByPulse"`
 }
 
 type Season struct {
 	ID           string `json:"id"`
 	SeriesID     string `json:"seriesId"`
-	SeasonNumber int32  `json:"seasonNumber"`
+	SeasonNumber int64  `json:"seasonNumber"`
 	Monitored    bool   `json:"monitored"`
 }
 
 type Series struct {
-	ID                  string          `json:"id"`
-	TmdbID              int32           `json:"tmdbId"`
-	ImdbID              sql.NullString  `json:"imdbId"`
-	Title               string          `json:"title"`
-	SortTitle           string          `json:"sortTitle"`
-	Year                int32           `json:"year"`
-	Overview            string          `json:"overview"`
-	RuntimeMinutes      sql.NullInt32   `json:"runtimeMinutes"`
-	GenresJson          string          `json:"genresJson"`
-	PosterUrl           sql.NullString  `json:"posterUrl"`
-	FanartUrl           sql.NullString  `json:"fanartUrl"`
-	Status              string          `json:"status"`
-	SeriesType          string          `json:"seriesType"`
-	MonitorType         string          `json:"monitorType"`
-	Network             sql.NullString  `json:"network"`
-	AirTime             sql.NullString  `json:"airTime"`
-	Certification       sql.NullString  `json:"certification"`
-	Monitored           bool            `json:"monitored"`
-	LibraryID           string          `json:"libraryId"`
-	QualityProfileID    string          `json:"qualityProfileId"`
-	Path                sql.NullString  `json:"path"`
-	AddedAt             string          `json:"addedAt"`
-	UpdatedAt           string          `json:"updatedAt"`
-	MetadataRefreshedAt sql.NullString  `json:"metadataRefreshedAt"`
-	AlternateTitles     json.RawMessage `json:"alternateTitles"`
+	ID                  string  `json:"id"`
+	TmdbID              int64   `json:"tmdbId"`
+	ImdbID              *string `json:"imdbId"`
+	Title               string  `json:"title"`
+	SortTitle           string  `json:"sortTitle"`
+	Year                int64   `json:"year"`
+	Overview            string  `json:"overview"`
+	RuntimeMinutes      *int64  `json:"runtimeMinutes"`
+	GenresJson          string  `json:"genresJson"`
+	PosterUrl           *string `json:"posterUrl"`
+	FanartUrl           *string `json:"fanartUrl"`
+	Status              string  `json:"status"`
+	SeriesType          string  `json:"seriesType"`
+	MonitorType         string  `json:"monitorType"`
+	Network             *string `json:"network"`
+	AirTime             *string `json:"airTime"`
+	Certification       *string `json:"certification"`
+	Monitored           bool    `json:"monitored"`
+	LibraryID           string  `json:"libraryId"`
+	QualityProfileID    string  `json:"qualityProfileId"`
+	Path                *string `json:"path"`
+	AddedAt             string  `json:"addedAt"`
+	UpdatedAt           string  `json:"updatedAt"`
+	MetadataRefreshedAt *string `json:"metadataRefreshedAt"`
+	AlternateTitles     string  `json:"alternateTitles"`
 }
 
 type Setting struct {
@@ -257,11 +251,11 @@ type Setting struct {
 
 type StatsSnapshot struct {
 	ID                string `json:"id"`
-	TotalSeries       int32  `json:"totalSeries"`
-	TotalEpisodes     int32  `json:"totalEpisodes"`
-	MonitoredEpisodes int32  `json:"monitoredEpisodes"`
-	WithFile          int32  `json:"withFile"`
-	Missing           int32  `json:"missing"`
+	TotalSeries       int64  `json:"totalSeries"`
+	TotalEpisodes     int64  `json:"totalEpisodes"`
+	MonitoredEpisodes int64  `json:"monitoredEpisodes"`
+	WithFile          int64  `json:"withFile"`
+	Missing           int64  `json:"missing"`
 	TotalSizeBytes    int64  `json:"totalSizeBytes"`
 	SnapshotAt        string `json:"snapshotAt"`
 }

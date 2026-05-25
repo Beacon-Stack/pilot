@@ -17,13 +17,15 @@ package jobs
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
+
+// ptrStrRSS returns a pointer to s; for *string nullable params.
+func ptrStrRSS(s string) *string { return &s }
 
 // mockQuerier — same pattern as stallwatcher's. Embeds db.Querier so
 // un-mocked methods panic; tests are forced to declare the surface.
@@ -46,9 +48,9 @@ func TestBuildRecentlyCompletedEpisodes_ReturnsMapByEpisodeID(t *testing.T) {
 	q := &mockQuerier{
 		listGrabHistoryByStatusSinceFn: func(_ context.Context, _ db.ListGrabHistoryByStatusSinceParams) ([]db.GrabHistory, error) {
 			return []db.GrabHistory{
-				{ID: "g1", EpisodeID: sql.NullString{String: "ep-1", Valid: true}},
-				{ID: "g2", EpisodeID: sql.NullString{String: "ep-2", Valid: true}},
-				{ID: "g3", EpisodeID: sql.NullString{String: "ep-1", Valid: true}}, // dup of ep-1
+				{ID: "g1", EpisodeID: ptrStrRSS("ep-1")},
+				{ID: "g2", EpisodeID: ptrStrRSS("ep-2")},
+				{ID: "g3", EpisodeID: ptrStrRSS("ep-1")}, // dup of ep-1
 			}, nil
 		},
 	}
@@ -71,9 +73,9 @@ func TestBuildRecentlyCompletedEpisodes_SkipsRowsWithoutEpisodeID(t *testing.T) 
 	q := &mockQuerier{
 		listGrabHistoryByStatusSinceFn: func(_ context.Context, _ db.ListGrabHistoryByStatusSinceParams) ([]db.GrabHistory, error) {
 			return []db.GrabHistory{
-				{ID: "g1", EpisodeID: sql.NullString{Valid: false}},
-				{ID: "g2", EpisodeID: sql.NullString{String: "", Valid: true}}, // valid but empty
-				{ID: "g3", EpisodeID: sql.NullString{String: "ep-real", Valid: true}},
+				{ID: "g1", EpisodeID: nil},
+				{ID: "g2", EpisodeID: ptrStrRSS("")}, // valid but empty
+				{ID: "g3", EpisodeID: ptrStrRSS("ep-real")},
 			}, nil
 		},
 	}

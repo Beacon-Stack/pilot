@@ -1,7 +1,7 @@
 version: "2"
 sql:
-  - engine: "postgresql"
-    queries: "internal/db/queries/postgres"
+  - engine: "sqlite"
+    queries: "internal/db/queries/sqlite"
     schema: "internal/db/migrations"
     gen:
       go:

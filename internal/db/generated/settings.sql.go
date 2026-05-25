@@ -10,7 +10,7 @@ import (
 )
 
 const deleteSetting = `-- name: DeleteSetting :exec
-DELETE FROM settings WHERE key = $1
+DELETE FROM settings WHERE key = ?
 `
 
 func (q *Queries) DeleteSetting(ctx context.Context, key string) error {
@@ -19,7 +19,7 @@ func (q *Queries) DeleteSetting(ctx context.Context, key string) error {
 }
 
 const getSetting = `-- name: GetSetting :one
-SELECT value FROM settings WHERE key = $1
+SELECT value FROM settings WHERE key = ?
 `
 
 func (q *Queries) GetSetting(ctx context.Context, key string) (string, error) {
@@ -31,7 +31,7 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (string, error) {
 
 const setSetting = `-- name: SetSetting :exec
 INSERT INTO settings (key, value, updated_at)
-VALUES ($1, $2, $3)
+VALUES (?, ?, ?)
 ON CONFLICT (key) DO UPDATE SET
     value      = excluded.value,
     updated_at = excluded.updated_at

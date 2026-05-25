@@ -237,7 +237,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 	}
 
 	// Reject duplicates before hitting the metadata API.
-	_, err := s.q.GetSeriesByTMDBID(ctx, int32(req.TMDBID))
+	_, err := s.q.GetSeriesByTMDBID(ctx, int64(req.TMDBID))
 	if err == nil {
 		return Series{}, ErrAlreadyExists
 	}
@@ -297,9 +297,10 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 			"tmdb_id", req.TMDBID, "title", detail.Title)
 	}
 
-	runtimeMinutes := sql.NullInt32{}
+	var runtimeMinutes *int64
 	if detail.RuntimeMinutes > 0 {
-		runtimeMinutes = sql.NullInt32{Int32: int32(detail.RuntimeMinutes), Valid: true}
+		v := int64(detail.RuntimeMinutes)
+		runtimeMinutes = &v
 	}
 
 	posterURL := toNullString(detail.PosterPath)
@@ -308,11 +309,11 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 
 	row, err := s.q.CreateSeries(ctx, db.CreateSeriesParams{
 		ID:                  seriesID,
-		TmdbID:              int32(detail.ID),
-		ImdbID:              sql.NullString{},
+		TmdbID:              int64(detail.ID),
+		ImdbID:              nil,
 		Title:               detail.Title,
 		SortTitle:           sortTitle(detail.Title),
-		Year:                int32(detail.Year),
+		Year:                int64(detail.Year),
 		Overview:            detail.Overview,
 		RuntimeMinutes:      runtimeMinutes,
 		GenresJson:          string(genresJSON),
@@ -322,16 +323,16 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 		SeriesType:          seriesType,
 		MonitorType:         monitorType,
 		Network:             network,
-		AirTime:             sql.NullString{},
-		Certification:       sql.NullString{},
+		AirTime:             nil,
+		Certification:       nil,
 		Monitored:           req.Monitored,
 		LibraryID:           req.LibraryID,
 		QualityProfileID:    req.QualityProfileID,
-		Path:                sql.NullString{},
+		Path:                nil,
 		AddedAt:             now,
 		UpdatedAt:           now,
-		MetadataRefreshedAt: sql.NullString{String: metaNow, Valid: true},
-		AlternateTitles:     altTitlesJSON,
+		MetadataRefreshedAt: &metaNow,
+		AlternateTitles:     string(altTitlesJSON),
 	})
 	if err != nil {
 		return Series{}, fmt.Errorf("create series: %w", err)
@@ -360,7 +361,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 		seasonRow, err := s.q.CreateSeason(ctx, db.CreateSeasonParams{
 			ID:           seasonID,
 			SeriesID:     seriesID,
-			SeasonNumber: int32(ss.SeasonNumber),
+			SeasonNumber: int64(ss.SeasonNumber),
 			Monitored:    true, // will be overridden by monitor_type pass below
 		})
 		if err != nil {
@@ -389,17 +390,18 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 		for _, ep := range epDetails {
 			epID := uuid.NewString()
 			airDate := toNullString(ep.AirDate)
-			absolute := sql.NullInt32{}
+			var absolute *int64
 			if isAnime && ep.SeasonNumber > 0 {
 				absoluteCounter++
-				absolute = sql.NullInt32{Int32: int32(absoluteCounter), Valid: true}
+				v := int64(absoluteCounter)
+				absolute = &v
 			}
 			epRow, err := s.q.CreateEpisode(ctx, db.CreateEpisodeParams{
 				ID:             epID,
 				SeriesID:       seriesID,
 				SeasonID:       seasonID,
-				SeasonNumber:   int32(ep.SeasonNumber),
-				EpisodeNumber:  int32(ep.EpisodeNumber),
+				SeasonNumber:   int64(ep.SeasonNumber),
+				EpisodeNumber:  int64(ep.EpisodeNumber),
 				AbsoluteNumber: absolute,
 				AirDate:        airDate,
 				Title:          ep.Title,
@@ -407,7 +409,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 				Monitored:      true, // will be overridden by monitor_type pass below
 				HasFile:        false,
 				StillPath:      ep.StillPath,
-				RuntimeMinutes: int32(ep.RuntimeMinutes),
+				RuntimeMinutes: int64(ep.RuntimeMinutes),
 			})
 			if err != nil {
 				return Series{}, fmt.Errorf("create episode S%02dE%02d: %w", ep.SeasonNumber, ep.EpisodeNumber, err)
@@ -467,13 +469,13 @@ func (s *Service) applyMonitorType(
 
 			case "future":
 				// Monitor episodes with no air date or air date after today.
-				if !ep.AirDate.Valid || ep.AirDate.String == "" || ep.AirDate.String > today {
+				if ep.AirDate == nil || *ep.AirDate == "" || *ep.AirDate > today {
 					monitored = true
 				}
 
 			case "missing":
 				// For a new series, no files exist — monitor all aired episodes.
-				if ep.AirDate.Valid && ep.AirDate.String != "" && ep.AirDate.String <= today {
+				if ep.AirDate != nil && *ep.AirDate != "" && *ep.AirDate <= today {
 					monitored = true
 				}
 
@@ -570,8 +572,8 @@ func (s *Service) List(ctx context.Context, req ListRequest) (ListResult, error)
 		perPage = 50
 	}
 
-	offset := int32((page - 1) * perPage)
-	limit := int32(perPage)
+	offset := int64((page - 1) * perPage)
+	limit := int64(perPage)
 
 	var rows []db.Series
 	var total int64
@@ -651,7 +653,8 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Ser
 
 	pathVal := existing.Path
 	if req.Path != "" {
-		pathVal = sql.NullString{String: req.Path, Valid: true}
+		p := req.Path
+		pathVal = &p
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -860,8 +863,8 @@ func rowToSeries(row db.Series) (Series, error) {
 	}
 
 	var alternateTitles []string
-	if len(row.AlternateTitles) > 0 && string(row.AlternateTitles) != "null" {
-		if err := json.Unmarshal(row.AlternateTitles, &alternateTitles); err != nil {
+	if len(row.AlternateTitles) > 0 && row.AlternateTitles != "null" {
+		if err := json.Unmarshal([]byte(row.AlternateTitles), &alternateTitles); err != nil {
 			// Don't fail series fetch on bad alternates JSON — just log
 			// and proceed with empty list. The strict-title gate will
 			// still match against the canonical title.
@@ -879,40 +882,47 @@ func rowToSeries(row db.Series) (Series, error) {
 	}
 
 	var metaRefreshed *time.Time
-	if row.MetadataRefreshedAt.Valid && row.MetadataRefreshedAt.String != "" {
-		t, err := time.Parse(time.RFC3339, row.MetadataRefreshedAt.String)
+	if row.MetadataRefreshedAt != nil && *row.MetadataRefreshedAt != "" {
+		t, err := time.Parse(time.RFC3339, *row.MetadataRefreshedAt)
 		if err == nil {
 			metaRefreshed = &t
 		}
 	}
 
 	var runtimeMinutes int
-	if row.RuntimeMinutes.Valid {
-		runtimeMinutes = int(row.RuntimeMinutes.Int32)
+	if row.RuntimeMinutes != nil {
+		runtimeMinutes = int(*row.RuntimeMinutes)
+	}
+
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
 	}
 
 	return Series{
 		ID:                  row.ID,
 		TMDBID:              int(row.TmdbID),
-		IMDBID:              row.ImdbID.String,
+		IMDBID:              deref(row.ImdbID),
 		Title:               row.Title,
 		SortTitle:           row.SortTitle,
 		Year:                int(row.Year),
 		Overview:            row.Overview,
 		RuntimeMinutes:      runtimeMinutes,
 		Genres:              genres,
-		PosterURL:           row.PosterUrl.String,
-		FanartURL:           row.FanartUrl.String,
+		PosterURL:           deref(row.PosterUrl),
+		FanartURL:           deref(row.FanartUrl),
 		Status:              row.Status,
 		SeriesType:          row.SeriesType,
 		MonitorType:         row.MonitorType,
-		Network:             row.Network.String,
-		AirTime:             row.AirTime.String,
-		Certification:       row.Certification.String,
+		Network:             deref(row.Network),
+		AirTime:             deref(row.AirTime),
+		Certification:       deref(row.Certification),
 		Monitored:           row.Monitored,
 		LibraryID:           row.LibraryID,
 		QualityProfileID:    row.QualityProfileID,
-		Path:                row.Path.String,
+		Path:                deref(row.Path),
 		AddedAt:             addedAt,
 		UpdatedAt:           updatedAt,
 		MetadataRefreshedAt: metaRefreshed,
@@ -933,9 +943,13 @@ func rowToSeason(row db.Season) Season {
 // rowToEpisode converts a db.Episode row into a domain Episode.
 func rowToEpisode(row db.Episode) Episode {
 	var absNum *int
-	if row.AbsoluteNumber.Valid {
-		n := int(row.AbsoluteNumber.Int32)
+	if row.AbsoluteNumber != nil {
+		n := int(*row.AbsoluteNumber)
 		absNum = &n
+	}
+	airDate := ""
+	if row.AirDate != nil {
+		airDate = *row.AirDate
 	}
 	return Episode{
 		ID:             row.ID,
@@ -944,7 +958,7 @@ func rowToEpisode(row db.Episode) Episode {
 		SeasonNumber:   int(row.SeasonNumber),
 		EpisodeNumber:  int(row.EpisodeNumber),
 		AbsoluteNumber: absNum,
-		AirDate:        row.AirDate.String,
+		AirDate:        airDate,
 		Title:          row.Title,
 		Overview:       row.Overview,
 		Monitored:      row.Monitored,
@@ -996,9 +1010,10 @@ func (s *Service) RefreshMetadata(ctx context.Context, seriesID string) (Series,
 		return Series{}, fmt.Errorf("marshal genres: %w", err)
 	}
 
-	runtimeMinutes := sql.NullInt32{}
+	var runtimeMinutes *int64
 	if detail.RuntimeMinutes > 0 {
-		runtimeMinutes = sql.NullInt32{Int32: int32(detail.RuntimeMinutes), Valid: true}
+		v := int64(detail.RuntimeMinutes)
+		runtimeMinutes = &v
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -1006,7 +1021,7 @@ func (s *Service) RefreshMetadata(ctx context.Context, seriesID string) (Series,
 		ImdbID:              row.ImdbID,
 		Title:               detail.Title,
 		SortTitle:           sortTitle(detail.Title),
-		Year:                int32(detail.Year),
+		Year:                int64(detail.Year),
 		Overview:            detail.Overview,
 		RuntimeMinutes:      runtimeMinutes,
 		GenresJson:          string(genresJSON),
@@ -1016,9 +1031,9 @@ func (s *Service) RefreshMetadata(ctx context.Context, seriesID string) (Series,
 		Network:             toNullString(detail.Network),
 		AirTime:             row.AirTime,
 		Certification:       row.Certification,
-		MetadataRefreshedAt: sql.NullString{String: now, Valid: true},
+		MetadataRefreshedAt: &now,
 		UpdatedAt:           now,
-		AlternateTitles:     altTitlesJSON,
+		AlternateTitles:     string(altTitlesJSON),
 		ID:                  seriesID,
 	})
 	if err != nil {
@@ -1106,7 +1121,7 @@ func (s *Service) BackfillAnimeForAllSeries(ctx context.Context) {
 	// once — small libraries fit in one page, larger ones don't.
 	const pageSize = 200
 	scanned, upgraded := 0, 0
-	for offset := int32(0); ; offset += pageSize {
+	for offset := int64(0); ; offset += pageSize {
 		if ctx.Err() != nil {
 			return
 		}
@@ -1161,8 +1176,8 @@ func (s *Service) GetEpisodeAbsoluteNumber(ctx context.Context, seriesID string,
 	}
 	for _, e := range episodes {
 		if int(e.SeasonNumber) == season && int(e.EpisodeNumber) == episode {
-			if e.AbsoluteNumber.Valid {
-				return int(e.AbsoluteNumber.Int32), nil
+			if e.AbsoluteNumber != nil {
+				return int(*e.AbsoluteNumber), nil
 			}
 			return 0, nil
 		}
@@ -1187,12 +1202,12 @@ func (s *Service) populateAbsoluteNumbers(ctx context.Context, seriesID string) 
 			continue // specials don't get absolute numbers
 		}
 		counter++
-		want := int32(counter)
-		if ep.AbsoluteNumber.Valid && ep.AbsoluteNumber.Int32 == want {
+		want := int64(counter)
+		if ep.AbsoluteNumber != nil && *ep.AbsoluteNumber == want {
 			continue // already correct, skip the write
 		}
 		if err := s.q.UpdateEpisodeAbsoluteNumber(ctx, db.UpdateEpisodeAbsoluteNumberParams{
-			AbsoluteNumber: sql.NullInt32{Int32: want, Valid: true},
+			AbsoluteNumber: &want,
 			ID:             ep.ID,
 		}); err != nil {
 			return fmt.Errorf("update absolute_number for episode %s: %w", ep.ID, err)
@@ -1245,7 +1260,7 @@ func (s *Service) RefreshEpisodeMetadata(ctx context.Context, seriesID string, t
 				continue
 			}
 			// Only update if there's new data.
-			if ep.StillPath == d.StillPath && ep.RuntimeMinutes == int32(d.RuntimeMinutes) {
+			if ep.StillPath == d.StillPath && ep.RuntimeMinutes == int64(d.RuntimeMinutes) {
 				continue
 			}
 			_, _ = s.q.UpdateEpisode(ctx, db.UpdateEpisodeParams{
@@ -1255,7 +1270,7 @@ func (s *Service) RefreshEpisodeMetadata(ctx context.Context, seriesID string, t
 				AirDate:        ep.AirDate,
 				HasFile:        ep.HasFile,
 				StillPath:      d.StillPath,
-				RuntimeMinutes: int32(d.RuntimeMinutes),
+				RuntimeMinutes: int64(d.RuntimeMinutes),
 			})
 		}
 	}
@@ -1273,12 +1288,14 @@ func sortTitle(title string) string {
 	return lower
 }
 
-// toNullString returns a sql.NullString; Valid is false for an empty string.
-func toNullString(s string) sql.NullString {
+// toNullString returns a *string; nil for an empty input. Kept under the old
+// name because many call sites still use it; the underlying nullable type is
+// now *string after the SQLite/sqlc migration.
+func toNullString(s string) *string {
 	if s == "" {
-		return sql.NullString{}
+		return nil
 	}
-	return sql.NullString{String: s, Valid: true}
+	return &s
 }
 
 // ── Episode file methods ──────────────────────────────────────────────────────
@@ -1368,7 +1385,10 @@ func (s *Service) RenameFiles(ctx context.Context, seriesID string, settings Ren
 		}
 
 		ext := filepath.Ext(f.Path)
-		airDate := ep.AirDate.String
+		airDate := ""
+		if ep.AirDate != nil {
+			airDate = *ep.AirDate
+		}
 
 		newPath := renamer.DestPath(
 			lib.RootPath,

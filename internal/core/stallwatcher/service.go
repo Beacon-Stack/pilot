@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
@@ -234,7 +235,7 @@ func (s *Service) sweepStaleGrabs(ctx context.Context) error {
 // if a match is found, blocklists the release and marks the grab stalled.
 func (s *Service) handleStall(ctx context.Context, st haul.StalledTorrent, inGrace bool) error {
 	// Find the grab_history row for this info_hash.
-	grab, err := s.q.GetGrabByInfoHash(ctx, sql.NullString{String: st.InfoHash, Valid: true})
+	grab, err := s.q.GetGrabByInfoHash(ctx, &st.InfoHash)
 	if err != nil {
 		// If no grab matches this info_hash, it's a torrent Pilot didn't
 		// initiate (maybe added via Haul UI directly, or a test torrent).
@@ -273,12 +274,12 @@ func (s *Service) handleStall(ctx context.Context, st haul.StalledTorrent, inGra
 	// just want the entry to exist.
 	err = s.blocklist.AddFromStall(ctx, blocklist.StallEntry{
 		SeriesID:     grab.SeriesID,
-		EpisodeID:    grab.EpisodeID.String,
+		EpisodeID:    dbutil.NullStringValue(grab.EpisodeID),
 		ReleaseGUID:  grab.ReleaseGuid,
 		ReleaseTitle: grab.ReleaseTitle,
-		IndexerID:    grab.IndexerID.String,
+		IndexerID:    dbutil.NullStringValue(grab.IndexerID),
 		Protocol:     grab.Protocol,
-		Size:         int64(grab.Size),
+		Size:         grab.Size,
 		Notes: fmt.Sprintf("auto-blocklisted by stall watcher after %d seconds (%s)",
 			st.InactiveSecs, st.Reason),
 		Reason:   reason,
@@ -313,14 +314,14 @@ func (s *Service) handleStall(ctx context.Context, st haul.StalledTorrent, inGra
 	// If the grab came from auto-search, trigger a re-search under the
 	// circuit breaker. Interactive grabs only toast; the user decides.
 	if grab.Source == "auto_search" {
-		recentStalls, err := s.blocklist.CountRecentStalls(ctx, grab.SeriesID, grab.EpisodeID.String)
+		recentStalls, err := s.blocklist.CountRecentStalls(ctx, grab.SeriesID, dbutil.NullStringValue(grab.EpisodeID))
 		if err != nil {
 			s.logger.Warn("stallwatcher: count recent stalls failed", "error", err)
 			return nil
 		}
 		if recentStalls >= MaxStallRetriesPerEpisode {
 			s.logger.Info("stallwatcher: circuit breaker tripped, skipping re-search",
-				"series_id", grab.SeriesID, "episode_id", grab.EpisodeID.String, "stall_count", recentStalls)
+				"series_id", grab.SeriesID, "episode_id", dbutil.NullStringValue(grab.EpisodeID), "stall_count", recentStalls)
 			s.bus.Publish(ctx, events.Event{
 				Type: events.TypeGrabStalledGaveUp,
 				Data: map[string]any{
@@ -339,7 +340,7 @@ func (s *Service) handleStall(ctx context.Context, st haul.StalledTorrent, inGra
 			Type: events.TypeAutoSearchRetry,
 			Data: map[string]any{
 				"series_id":   grab.SeriesID,
-				"episode_id":  grab.EpisodeID.String,
+				"episode_id":  dbutil.NullStringValue(grab.EpisodeID),
 				"retry_count": recentStalls + 1,
 			},
 		})

@@ -6,6 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
 
@@ -20,8 +21,8 @@ type wantedEpisodeBody struct {
 	EpisodeID     string `json:"episode_id"     doc:"Episode UUID"`
 	SeriesID      string `json:"series_id"      doc:"Series UUID"`
 	SeriesTitle   string `json:"series_title"   doc:"Series title"`
-	SeasonNumber  int32  `json:"season_number"  doc:"Season number"`
-	EpisodeNumber int32  `json:"episode_number" doc:"Episode number within season"`
+	SeasonNumber  int64  `json:"season_number"  doc:"Season number"`
+	EpisodeNumber int64  `json:"episode_number" doc:"Episode number within season"`
 	EpisodeTitle  string `json:"episode_title"  doc:"Episode title"`
 	AirDate       string `json:"air_date"       doc:"Air date (YYYY-MM-DD)"`
 	HasFile       bool   `json:"has_file"       doc:"Whether a file is linked to this episode"`
@@ -54,9 +55,9 @@ func RegisterWantedRoutes(api huma.API, q db.Querier) {
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to count missing episodes", err)
 		}
 
-		offset := int32((input.Page - 1) * input.PerPage)
+		offset := int64((input.Page - 1) * input.PerPage)
 		rows, err := q.ListMissingEpisodesWithSeries(ctx, db.ListMissingEpisodesWithSeriesParams{
-			Limit:  int32(input.PerPage),
+			Limit:  int64(input.PerPage),
 			Offset: offset,
 		})
 		if err != nil {
@@ -72,7 +73,7 @@ func RegisterWantedRoutes(api huma.API, q db.Querier) {
 				SeasonNumber:  r.SeasonNumber,
 				EpisodeNumber: r.EpisodeNumber,
 				EpisodeTitle:  r.Title,
-				AirDate:       r.AirDate.String,
+				AirDate:       dbutil.NullStringValue(r.AirDate),
 				HasFile:       r.HasFile,
 				Monitored:     r.Monitored,
 			})

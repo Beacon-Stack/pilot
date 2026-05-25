@@ -10,7 +10,7 @@ import (
 )
 
 const countEpisodeFilesBySeriesID = `-- name: CountEpisodeFilesBySeriesID :one
-SELECT COUNT(*) FROM episode_files WHERE series_id = $1
+SELECT COUNT(*) FROM episode_files WHERE series_id = ?
 `
 
 func (q *Queries) CountEpisodeFilesBySeriesID(ctx context.Context, seriesID string) (int64, error) {
@@ -22,7 +22,7 @@ func (q *Queries) CountEpisodeFilesBySeriesID(ctx context.Context, seriesID stri
 
 const createEpisodeFile = `-- name: CreateEpisodeFile :one
 INSERT INTO episode_files (id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at
 `
 
@@ -63,7 +63,7 @@ func (q *Queries) CreateEpisodeFile(ctx context.Context, arg CreateEpisodeFilePa
 }
 
 const deleteEpisodeFile = `-- name: DeleteEpisodeFile :exec
-DELETE FROM episode_files WHERE id = $1
+DELETE FROM episode_files WHERE id = ?
 `
 
 func (q *Queries) DeleteEpisodeFile(ctx context.Context, id string) error {
@@ -72,7 +72,7 @@ func (q *Queries) DeleteEpisodeFile(ctx context.Context, id string) error {
 }
 
 const deleteEpisodeFilesBySeriesID = `-- name: DeleteEpisodeFilesBySeriesID :exec
-DELETE FROM episode_files WHERE series_id = $1
+DELETE FROM episode_files WHERE series_id = ?
 `
 
 func (q *Queries) DeleteEpisodeFilesBySeriesID(ctx context.Context, seriesID string) error {
@@ -81,7 +81,7 @@ func (q *Queries) DeleteEpisodeFilesBySeriesID(ctx context.Context, seriesID str
 }
 
 const getEpisodeFile = `-- name: GetEpisodeFile :one
-SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE id = $1
+SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE id = ?
 `
 
 func (q *Queries) GetEpisodeFile(ctx context.Context, id string) (EpisodeFile, error) {
@@ -101,7 +101,7 @@ func (q *Queries) GetEpisodeFile(ctx context.Context, id string) (EpisodeFile, e
 }
 
 const getEpisodeFileByPath = `-- name: GetEpisodeFileByPath :one
-SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE path = $1
+SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE path = ?
 `
 
 func (q *Queries) GetEpisodeFileByPath(ctx context.Context, path string) (EpisodeFile, error) {
@@ -159,7 +159,7 @@ type ListAllEpisodeFilesRow struct {
 }
 
 // Used by the file-existence reconciler (QW5) to walk every recorded
-// file and stat it. Selects the minimum surface area — adding columns
+// file and stat it. Selects the minimum surface area - adding columns
 // here is fine, but the reconciler only needs id/episode_id/path to
 // decide whether to delete the row.
 func (q *Queries) ListAllEpisodeFiles(ctx context.Context) ([]ListAllEpisodeFilesRow, error) {
@@ -191,7 +191,7 @@ func (q *Queries) ListAllEpisodeFiles(ctx context.Context) ([]ListAllEpisodeFile
 }
 
 const listEpisodeFilesByEpisodeID = `-- name: ListEpisodeFilesByEpisodeID :many
-SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE episode_id = $1 ORDER BY path ASC
+SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE episode_id = ? ORDER BY path ASC
 `
 
 func (q *Queries) ListEpisodeFilesByEpisodeID(ctx context.Context, episodeID string) ([]EpisodeFile, error) {
@@ -227,7 +227,7 @@ func (q *Queries) ListEpisodeFilesByEpisodeID(ctx context.Context, episodeID str
 }
 
 const listEpisodeFilesBySeriesID = `-- name: ListEpisodeFilesBySeriesID :many
-SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE series_id = $1 ORDER BY path ASC
+SELECT id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at FROM episode_files WHERE series_id = ? ORDER BY path ASC
 `
 
 func (q *Queries) ListEpisodeFilesBySeriesID(ctx context.Context, seriesID string) ([]EpisodeFile, error) {
@@ -263,7 +263,7 @@ func (q *Queries) ListEpisodeFilesBySeriesID(ctx context.Context, seriesID strin
 }
 
 const updateEpisodeFilePath = `-- name: UpdateEpisodeFilePath :exec
-UPDATE episode_files SET path = $1 WHERE id = $2
+UPDATE episode_files SET path = ? WHERE id = ?
 `
 
 type UpdateEpisodeFilePathParams struct {

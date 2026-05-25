@@ -1,7 +1,6 @@
 package show
 
 import (
-	"database/sql"
 	"testing"
 	"time"
 
@@ -23,12 +22,13 @@ var jjkBounds = []CourBound{
 func makeEpisodes(n int, hasFile bool) []db.Episode {
 	out := make([]db.Episode, n)
 	for i := 0; i < n; i++ {
+		v := int64(i + 1)
 		out[i] = db.Episode{
 			ID:             episodeID(i + 1),
 			SeasonNumber:   1,
-			EpisodeNumber:  int32(i + 1),
+			EpisodeNumber:  int64(i + 1),
 			HasFile:        hasFile,
-			AbsoluteNumber: sql.NullInt32{Int32: int32(i + 1), Valid: true},
+			AbsoluteNumber: &v,
 		}
 	}
 	return out
@@ -306,12 +306,14 @@ func makeJJKEpisodes() []db.Episode {
 	for ci, courLen := range courLengths {
 		for i := 0; i < courLen; i++ {
 			d := base[ci].AddDate(0, 0, 7*i)
+			ad := d.Format("2006-01-02")
+			an := int64(epNum)
 			out = append(out, db.Episode{
 				ID:             episodeID(epNum),
 				SeasonNumber:   1,
-				EpisodeNumber:  int32(epNum),
-				AirDate:        sql.NullString{String: d.Format("2006-01-02"), Valid: true},
-				AbsoluteNumber: sql.NullInt32{Int32: int32(epNum), Valid: true},
+				EpisodeNumber:  int64(epNum),
+				AirDate:        &ad,
+				AbsoluteNumber: &an,
 			})
 			epNum++
 		}

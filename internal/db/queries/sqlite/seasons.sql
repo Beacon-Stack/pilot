@@ -1,16 +1,16 @@
 -- name: CreateSeason :one
 INSERT INTO seasons (id, series_id, season_number, monitored)
-VALUES ($1, $2, $3, $4)
+VALUES (?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetSeason :one
-SELECT * FROM seasons WHERE id = $1;
+SELECT * FROM seasons WHERE id = ?;
 
 -- name: ListSeasonsBySeriesID :many
-SELECT * FROM seasons WHERE series_id = $1 ORDER BY season_number ASC;
+SELECT * FROM seasons WHERE series_id = ? ORDER BY season_number ASC;
 
 -- name: UpdateSeasonMonitored :exec
-UPDATE seasons SET monitored = $1 WHERE id = $2;
+UPDATE seasons SET monitored = ? WHERE id = ?;
 
 -- name: DeleteSeasonsBySeriesID :exec
-DELETE FROM seasons WHERE series_id = $1;
+DELETE FROM seasons WHERE series_id = ?;

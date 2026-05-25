@@ -78,7 +78,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Library, error
 		DefaultQualityProfileID: req.DefaultQualityProfileID,
 		NamingFormat:            ptrToNullString(req.NamingFormat),
 		FolderFormat:            ptrToNullString(req.FolderFormat),
-		MinFreeSpaceGb:          int32(req.MinFreeSpaceGB),
+		MinFreeSpaceGb:          int64(req.MinFreeSpaceGB),
 		TagsJson:                tagsJSON,
 		CreatedAt:               now,
 		UpdatedAt:               now,
@@ -144,7 +144,7 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Lib
 		DefaultQualityProfileID: req.DefaultQualityProfileID,
 		NamingFormat:            ptrToNullString(req.NamingFormat),
 		FolderFormat:            ptrToNullString(req.FolderFormat),
-		MinFreeSpaceGb:          int32(req.MinFreeSpaceGB),
+		MinFreeSpaceGb:          int64(req.MinFreeSpaceGB),
 		TagsJson:                tagsJSON,
 		UpdatedAt:               time.Now().UTC().Format(time.RFC3339),
 	})
@@ -216,19 +216,13 @@ func rowToLibrary(row db.Library) (Library, error) {
 	}, nil
 }
 
-func ptrToNullString(s *string) sql.NullString {
-	if s == nil {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: *s, Valid: true}
-}
+// ptrToNullString is a no-op passthrough kept for diff-stability; sqlc-sqlite
+// emits *string directly for nullable TEXT columns, so the old NullString
+// conversion is unnecessary.
+func ptrToNullString(s *string) *string { return s }
 
-func nullStringToPtr(ns sql.NullString) *string {
-	if !ns.Valid {
-		return nil
-	}
-	return &ns.String
-}
+// nullStringToPtr likewise is a passthrough on the *string-native generated API.
+func nullStringToPtr(s *string) *string { return s }
 
 // marshalTags serializes a tags slice to JSON. A nil or empty slice becomes "[]".
 func marshalTags(tags []string) (string, error) {

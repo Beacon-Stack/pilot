@@ -11,15 +11,15 @@ import (
 
 const createImportExclusion = `-- name: CreateImportExclusion :one
 INSERT INTO import_exclusions (id, tmdb_id, title, year, created_at)
-VALUES ($1, $2, $3, $4, $5)
+VALUES (?, ?, ?, ?, ?)
 RETURNING id, tmdb_id, title, year, created_at
 `
 
 type CreateImportExclusionParams struct {
 	ID        string `json:"id"`
-	TmdbID    int32  `json:"tmdbId"`
+	TmdbID    int64  `json:"tmdbId"`
 	Title     string `json:"title"`
-	Year      int32  `json:"year"`
+	Year      int64  `json:"year"`
 	CreatedAt string `json:"createdAt"`
 }
 
@@ -46,7 +46,7 @@ const createImportListConfig = `-- name: CreateImportListConfig :one
 INSERT INTO import_list_configs (
     id, name, kind, enabled, settings, search_on_add, monitor,
     monitor_type, quality_profile_id, library_id, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, name, kind, enabled, settings, search_on_add, monitor, monitor_type, quality_profile_id, library_id, created_at, updated_at
 `
 
@@ -99,7 +99,7 @@ func (q *Queries) CreateImportListConfig(ctx context.Context, arg CreateImportLi
 }
 
 const deleteImportExclusion = `-- name: DeleteImportExclusion :exec
-DELETE FROM import_exclusions WHERE id = $1
+DELETE FROM import_exclusions WHERE id = ?
 `
 
 func (q *Queries) DeleteImportExclusion(ctx context.Context, id string) error {
@@ -108,7 +108,7 @@ func (q *Queries) DeleteImportExclusion(ctx context.Context, id string) error {
 }
 
 const deleteImportListConfig = `-- name: DeleteImportListConfig :exec
-DELETE FROM import_list_configs WHERE id = $1
+DELETE FROM import_list_configs WHERE id = ?
 `
 
 func (q *Queries) DeleteImportListConfig(ctx context.Context, id string) error {
@@ -117,10 +117,10 @@ func (q *Queries) DeleteImportListConfig(ctx context.Context, id string) error {
 }
 
 const getImportExclusionByTMDBID = `-- name: GetImportExclusionByTMDBID :one
-SELECT id, tmdb_id, title, year, created_at FROM import_exclusions WHERE tmdb_id = $1
+SELECT id, tmdb_id, title, year, created_at FROM import_exclusions WHERE tmdb_id = ?
 `
 
-func (q *Queries) GetImportExclusionByTMDBID(ctx context.Context, tmdbID int32) (ImportExclusion, error) {
+func (q *Queries) GetImportExclusionByTMDBID(ctx context.Context, tmdbID int64) (ImportExclusion, error) {
 	row := q.db.QueryRowContext(ctx, getImportExclusionByTMDBID, tmdbID)
 	var i ImportExclusion
 	err := row.Scan(
@@ -134,7 +134,7 @@ func (q *Queries) GetImportExclusionByTMDBID(ctx context.Context, tmdbID int32) 
 }
 
 const getImportListConfig = `-- name: GetImportListConfig :one
-SELECT id, name, kind, enabled, settings, search_on_add, monitor, monitor_type, quality_profile_id, library_id, created_at, updated_at FROM import_list_configs WHERE id = $1
+SELECT id, name, kind, enabled, settings, search_on_add, monitor, monitor_type, quality_profile_id, library_id, created_at, updated_at FROM import_list_configs WHERE id = ?
 `
 
 func (q *Queries) GetImportListConfig(ctx context.Context, id string) (ImportListConfig, error) {
@@ -201,15 +201,15 @@ const listExcludedTMDBIDs = `-- name: ListExcludedTMDBIDs :many
 SELECT tmdb_id FROM import_exclusions
 `
 
-func (q *Queries) ListExcludedTMDBIDs(ctx context.Context) ([]int32, error) {
+func (q *Queries) ListExcludedTMDBIDs(ctx context.Context) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, listExcludedTMDBIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []int32
+	var items []int64
 	for rows.Next() {
-		var tmdb_id int32
+		var tmdb_id int64
 		if err := rows.Scan(&tmdb_id); err != nil {
 			return nil, err
 		}
@@ -299,17 +299,17 @@ func (q *Queries) ListImportListConfigs(ctx context.Context) ([]ImportListConfig
 
 const updateImportListConfig = `-- name: UpdateImportListConfig :one
 UPDATE import_list_configs SET
-    name               = $1,
-    kind               = $2,
-    enabled            = $3,
-    settings           = $4,
-    search_on_add      = $5,
-    monitor            = $6,
-    monitor_type       = $7,
-    quality_profile_id = $8,
-    library_id         = $9,
-    updated_at         = $10
-WHERE id = $11
+    name               = ?,
+    kind               = ?,
+    enabled            = ?,
+    settings           = ?,
+    search_on_add      = ?,
+    monitor            = ?,
+    monitor_type       = ?,
+    quality_profile_id = ?,
+    library_id         = ?,
+    updated_at         = ?
+WHERE id = ?
 RETURNING id, name, kind, enabled, settings, search_on_add, monitor, monitor_type, quality_profile_id, library_id, created_at, updated_at
 `
 

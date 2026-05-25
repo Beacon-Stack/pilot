@@ -4,7 +4,6 @@ package activity
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 )
@@ -66,23 +66,13 @@ func (s *Service) handleEvent(ctx context.Context, e events.Event) {
 		}
 	}
 
-	seriesID := sql.NullString{}
-	if e.ShowID != "" {
-		seriesID = sql.NullString{String: e.ShowID, Valid: true}
-	}
-
-	detailNull := sql.NullString{}
-	if detailStr != nil {
-		detailNull = sql.NullString{String: *detailStr, Valid: true}
-	}
-
 	err := s.q.InsertActivity(ctx, db.InsertActivityParams{
 		ID:        uuid.New().String(),
 		Type:      string(e.Type),
 		Category:  string(cat),
-		SeriesID:  seriesID,
+		SeriesID:  dbutil.NullableString(e.ShowID),
 		Title:     title,
-		Detail:    detailNull,
+		Detail:    detailStr,
 		CreatedAt: e.Timestamp.UTC().Format(time.RFC3339),
 	})
 	if err != nil {
@@ -209,19 +199,19 @@ func (s *Service) List(ctx context.Context, category *string, since *string, lim
 		limit = 100
 	}
 
-	catFilter := sql.NullString{}
+	var catFilter *string
 	if category != nil && *category != "" {
-		catFilter = sql.NullString{String: *category, Valid: true}
+		catFilter = category
 	}
-	sinceFilter := sql.NullString{}
+	var sinceFilter *string
 	if since != nil && *since != "" {
-		sinceFilter = sql.NullString{String: *since, Valid: true}
+		sinceFilter = since
 	}
 
 	rows, err := s.q.ListActivities(ctx, db.ListActivitiesParams{
 		Category: catFilter,
 		Since:    sinceFilter,
-		Limit:    int32(limit),
+		Limit:    limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing activities: %w", err)
@@ -237,20 +227,16 @@ func (s *Service) List(ctx context.Context, category *string, since *string, lim
 
 	activities := make([]Activity, 0, len(rows))
 	for _, r := range rows {
-		var sid *string
-		if r.SeriesID.Valid {
-			sid = &r.SeriesID.String
-		}
 		a := Activity{
 			ID:        r.ID,
 			Type:      r.Type,
 			Category:  r.Category,
-			SeriesID:  sid,
+			SeriesID:  r.SeriesID,
 			Title:     r.Title,
 			CreatedAt: r.CreatedAt,
 		}
-		if r.Detail.Valid {
-			_ = json.Unmarshal([]byte(r.Detail.String), &a.Detail)
+		if r.Detail != nil {
+			_ = json.Unmarshal([]byte(*r.Detail), &a.Detail)
 		}
 		activities = append(activities, a)
 	}
@@ -313,7 +299,7 @@ func (s *Service) NeedsAttention(ctx context.Context, window time.Duration, perK
 		rows, err := s.q.ListGrabHistoryByStatusSince(ctx, db.ListGrabHistoryByStatusSinceParams{
 			Status: status,
 			Since:  since,
-			Limit:  int32(perKind),
+			Limit:  int64(perKind),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("listing grab history (%s): %w", status, err)
@@ -323,10 +309,10 @@ func (s *Service) NeedsAttention(ctx context.Context, window time.Duration, perK
 				Kind:         "grab_failed",
 				GrabID:       r.ID,
 				SeriesID:     r.SeriesID,
-				EpisodeID:    r.EpisodeID.String,
+				EpisodeID:    dbutil.NullStringValue(r.EpisodeID),
 				ReleaseTitle: r.ReleaseTitle,
 				Detail:       fmt.Sprintf("Download %s", r.DownloadStatus),
-				InfoHash:     r.InfoHash.String,
+				InfoHash:     dbutil.NullStringValue(r.InfoHash),
 				CreatedAt:    r.GrabbedAt,
 			})
 			out.Counts.GrabFailed++
@@ -337,7 +323,7 @@ func (s *Service) NeedsAttention(ctx context.Context, window time.Duration, perK
 	stalled, err := s.q.ListGrabHistoryByStatusSince(ctx, db.ListGrabHistoryByStatusSinceParams{
 		Status: "stalled",
 		Since:  since,
-		Limit:  int32(perKind),
+		Limit:  int64(perKind),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing stalled grabs: %w", err)
@@ -347,43 +333,38 @@ func (s *Service) NeedsAttention(ctx context.Context, window time.Duration, perK
 			Kind:         "stalled",
 			GrabID:       r.ID,
 			SeriesID:     r.SeriesID,
-			EpisodeID:    r.EpisodeID.String,
+			EpisodeID:    dbutil.NullStringValue(r.EpisodeID),
 			ReleaseTitle: r.ReleaseTitle,
 			Detail:       "Auto-blocklisted by stall watcher",
-			InfoHash:     r.InfoHash.String,
+			InfoHash:     dbutil.NullStringValue(r.InfoHash),
 			CreatedAt:    r.GrabbedAt,
 		})
 		out.Counts.Stalled++
 	}
 
 	// Import failures: activity_log category=import_failed within window.
-	cat := sql.NullString{String: string(CategoryImportFailed), Valid: true}
-	sinceNS := sql.NullString{String: since, Valid: true}
+	catStr := string(CategoryImportFailed)
 	imports, err := s.q.ListActivities(ctx, db.ListActivitiesParams{
-		Category: cat,
-		Since:    sinceNS,
-		Limit:    int32(perKind),
+		Category: &catStr,
+		Since:    &since,
+		Limit:    int64(perKind),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing import failures: %w", err)
 	}
 	for _, r := range imports {
 		var detail string
-		if r.Detail.Valid {
+		if r.Detail != nil {
 			var d map[string]any
-			if json.Unmarshal([]byte(r.Detail.String), &d) == nil {
+			if json.Unmarshal([]byte(*r.Detail), &d) == nil {
 				if v, ok := d["error"].(string); ok {
 					detail = v
 				}
 			}
 		}
-		seriesID := ""
-		if r.SeriesID.Valid {
-			seriesID = r.SeriesID.String
-		}
 		out.Items = append(out.Items, AttentionItem{
 			Kind:         "import_failed",
-			SeriesID:     seriesID,
+			SeriesID:     dbutil.NullStringValue(r.SeriesID),
 			ReleaseTitle: r.Title,
 			Detail:       detail,
 			CreatedAt:    r.CreatedAt,

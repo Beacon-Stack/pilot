@@ -81,8 +81,8 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Profile, error
 		UpgradeUntilJson:     ptrToNullString(upgradeUntilJSON),
 		CreatedAt:            now,
 		UpdatedAt:            now,
-		MinCustomFormatScore: int32(req.MinCustomFormatScore),
-		UpgradeUntilCfScore:  int32(req.UpgradeUntilCFScore),
+		MinCustomFormatScore: int64(req.MinCustomFormatScore),
+		UpgradeUntilCfScore:  int64(req.UpgradeUntilCFScore),
 		ManagedByPulse:       false,
 	})
 	if err != nil {
@@ -124,8 +124,8 @@ func (s *Service) CreateManaged(ctx context.Context, id string, req CreateReques
 		UpgradeUntilJson:     ptrToNullString(upgradeUntilJSON),
 		CreatedAt:            now,
 		UpdatedAt:            now,
-		MinCustomFormatScore: int32(req.MinCustomFormatScore),
-		UpgradeUntilCfScore:  int32(req.UpgradeUntilCFScore),
+		MinCustomFormatScore: int64(req.MinCustomFormatScore),
+		UpgradeUntilCfScore:  int64(req.UpgradeUntilCFScore),
 		ManagedByPulse:       true,
 	})
 	if err != nil {
@@ -239,8 +239,8 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Pro
 		UpgradeAllowed:       req.UpgradeAllowed,
 		UpgradeUntilJson:     ptrToNullString(upgradeUntilJSON),
 		UpdatedAt:            time.Now().UTC().Format(time.RFC3339),
-		MinCustomFormatScore: int32(req.MinCustomFormatScore),
-		UpgradeUntilCfScore:  int32(req.UpgradeUntilCFScore),
+		MinCustomFormatScore: int64(req.MinCustomFormatScore),
+		UpgradeUntilCfScore:  int64(req.UpgradeUntilCFScore),
 	})
 	if err != nil {
 		return Profile{}, fmt.Errorf("updating quality profile %q: %w", id, err)
@@ -268,7 +268,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("checking quality profile usage for %q: %w", id, err)
 	}
-	if inUse {
+	if inUse != 0 {
 		return ErrInUse
 	}
 
@@ -291,9 +291,9 @@ func rowToProfile(row db.QualityProfile) (Profile, error) {
 	}
 
 	var upgradeUntil *plugin.Quality
-	if row.UpgradeUntilJson.Valid {
+	if row.UpgradeUntilJson != nil {
 		var q plugin.Quality
-		if err := json.Unmarshal([]byte(row.UpgradeUntilJson.String), &q); err != nil {
+		if err := json.Unmarshal([]byte(*row.UpgradeUntilJson), &q); err != nil {
 			return Profile{}, fmt.Errorf("unmarshaling upgrade_until for profile %q: %w", row.ID, err)
 		}
 		upgradeUntil = &q
@@ -312,10 +312,6 @@ func rowToProfile(row db.QualityProfile) (Profile, error) {
 	}, nil
 }
 
-// ptrToNullString converts a *string to sql.NullString.
-func ptrToNullString(s *string) sql.NullString {
-	if s == nil {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: *s, Valid: true}
-}
+// ptrToNullString is a passthrough kept for diff-stability; sqlc-sqlite emits
+// *string directly for nullable TEXT columns.
+func ptrToNullString(s *string) *string { return s }

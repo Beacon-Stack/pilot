@@ -106,7 +106,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 
 	// Backup / restore — registered directly on chi (binary body/response, not JSON).
-	if cfg.DB != nil && cfg.DBPath != "" && cfg.DBType == "sqlite" {
+	if cfg.DB != nil && cfg.DBPath != "" {
 		authKey := []byte(cfg.Auth.Value())
 		withAuth := func(next http.HandlerFunc) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {

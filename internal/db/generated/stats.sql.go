@@ -57,16 +57,16 @@ const insertStatsSnapshot = `-- name: InsertStatsSnapshot :exec
 INSERT INTO stats_snapshots (
     id, total_series, total_episodes, monitored_episodes,
     with_file, missing, total_size_bytes, snapshot_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertStatsSnapshotParams struct {
 	ID                string `json:"id"`
-	TotalSeries       int32  `json:"totalSeries"`
-	TotalEpisodes     int32  `json:"totalEpisodes"`
-	MonitoredEpisodes int32  `json:"monitoredEpisodes"`
-	WithFile          int32  `json:"withFile"`
-	Missing           int32  `json:"missing"`
+	TotalSeries       int64  `json:"totalSeries"`
+	TotalEpisodes     int64  `json:"totalEpisodes"`
+	MonitoredEpisodes int64  `json:"monitoredEpisodes"`
+	WithFile          int64  `json:"withFile"`
+	Missing           int64  `json:"missing"`
 	TotalSizeBytes    int64  `json:"totalSizeBytes"`
 	SnapshotAt        string `json:"snapshotAt"`
 }
@@ -169,10 +169,10 @@ func (q *Queries) ListEpisodeFileQualitiesWithSeriesIDs(ctx context.Context) ([]
 const listStatsSnapshots = `-- name: ListStatsSnapshots :many
 SELECT id, total_series, total_episodes, monitored_episodes, with_file, missing, total_size_bytes, snapshot_at FROM stats_snapshots
 ORDER BY snapshot_at DESC
-LIMIT $1
+LIMIT ?
 `
 
-func (q *Queries) ListStatsSnapshots(ctx context.Context, limit int32) ([]StatsSnapshot, error) {
+func (q *Queries) ListStatsSnapshots(ctx context.Context, limit int64) ([]StatsSnapshot, error) {
 	rows, err := q.db.QueryContext(ctx, listStatsSnapshots, limit)
 	if err != nil {
 		return nil, err

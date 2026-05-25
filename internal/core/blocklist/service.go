@@ -16,7 +16,6 @@ package blocklist
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -120,31 +119,19 @@ type insertParams struct {
 }
 
 func (s *Service) insert(ctx context.Context, p insertParams) error {
-	epID := sql.NullString{}
-	if p.EpisodeID != "" {
-		epID = sql.NullString{String: p.EpisodeID, Valid: true}
-	}
-	idxID := sql.NullString{}
-	if p.IndexerID != "" {
-		idxID = sql.NullString{String: p.IndexerID, Valid: true}
-	}
-	ih := sql.NullString{}
-	if p.InfoHash != "" {
-		ih = sql.NullString{String: p.InfoHash, Valid: true}
-	}
 	_, err := s.q.CreateBlocklistEntry(ctx, db.CreateBlocklistEntryParams{
 		ID:           uuid.New().String(),
 		SeriesID:     p.SeriesID,
-		EpisodeID:    epID,
+		EpisodeID:    dbutil.NullableString(p.EpisodeID),
 		ReleaseGuid:  p.ReleaseGUID,
 		ReleaseTitle: p.ReleaseTitle,
-		IndexerID:    idxID,
+		IndexerID:    dbutil.NullableString(p.IndexerID),
 		Protocol:     p.Protocol,
-		Size:         int32(p.Size),
-		AddedAt:      time.Now().UTC(),
+		Size:         p.Size,
+		AddedAt:      dbutil.FormatTime(time.Now()),
 		Notes:        p.Notes,
 		Reason:       p.Reason,
-		InfoHash:     ih,
+		InfoHash:     dbutil.NullableString(p.InfoHash),
 	})
 	if err != nil {
 		if dbutil.IsUniqueViolation(err) {
@@ -160,13 +147,9 @@ func (s *Service) insert(ctx context.Context, p insertParams) error {
 // dedup the search filter uses so a release re-surfaced from a different
 // indexer (different GUID, same content) still gets filtered.
 func (s *Service) IsBlocklistedGUIDOrInfoHash(ctx context.Context, releaseGUID, infoHash string) (bool, error) {
-	ih := sql.NullString{}
-	if infoHash != "" {
-		ih = sql.NullString{String: infoHash, Valid: true}
-	}
 	count, err := s.q.IsBlocklistedByGuidOrInfoHash(ctx, db.IsBlocklistedByGuidOrInfoHashParams{
 		ReleaseGuid: releaseGUID,
-		InfoHash:    ih,
+		InfoHash:    dbutil.NullableString(infoHash),
 	})
 	if err != nil {
 		return false, fmt.Errorf("checking blocklist by guid/info_hash: %w", err)
@@ -188,13 +171,9 @@ func (s *Service) RemoveByGUID(ctx context.Context, releaseGUID string) error {
 // (series, episode) within the last 24 hours. Used by the auto-re-search
 // circuit breaker to stop after a configurable number of stall retries.
 func (s *Service) CountRecentStalls(ctx context.Context, seriesID, episodeID string) (int64, error) {
-	epID := sql.NullString{}
-	if episodeID != "" {
-		epID = sql.NullString{String: episodeID, Valid: true}
-	}
 	return s.q.CountRecentStallsForEpisode(ctx, db.CountRecentStallsForEpisodeParams{
 		SeriesID:  seriesID,
-		EpisodeID: epID,
+		EpisodeID: dbutil.NullableString(episodeID),
 	})
 }
 
@@ -224,7 +203,7 @@ func (s *Service) List(ctx context.Context, page, perPage int) ([]Entry, int64, 
 	if perPage < 1 {
 		perPage = 50
 	}
-	offset := int32((page - 1) * perPage)
+	offset := int64((page - 1) * perPage)
 
 	total, err := s.q.CountBlocklist(ctx)
 	if err != nil {
@@ -232,7 +211,7 @@ func (s *Service) List(ctx context.Context, page, perPage int) ([]Entry, int64, 
 	}
 
 	rows, err := s.q.ListBlocklist(ctx, db.ListBlocklistParams{
-		Limit:  int32(perPage),
+		Limit:  int64(perPage),
 		Offset: offset,
 	})
 	if err != nil {
@@ -245,13 +224,13 @@ func (s *Service) List(ctx context.Context, page, perPage int) ([]Entry, int64, 
 			ID:           r.ID,
 			SeriesID:     r.SeriesID,
 			SeriesTitle:  r.SeriesTitle,
-			EpisodeID:    r.EpisodeID.String,
+			EpisodeID:    dbutil.NullStringValue(r.EpisodeID),
 			ReleaseGUID:  r.ReleaseGuid,
 			ReleaseTitle: r.ReleaseTitle,
-			IndexerID:    r.IndexerID.String,
+			IndexerID:    dbutil.NullStringValue(r.IndexerID),
 			Protocol:     r.Protocol,
-			Size:         int64(r.Size),
-			AddedAt:      r.AddedAt,
+			Size:         r.Size,
+			AddedAt:      dbutil.ParseRFC3339(r.AddedAt),
 			Notes:        r.Notes,
 		}
 	}

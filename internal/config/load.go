@@ -18,7 +18,6 @@ import (
 const (
 	DefaultHost      = "0.0.0.0"
 	DefaultPort      = 8383
-	DefaultDBDriver  = "postgres"
 	DefaultLogLevel  = "info"
 	DefaultLogFormat = "json"
 )
@@ -39,7 +38,6 @@ func Load(cfgFile string) (*Config, error) {
 	// Defaults
 	v.SetDefault("server.host", DefaultHost)
 	v.SetDefault("server.port", DefaultPort)
-	v.SetDefault("database.driver", DefaultDBDriver)
 	v.SetDefault("log.level", DefaultLogLevel)
 	v.SetDefault("log.format", DefaultLogFormat)
 
@@ -68,8 +66,6 @@ func Load(cfgFile string) (*Config, error) {
 	_ = v.BindEnv("tmdb.api_key", "PILOT_TMDB_API_KEY")
 	_ = v.BindEnv("trakt.client_id", "PILOT_TRAKT_CLIENT_ID")
 	_ = v.BindEnv("database.path", "PILOT_DATABASE_PATH")
-	_ = v.BindEnv("database.dsn", "PILOT_DATABASE_DSN")
-	_ = v.BindEnv("database.password_file", "PILOT_DATABASE_PASSWORD_FILE")
 	_ = v.BindEnv("pulse.url", "PILOT_PULSE_URL")
 	_ = v.BindEnv("pulse.api_key", "PILOT_PULSE_API_KEY")
 	_ = v.BindEnv("pulse.api_key_file", "PILOT_PULSE_API_KEY_FILE")
@@ -93,14 +89,6 @@ func Load(cfgFile string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	if cfg.Database.PasswordFile != "" {
-		merged, err := secretfile.OverrideDSNPassword(cfg.Database.DSN.Value(), cfg.Database.PasswordFile)
-		if err != nil {
-			return nil, fmt.Errorf("applying database password file: %w", err)
-		}
-		cfg.Database.DSN = Secret(merged)
-	}
-
 	if cfg.Pulse.APIKeyFile != "" {
 		contents, err := secretfile.Read(cfg.Pulse.APIKeyFile)
 		if err != nil {
@@ -109,9 +97,9 @@ func Load(cfgFile string) (*Config, error) {
 		cfg.Pulse.APIKey = Secret(contents)
 	}
 
-	// Default SQLite path: if /config exists (Docker volume), use it;
+	// Default database path: if /config exists (Docker volume), use it;
 	// otherwise fall back to ~/.config/pilot/ (bare-metal).
-	if cfg.Database.Driver == "sqlite" && cfg.Database.Path == "" {
+	if cfg.Database.Path == "" {
 		if info, err := os.Stat("/config"); err == nil && info.IsDir() {
 			cfg.Database.Path = "/config/pilot.db"
 		} else if home, _ := os.UserHomeDir(); home != "" {
