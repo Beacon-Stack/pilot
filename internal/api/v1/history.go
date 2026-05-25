@@ -46,7 +46,7 @@ func RegisterHistoryRoutes(humaAPI huma.API, q db.Querier) {
 		Summary:     "List grab history",
 		Tags:        []string{"History"},
 	}, func(ctx context.Context, input *historyListInput) (*historyListOutput, error) {
-		limit := int32(input.Limit)
+		limit := int64(input.Limit)
 		if limit == 0 {
 			limit = 100
 		}
@@ -54,7 +54,7 @@ func RegisterHistoryRoutes(humaAPI huma.API, q db.Querier) {
 		if page < 1 {
 			page = 1
 		}
-		offset := int32(page-1) * limit
+		offset := int64(page-1) * limit
 
 		rows, err := q.ListGrabHistory(ctx, db.ListGrabHistoryParams{
 			Limit:  limit,
@@ -95,30 +95,21 @@ func toHistoryItems(rows []db.GrabHistory, statusFilter string) []*historyItemBo
 			continue
 		}
 		grabbedAt, _ := time.Parse(time.RFC3339, r.GrabbedAt)
-		var epID *string
-		if r.EpisodeID.Valid {
-			epID = &r.EpisodeID.String
-		}
-		var sn *int64
-		if r.SeasonNumber.Valid {
-			v := int64(r.SeasonNumber.Int32)
-			sn = &v
-		}
 		item := &historyItemBody{
 			ID:                r.ID,
 			SeriesID:          r.SeriesID,
-			EpisodeID:         epID,
-			SeasonNumber:      sn,
+			EpisodeID:         r.EpisodeID,
+			SeasonNumber:      r.SeasonNumber,
 			ReleaseTitle:      r.ReleaseTitle,
 			ReleaseSource:     r.ReleaseSource,
 			ReleaseResolution: r.ReleaseResolution,
 			Protocol:          r.Protocol,
-			Size:              int64(r.Size),
+			Size:              r.Size,
 			DownloadStatus:    r.DownloadStatus,
 			GrabbedAt:         grabbedAt,
 		}
-		if r.ScoreBreakdown.Valid && r.ScoreBreakdown.String != "" {
-			item.ScoreBreakdown = json.RawMessage(r.ScoreBreakdown.String)
+		if r.ScoreBreakdown != nil && *r.ScoreBreakdown != "" {
+			item.ScoreBreakdown = json.RawMessage(*r.ScoreBreakdown)
 		}
 		items = append(items, item)
 	}

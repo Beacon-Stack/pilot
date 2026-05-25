@@ -11,7 +11,7 @@ import (
 
 const createNotificationConfig = `-- name: CreateNotificationConfig :one
 INSERT INTO notification_configs (id, name, kind, enabled, settings, on_events, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, name, kind, enabled, settings, on_events, created_at, updated_at
 `
 
@@ -52,7 +52,7 @@ func (q *Queries) CreateNotificationConfig(ctx context.Context, arg CreateNotifi
 }
 
 const deleteNotificationConfig = `-- name: DeleteNotificationConfig :exec
-DELETE FROM notification_configs WHERE id = $1
+DELETE FROM notification_configs WHERE id = ?
 `
 
 func (q *Queries) DeleteNotificationConfig(ctx context.Context, id string) error {
@@ -61,7 +61,7 @@ func (q *Queries) DeleteNotificationConfig(ctx context.Context, id string) error
 }
 
 const getNotificationConfig = `-- name: GetNotificationConfig :one
-SELECT id, name, kind, enabled, settings, on_events, created_at, updated_at FROM notification_configs WHERE id = $1
+SELECT id, name, kind, enabled, settings, on_events, created_at, updated_at FROM notification_configs WHERE id = ?
 `
 
 func (q *Queries) GetNotificationConfig(ctx context.Context, id string) (NotificationConfig, error) {
@@ -154,13 +154,13 @@ func (q *Queries) ListNotificationConfigs(ctx context.Context) ([]NotificationCo
 
 const updateNotificationConfig = `-- name: UpdateNotificationConfig :one
 UPDATE notification_configs SET
-    name       = $1,
-    kind       = $2,
-    enabled    = $3,
-    settings   = $4,
-    on_events  = $5,
-    updated_at = $6
-WHERE id = $7
+    name       = ?,
+    kind       = ?,
+    enabled    = ?,
+    settings   = ?,
+    on_events  = ?,
+    updated_at = ?
+WHERE id = ?
 RETURNING id, name, kind, enabled, settings, on_events, created_at, updated_at
 `
 

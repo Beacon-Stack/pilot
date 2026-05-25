@@ -132,11 +132,11 @@ func TestHandleEvent_KnownEventInsertsRow(t *testing.T) {
 	if !strings.Contains(c.Title, "Show.S01E01.1080p") {
 		t.Errorf("Title = %q, want it to mention the release", c.Title)
 	}
-	if !c.SeriesID.Valid || c.SeriesID.String != "series-42" {
-		t.Errorf("SeriesID = %+v, want valid string 'series-42'", c.SeriesID)
+	if c.SeriesID == nil || *c.SeriesID != "series-42" {
+		t.Errorf("SeriesID = %+v, want pointer to 'series-42'", c.SeriesID)
 	}
 	// Detail should be the JSON-encoded event data.
-	if !c.Detail.Valid || !strings.Contains(c.Detail.String, "TGx") {
+	if c.Detail == nil || !strings.Contains(*c.Detail, "TGx") {
 		t.Errorf("Detail = %+v, want JSON containing 'TGx'", c.Detail)
 	}
 	if c.CreatedAt != "2026-01-08T10:30:00Z" {
@@ -180,8 +180,8 @@ func TestHandleEvent_NoShowIDProducesNullSeriesID(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("len(calls) = %d, want 1", len(calls))
 	}
-	if calls[0].SeriesID.Valid {
-		t.Errorf("SeriesID.Valid = true for non-series event; want false (would FK-violate)")
+	if calls[0].SeriesID != nil {
+		t.Errorf("SeriesID = %v for non-series event; want nil (would FK-violate)", calls[0].SeriesID)
 	}
 }
 

@@ -7,8 +7,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
-	"time"
 )
 
 const clearBlocklist = `-- name: ClearBlocklist :exec
@@ -33,15 +31,15 @@ func (q *Queries) CountBlocklist(ctx context.Context) (int64, error) {
 
 const countRecentStallsForEpisode = `-- name: CountRecentStallsForEpisode :one
 SELECT COUNT(*) FROM blocklist
-WHERE series_id = $1
-  AND episode_id IS NOT DISTINCT FROM $2
+WHERE series_id = ?
+  AND episode_id IS ?
   AND reason LIKE 'stall_%'
-  AND added_at > NOW() - INTERVAL '24 hours'
+  AND added_at > strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-24 hours')
 `
 
 type CountRecentStallsForEpisodeParams struct {
-	SeriesID  string         `json:"seriesId"`
-	EpisodeID sql.NullString `json:"episodeId"`
+	SeriesID  string  `json:"seriesId"`
+	EpisodeID *string `json:"episodeId"`
 }
 
 // Circuit breaker for auto-re-search: how many stall-reason blocklist
@@ -59,23 +57,23 @@ func (q *Queries) CountRecentStallsForEpisode(ctx context.Context, arg CountRece
 const createBlocklistEntry = `-- name: CreateBlocklistEntry :one
 INSERT INTO blocklist (id, series_id, episode_id, release_guid, release_title, indexer_id,
     protocol, size, added_at, notes, reason, info_hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, series_id, episode_id, release_guid, release_title, indexer_id, protocol, size, added_at, notes, reason, info_hash
 `
 
 type CreateBlocklistEntryParams struct {
-	ID           string         `json:"id"`
-	SeriesID     string         `json:"seriesId"`
-	EpisodeID    sql.NullString `json:"episodeId"`
-	ReleaseGuid  string         `json:"releaseGuid"`
-	ReleaseTitle string         `json:"releaseTitle"`
-	IndexerID    sql.NullString `json:"indexerId"`
-	Protocol     string         `json:"protocol"`
-	Size         int32          `json:"size"`
-	AddedAt      time.Time      `json:"addedAt"`
-	Notes        string         `json:"notes"`
-	Reason       string         `json:"reason"`
-	InfoHash     sql.NullString `json:"infoHash"`
+	ID           string  `json:"id"`
+	SeriesID     string  `json:"seriesId"`
+	EpisodeID    *string `json:"episodeId"`
+	ReleaseGuid  string  `json:"releaseGuid"`
+	ReleaseTitle string  `json:"releaseTitle"`
+	IndexerID    *string `json:"indexerId"`
+	Protocol     string  `json:"protocol"`
+	Size         int64   `json:"size"`
+	AddedAt      string  `json:"addedAt"`
+	Notes        string  `json:"notes"`
+	Reason       string  `json:"reason"`
+	InfoHash     *string `json:"infoHash"`
 }
 
 func (q *Queries) CreateBlocklistEntry(ctx context.Context, arg CreateBlocklistEntryParams) (Blocklist, error) {
@@ -112,7 +110,7 @@ func (q *Queries) CreateBlocklistEntry(ctx context.Context, arg CreateBlocklistE
 }
 
 const deleteBlocklistEntry = `-- name: DeleteBlocklistEntry :exec
-DELETE FROM blocklist WHERE id = $1
+DELETE FROM blocklist WHERE id = ?
 `
 
 func (q *Queries) DeleteBlocklistEntry(ctx context.Context, id string) error {
@@ -121,7 +119,7 @@ func (q *Queries) DeleteBlocklistEntry(ctx context.Context, id string) error {
 }
 
 const deleteBlocklistEntryByGUID = `-- name: DeleteBlocklistEntryByGUID :exec
-DELETE FROM blocklist WHERE release_guid = $1
+DELETE FROM blocklist WHERE release_guid = ?
 `
 
 func (q *Queries) DeleteBlocklistEntryByGUID(ctx context.Context, releaseGuid string) error {
@@ -130,7 +128,7 @@ func (q *Queries) DeleteBlocklistEntryByGUID(ctx context.Context, releaseGuid st
 }
 
 const isBlocklisted = `-- name: IsBlocklisted :one
-SELECT COUNT(*) FROM blocklist WHERE release_guid = $1
+SELECT COUNT(*) FROM blocklist WHERE release_guid = ?
 `
 
 func (q *Queries) IsBlocklisted(ctx context.Context, releaseGuid string) (int64, error) {
@@ -142,12 +140,12 @@ func (q *Queries) IsBlocklisted(ctx context.Context, releaseGuid string) (int64,
 
 const isBlocklistedByGuidOrInfoHash = `-- name: IsBlocklistedByGuidOrInfoHash :one
 SELECT COUNT(*) FROM blocklist
-WHERE release_guid = $1 OR (info_hash IS NOT NULL AND info_hash = $2)
+WHERE release_guid = ? OR (info_hash IS NOT NULL AND info_hash = ?)
 `
 
 type IsBlocklistedByGuidOrInfoHashParams struct {
-	ReleaseGuid string         `json:"releaseGuid"`
-	InfoHash    sql.NullString `json:"infoHash"`
+	ReleaseGuid string  `json:"releaseGuid"`
+	InfoHash    *string `json:"infoHash"`
 }
 
 // Two-keyed dedup: a release can be on the blocklist under either its
@@ -162,7 +160,7 @@ func (q *Queries) IsBlocklistedByGuidOrInfoHash(ctx context.Context, arg IsBlock
 }
 
 const isBlocklistedByTitle = `-- name: IsBlocklistedByTitle :one
-SELECT COUNT(*) FROM blocklist WHERE release_title = $1
+SELECT COUNT(*) FROM blocklist WHERE release_title = ?
 `
 
 func (q *Queries) IsBlocklistedByTitle(ctx context.Context, releaseTitle string) (int64, error) {
@@ -176,28 +174,28 @@ const listBlocklist = `-- name: ListBlocklist :many
 SELECT b.id, b.series_id, b.episode_id, b.release_guid, b.release_title, b.indexer_id, b.protocol, b.size, b.added_at, b.notes, b.reason, b.info_hash, s.title AS series_title
 FROM blocklist b JOIN series s ON s.id = b.series_id
 ORDER BY b.added_at DESC
-LIMIT $1 OFFSET $2
+LIMIT ? OFFSET ?
 `
 
 type ListBlocklistParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
 }
 
 type ListBlocklistRow struct {
-	ID           string         `json:"id"`
-	SeriesID     string         `json:"seriesId"`
-	EpisodeID    sql.NullString `json:"episodeId"`
-	ReleaseGuid  string         `json:"releaseGuid"`
-	ReleaseTitle string         `json:"releaseTitle"`
-	IndexerID    sql.NullString `json:"indexerId"`
-	Protocol     string         `json:"protocol"`
-	Size         int32          `json:"size"`
-	AddedAt      time.Time      `json:"addedAt"`
-	Notes        string         `json:"notes"`
-	Reason       string         `json:"reason"`
-	InfoHash     sql.NullString `json:"infoHash"`
-	SeriesTitle  string         `json:"seriesTitle"`
+	ID           string  `json:"id"`
+	SeriesID     string  `json:"seriesId"`
+	EpisodeID    *string `json:"episodeId"`
+	ReleaseGuid  string  `json:"releaseGuid"`
+	ReleaseTitle string  `json:"releaseTitle"`
+	IndexerID    *string `json:"indexerId"`
+	Protocol     string  `json:"protocol"`
+	Size         int64   `json:"size"`
+	AddedAt      string  `json:"addedAt"`
+	Notes        string  `json:"notes"`
+	Reason       string  `json:"reason"`
+	InfoHash     *string `json:"infoHash"`
+	SeriesTitle  string  `json:"seriesTitle"`
 }
 
 func (q *Queries) ListBlocklist(ctx context.Context, arg ListBlocklistParams) ([]ListBlocklistRow, error) {

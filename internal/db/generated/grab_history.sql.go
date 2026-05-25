@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 const createGrabHistory = `-- name: CreateGrabHistory :one
@@ -18,36 +17,36 @@ INSERT INTO grab_history (
     download_client_id, client_item_id, download_status,
     score_breakdown, grabbed_at, source, info_hash
 ) VALUES (
-    $1, $2, $3, $4, $5,
-    $6, $7, $8, $9,
-    $10, $11, $12, $13,
-    $14, $15, $16,
-    $17, $18, $19, $20
+    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?, ?, ?
 )
 RETURNING id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash
 `
 
 type CreateGrabHistoryParams struct {
-	ID                string         `json:"id"`
-	SeriesID          string         `json:"seriesId"`
-	EpisodeID         sql.NullString `json:"episodeId"`
-	SeasonNumber      sql.NullInt32  `json:"seasonNumber"`
-	IndexerID         sql.NullString `json:"indexerId"`
-	ReleaseGuid       string         `json:"releaseGuid"`
-	ReleaseTitle      string         `json:"releaseTitle"`
-	ReleaseSource     string         `json:"releaseSource"`
-	ReleaseResolution string         `json:"releaseResolution"`
-	ReleaseCodec      string         `json:"releaseCodec"`
-	ReleaseHdr        string         `json:"releaseHdr"`
-	Protocol          string         `json:"protocol"`
-	Size              int32          `json:"size"`
-	DownloadClientID  sql.NullString `json:"downloadClientId"`
-	ClientItemID      sql.NullString `json:"clientItemId"`
-	DownloadStatus    string         `json:"downloadStatus"`
-	ScoreBreakdown    sql.NullString `json:"scoreBreakdown"`
-	GrabbedAt         string         `json:"grabbedAt"`
-	Source            string         `json:"source"`
-	InfoHash          sql.NullString `json:"infoHash"`
+	ID                string  `json:"id"`
+	SeriesID          string  `json:"seriesId"`
+	EpisodeID         *string `json:"episodeId"`
+	SeasonNumber      *int64  `json:"seasonNumber"`
+	IndexerID         *string `json:"indexerId"`
+	ReleaseGuid       string  `json:"releaseGuid"`
+	ReleaseTitle      string  `json:"releaseTitle"`
+	ReleaseSource     string  `json:"releaseSource"`
+	ReleaseResolution string  `json:"releaseResolution"`
+	ReleaseCodec      string  `json:"releaseCodec"`
+	ReleaseHdr        string  `json:"releaseHdr"`
+	Protocol          string  `json:"protocol"`
+	Size              int64   `json:"size"`
+	DownloadClientID  *string `json:"downloadClientId"`
+	ClientItemID      *string `json:"clientItemId"`
+	DownloadStatus    string  `json:"downloadStatus"`
+	ScoreBreakdown    *string `json:"scoreBreakdown"`
+	GrabbedAt         string  `json:"grabbedAt"`
+	Source            string  `json:"source"`
+	InfoHash          *string `json:"infoHash"`
 }
 
 func (q *Queries) CreateGrabHistory(ctx context.Context, arg CreateGrabHistoryParams) (GrabHistory, error) {
@@ -101,10 +100,10 @@ func (q *Queries) CreateGrabHistory(ctx context.Context, arg CreateGrabHistoryPa
 }
 
 const getGrabByClientItemID = `-- name: GetGrabByClientItemID :one
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE client_item_id = $1 LIMIT 1
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE client_item_id = ? LIMIT 1
 `
 
-func (q *Queries) GetGrabByClientItemID(ctx context.Context, clientItemID sql.NullString) (GrabHistory, error) {
+func (q *Queries) GetGrabByClientItemID(ctx context.Context, clientItemID *string) (GrabHistory, error) {
 	row := q.db.QueryRowContext(ctx, getGrabByClientItemID, clientItemID)
 	var i GrabHistory
 	err := row.Scan(
@@ -134,7 +133,7 @@ func (q *Queries) GetGrabByClientItemID(ctx context.Context, clientItemID sql.Nu
 }
 
 const getGrabByID = `-- name: GetGrabByID :one
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE id = $1
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE id = ?
 `
 
 func (q *Queries) GetGrabByID(ctx context.Context, id string) (GrabHistory, error) {
@@ -167,10 +166,10 @@ func (q *Queries) GetGrabByID(ctx context.Context, id string) (GrabHistory, erro
 }
 
 const getGrabByInfoHash = `-- name: GetGrabByInfoHash :one
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE info_hash = $1 ORDER BY grabbed_at DESC LIMIT 1
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE info_hash = ? ORDER BY grabbed_at DESC LIMIT 1
 `
 
-func (q *Queries) GetGrabByInfoHash(ctx context.Context, infoHash sql.NullString) (GrabHistory, error) {
+func (q *Queries) GetGrabByInfoHash(ctx context.Context, infoHash *string) (GrabHistory, error) {
 	row := q.db.QueryRowContext(ctx, getGrabByInfoHash, infoHash)
 	var i GrabHistory
 	err := row.Scan(
@@ -249,12 +248,12 @@ func (q *Queries) ListActiveGrabs(ctx context.Context) ([]GrabHistory, error) {
 }
 
 const listGrabHistory = `-- name: ListGrabHistory :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history ORDER BY grabbed_at DESC LIMIT $1 OFFSET $2
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history ORDER BY grabbed_at DESC LIMIT ? OFFSET ?
 `
 
 type ListGrabHistoryParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
 }
 
 func (q *Queries) ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams) ([]GrabHistory, error) {
@@ -303,10 +302,10 @@ func (q *Queries) ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams
 }
 
 const listGrabHistoryByEpisode = `-- name: ListGrabHistoryByEpisode :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE episode_id = $1 ORDER BY grabbed_at DESC
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE episode_id = ? ORDER BY grabbed_at DESC
 `
 
-func (q *Queries) ListGrabHistoryByEpisode(ctx context.Context, episodeID sql.NullString) ([]GrabHistory, error) {
+func (q *Queries) ListGrabHistoryByEpisode(ctx context.Context, episodeID *string) ([]GrabHistory, error) {
 	rows, err := q.db.QueryContext(ctx, listGrabHistoryByEpisode, episodeID)
 	if err != nil {
 		return nil, err
@@ -352,7 +351,7 @@ func (q *Queries) ListGrabHistoryByEpisode(ctx context.Context, episodeID sql.Nu
 }
 
 const listGrabHistoryBySeries = `-- name: ListGrabHistoryBySeries :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE series_id = $1 ORDER BY grabbed_at DESC
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE series_id = ? ORDER BY grabbed_at DESC
 `
 
 func (q *Queries) ListGrabHistoryBySeries(ctx context.Context, seriesID string) ([]GrabHistory, error) {
@@ -402,22 +401,21 @@ func (q *Queries) ListGrabHistoryBySeries(ctx context.Context, seriesID string) 
 
 const listGrabHistoryByStatusSince = `-- name: ListGrabHistoryByStatusSince :many
 SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history
-WHERE download_status = $1::text
-  AND grabbed_at > $2::text
+WHERE download_status = ?1
+  AND grabbed_at > ?2
 ORDER BY grabbed_at DESC
-LIMIT $3
+LIMIT ?3
 `
 
 type ListGrabHistoryByStatusSinceParams struct {
 	Status string `json:"status"`
 	Since  string `json:"since"`
-	Limit  int32  `json:"limit"`
+	Limit  int64  `json:"limit"`
 }
 
 // Used by the Activity page's "Recently imported" and "Needs attention" rails
-// to window grabs by terminal status and time. The ::text casts make the
-// types explicit to the planner; grab_history.grabbed_at is TEXT-encoded
-// RFC3339 so the comparison is lexicographic but order-preserving.
+// to window grabs by terminal status and time. grab_history.grabbed_at is
+// TEXT-encoded RFC3339 so the comparison is lexicographic but order-preserving.
 func (q *Queries) ListGrabHistoryByStatusSince(ctx context.Context, arg ListGrabHistoryByStatusSinceParams) ([]GrabHistory, error) {
 	rows, err := q.db.QueryContext(ctx, listGrabHistoryByStatusSince, arg.Status, arg.Since, arg.Limit)
 	if err != nil {
@@ -467,7 +465,7 @@ const listStaleActiveGrabs = `-- name: ListStaleActiveGrabs :many
 SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history
  WHERE download_status IN ('downloading', 'queued', 'pending')
    AND (info_hash IS NULL OR info_hash = '')
-   AND grabbed_at < $1::text
+   AND grabbed_at < ?1
  ORDER BY grabbed_at ASC
 `
 
@@ -475,7 +473,7 @@ SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, relea
 // they can't make progress. Two cohorts:
 //  1. info_hash IS NULL/empty: pilot recorded the grab but never got an
 //     info_hash back from the download client. The stallwatcher's
-//     info_hash-keyed pipeline is blind to these — they sit in
+//     info_hash-keyed pipeline is blind to these - they sit in
 //     `downloading` forever. We expire them by age.
 //  2. info_hash IS set: stallwatcher already has a better signal (haul
 //     reports the stall reason). Those are handled by the haul-stall
@@ -529,7 +527,7 @@ func (q *Queries) ListStaleActiveGrabs(ctx context.Context, olderThan string) ([
 }
 
 const markGrabRemoved = `-- name: MarkGrabRemoved :exec
-UPDATE grab_history SET download_status = 'removed' WHERE id = $1
+UPDATE grab_history SET download_status = 'removed' WHERE id = ?
 `
 
 func (q *Queries) MarkGrabRemoved(ctx context.Context, id string) error {
@@ -538,13 +536,13 @@ func (q *Queries) MarkGrabRemoved(ctx context.Context, id string) error {
 }
 
 const updateGrabDownloadClient = `-- name: UpdateGrabDownloadClient :exec
-UPDATE grab_history SET download_client_id = $1, client_item_id = $2 WHERE id = $3
+UPDATE grab_history SET download_client_id = ?, client_item_id = ? WHERE id = ?
 `
 
 type UpdateGrabDownloadClientParams struct {
-	DownloadClientID sql.NullString `json:"downloadClientId"`
-	ClientItemID     sql.NullString `json:"clientItemId"`
-	ID               string         `json:"id"`
+	DownloadClientID *string `json:"downloadClientId"`
+	ClientItemID     *string `json:"clientItemId"`
+	ID               string  `json:"id"`
 }
 
 func (q *Queries) UpdateGrabDownloadClient(ctx context.Context, arg UpdateGrabDownloadClientParams) error {
@@ -553,12 +551,12 @@ func (q *Queries) UpdateGrabDownloadClient(ctx context.Context, arg UpdateGrabDo
 }
 
 const updateGrabInfoHash = `-- name: UpdateGrabInfoHash :exec
-UPDATE grab_history SET info_hash = $1 WHERE id = $2
+UPDATE grab_history SET info_hash = ? WHERE id = ?
 `
 
 type UpdateGrabInfoHashParams struct {
-	InfoHash sql.NullString `json:"infoHash"`
-	ID       string         `json:"id"`
+	InfoHash *string `json:"infoHash"`
+	ID       string  `json:"id"`
 }
 
 func (q *Queries) UpdateGrabInfoHash(ctx context.Context, arg UpdateGrabInfoHashParams) error {
@@ -567,12 +565,12 @@ func (q *Queries) UpdateGrabInfoHash(ctx context.Context, arg UpdateGrabInfoHash
 }
 
 const updateGrabStatus = `-- name: UpdateGrabStatus :exec
-UPDATE grab_history SET download_status = $1, downloaded_bytes = $2 WHERE id = $3
+UPDATE grab_history SET download_status = ?, downloaded_bytes = ? WHERE id = ?
 `
 
 type UpdateGrabStatusParams struct {
 	DownloadStatus  string `json:"downloadStatus"`
-	DownloadedBytes int32  `json:"downloadedBytes"`
+	DownloadedBytes int64  `json:"downloadedBytes"`
 	ID              string `json:"id"`
 }
 

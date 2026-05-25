@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
+	_ "modernc.org/sqlite"
 
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
@@ -48,6 +48,28 @@ func newMock() *mockQuerier {
 	}
 }
 
+// errUniqueViolation is a real *sqlite.Error produced by triggering a
+// UNIQUE violation against an in-memory SQLite DB, so the production
+// dbutil.IsUniqueViolation errors.As check matches.
+var errUniqueViolation = func() error {
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		panic(err)
+	}
+	defer sqlDB.Close()
+	if _, err := sqlDB.Exec("CREATE TABLE t(k TEXT UNIQUE)"); err != nil {
+		panic(err)
+	}
+	if _, err := sqlDB.Exec("INSERT INTO t VALUES('x')"); err != nil {
+		panic(err)
+	}
+	_, err = sqlDB.Exec("INSERT INTO t VALUES('x')")
+	if err == nil {
+		panic("expected unique violation, got nil")
+	}
+	return err
+}()
+
 func (m *mockQuerier) CreateBlocklistEntry(ctx context.Context, arg db.CreateBlocklistEntryParams) (db.Blocklist, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -55,7 +77,7 @@ func (m *mockQuerier) CreateBlocklistEntry(ctx context.Context, arg db.CreateBlo
 		return db.Blocklist{}, m.createErr
 	}
 	if _, exists := m.entriesByGUID[arg.ReleaseGuid]; exists {
-		return db.Blocklist{}, &pgconn.PgError{Code: "23505", Message: "unique violation"}
+		return db.Blocklist{}, errUniqueViolation
 	}
 	row := db.Blocklist(arg)
 	m.entriesByGUID[arg.ReleaseGuid] = row
@@ -70,7 +92,7 @@ func (m *mockQuerier) IsBlocklistedByGuidOrInfoHash(ctx context.Context, arg db.
 		if row.ReleaseGuid == arg.ReleaseGuid {
 			return 1, nil
 		}
-		if arg.InfoHash.Valid && row.InfoHash.Valid && row.InfoHash.String == arg.InfoHash.String {
+		if arg.InfoHash != nil && row.InfoHash != nil && *row.InfoHash == *arg.InfoHash {
 			return 1, nil
 		}
 	}
@@ -88,7 +110,11 @@ func (m *mockQuerier) DeleteBlocklistEntryByGUID(ctx context.Context, releaseGui
 func (m *mockQuerier) CountRecentStallsForEpisode(ctx context.Context, arg db.CountRecentStallsForEpisodeParams) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := arg.SeriesID + "|" + arg.EpisodeID.String
+	epID := ""
+	if arg.EpisodeID != nil {
+		epID = *arg.EpisodeID
+	}
+	key := arg.SeriesID + "|" + epID
 	return m.recentStallsByEpKey[key], nil
 }
 

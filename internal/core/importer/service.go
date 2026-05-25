@@ -359,13 +359,13 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 
 		// Use library-level format overrides if set, else global settings.
 		episodeFormat := mm.StandardEpisodeFormat
-		if lib.NamingFormat.Valid && lib.NamingFormat.String != "" {
-			episodeFormat = lib.NamingFormat.String
+		if lib.NamingFormat != nil && *lib.NamingFormat != "" {
+			episodeFormat = *lib.NamingFormat
 		}
 		seriesFolderFormat := mm.SeriesFolderFormat
 		seasonFolderFormat := mm.SeasonFolderFormat
-		if lib.FolderFormat.Valid && lib.FolderFormat.String != "" {
-			seriesFolderFormat = lib.FolderFormat.String
+		if lib.FolderFormat != nil && *lib.FolderFormat != "" {
+			seriesFolderFormat = *lib.FolderFormat
 		}
 
 		colon := renamer.ColonReplacement(mm.ColonReplacement)
@@ -380,7 +380,12 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 				SeasonNumber:  int(ep.SeasonNumber),
 				EpisodeNumber: int(ep.EpisodeNumber),
 				Title:         ep.Title,
-				AirDate:       ep.AirDate.String,
+				AirDate: func() string {
+					if ep.AirDate == nil {
+						return ""
+					}
+					return *ep.AirDate
+				}(),
 			},
 			quality, colon,
 			filepath.Ext(filePath),

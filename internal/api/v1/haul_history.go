@@ -93,7 +93,7 @@ func validateReimportGrab(grab db.GrabHistory) string {
 	if grab.DownloadStatus != "completed" {
 		return fmt.Sprintf("grab status is %q — only completed grabs can be re-imported", grab.DownloadStatus)
 	}
-	if !grab.InfoHash.Valid || grab.InfoHash.String == "" {
+	if grab.InfoHash == nil || *grab.InfoHash == "" {
 		return "grab has no info_hash — Pilot never received it back from the download client, so we can't locate the file"
 	}
 	return ""
@@ -194,7 +194,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 		if err != nil {
 			return nil, huma.Error404NotFound("grab not found")
 		}
-		if !grab.InfoHash.Valid || grab.InfoHash.String == "" {
+		if grab.InfoHash == nil || *grab.InfoHash == "" {
 			out.Body.Exists = false
 			out.Body.Reason = "no_info_hash"
 			return out, nil
@@ -205,7 +205,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 			out.Body.Reason = "no_haul_client"
 			return out, nil //nolint:nilerr // intentional: surface as exists=false to caller
 		}
-		rec, lookupErr := client.LookupHistoryByHash(ctx, grab.InfoHash.String)
+		rec, lookupErr := client.LookupHistoryByHash(ctx, *grab.InfoHash)
 		if lookupErr != nil {
 			// Degrade gracefully — report exists=false with a reason
 			// rather than 500ing. The UI then renders Investigate
@@ -259,7 +259,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 		if client == nil {
 			return nil, huma.Error503ServiceUnavailable("no Haul download client configured")
 		}
-		rec, err := client.LookupHistoryByHash(ctx, grab.InfoHash.String)
+		rec, err := client.LookupHistoryByHash(ctx, *grab.InfoHash)
 		if err != nil {
 			return nil, huma.Error502BadGateway(err.Error())
 		}

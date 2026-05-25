@@ -1,12 +1,14 @@
 package v1
 
 import (
-	"database/sql"
 	"strings"
 	"testing"
 
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
+
+// ptrStrV1 returns a pointer to s.
+func ptrStrV1(s string) *string { return &s }
 
 // TestValidateReimportGrab covers the eligibility rules for the
 // re-import endpoint. Pinning these so a refactor that loosens (e.g.
@@ -25,7 +27,7 @@ func TestValidateReimportGrab(t *testing.T) {
 			name: "completed with info_hash is eligible",
 			grab: db.GrabHistory{
 				DownloadStatus: "completed",
-				InfoHash:       sql.NullString{String: "abc123", Valid: true},
+				InfoHash:       ptrStrV1("abc123"),
 			},
 			wantError: false,
 		},
@@ -33,7 +35,7 @@ func TestValidateReimportGrab(t *testing.T) {
 			name: "in-progress grab is rejected",
 			grab: db.GrabHistory{
 				DownloadStatus: "downloading",
-				InfoHash:       sql.NullString{String: "abc123", Valid: true},
+				InfoHash:       ptrStrV1("abc123"),
 			},
 			wantError:   true,
 			errContains: "downloading",
@@ -42,7 +44,7 @@ func TestValidateReimportGrab(t *testing.T) {
 			name: "queued grab is rejected",
 			grab: db.GrabHistory{
 				DownloadStatus: "queued",
-				InfoHash:       sql.NullString{String: "abc123", Valid: true},
+				InfoHash:       ptrStrV1("abc123"),
 			},
 			wantError:   true,
 			errContains: "queued",
@@ -51,7 +53,7 @@ func TestValidateReimportGrab(t *testing.T) {
 			name: "failed grab is rejected",
 			grab: db.GrabHistory{
 				DownloadStatus: "failed",
-				InfoHash:       sql.NullString{String: "abc123", Valid: true},
+				InfoHash:       ptrStrV1("abc123"),
 			},
 			wantError:   true,
 			errContains: "failed",
@@ -60,7 +62,7 @@ func TestValidateReimportGrab(t *testing.T) {
 			name: "completed but missing info_hash is rejected",
 			grab: db.GrabHistory{
 				DownloadStatus: "completed",
-				InfoHash:       sql.NullString{Valid: false},
+				InfoHash:       nil,
 			},
 			wantError:   true,
 			errContains: "info_hash",
@@ -69,7 +71,7 @@ func TestValidateReimportGrab(t *testing.T) {
 			name: "completed but empty info_hash string is rejected",
 			grab: db.GrabHistory{
 				DownloadStatus: "completed",
-				InfoHash:       sql.NullString{String: "", Valid: true},
+				InfoHash:       ptrStrV1(""),
 			},
 			wantError:   true,
 			errContains: "info_hash",

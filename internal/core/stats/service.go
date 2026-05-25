@@ -274,11 +274,11 @@ func (s *Service) Snapshot(ctx context.Context) error {
 
 	return s.q.InsertStatsSnapshot(ctx, db.InsertStatsSnapshotParams{
 		ID:                uuid.New().String(),
-		TotalSeries:       int32(col.TotalSeries),
-		TotalEpisodes:     int32(col.TotalEpisodes),
-		MonitoredEpisodes: int32(col.Monitored),
-		WithFile:          int32(col.WithFile),
-		Missing:           int32(col.Missing),
+		TotalSeries:       col.TotalSeries,
+		TotalEpisodes:     col.TotalEpisodes,
+		MonitoredEpisodes: col.Monitored,
+		WithFile:          col.WithFile,
+		Missing:           col.Missing,
 		TotalSizeBytes:    stor.TotalBytes,
 		SnapshotAt:        time.Now().UTC().Format(time.RFC3339),
 	})

@@ -6,7 +6,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 type Querier interface {
@@ -66,10 +65,10 @@ type Querier interface {
 	GetEpisode(ctx context.Context, id string) (Episode, error)
 	GetEpisodeFile(ctx context.Context, id string) (EpisodeFile, error)
 	GetEpisodeFileByPath(ctx context.Context, path string) (EpisodeFile, error)
-	GetGrabByClientItemID(ctx context.Context, clientItemID sql.NullString) (GrabHistory, error)
+	GetGrabByClientItemID(ctx context.Context, clientItemID *string) (GrabHistory, error)
 	GetGrabByID(ctx context.Context, id string) (GrabHistory, error)
-	GetGrabByInfoHash(ctx context.Context, infoHash sql.NullString) (GrabHistory, error)
-	GetImportExclusionByTMDBID(ctx context.Context, tmdbID int32) (ImportExclusion, error)
+	GetGrabByInfoHash(ctx context.Context, infoHash *string) (GrabHistory, error)
+	GetImportExclusionByTMDBID(ctx context.Context, tmdbID int64) (ImportExclusion, error)
 	GetImportListConfig(ctx context.Context, id string) (ImportListConfig, error)
 	GetIndexerConfig(ctx context.Context, id string) (IndexerConfig, error)
 	GetLibrary(ctx context.Context, id string) (Library, error)
@@ -79,7 +78,7 @@ type Querier interface {
 	GetQualityProfile(ctx context.Context, id string) (QualityProfile, error)
 	GetSeason(ctx context.Context, id string) (Season, error)
 	GetSeries(ctx context.Context, id string) (Series, error)
-	GetSeriesByTMDBID(ctx context.Context, tmdbID int32) (Series, error)
+	GetSeriesByTMDBID(ctx context.Context, tmdbID int64) (Series, error)
 	GetSetting(ctx context.Context, key string) (string, error)
 	InsertActivity(ctx context.Context, arg InsertActivityParams) error
 	InsertStatsSnapshot(ctx context.Context, arg InsertStatsSnapshotParams) error
@@ -92,17 +91,14 @@ type Querier interface {
 	IsBlocklistedByTitle(ctx context.Context, releaseTitle string) (int64, error)
 	LatestStatsSnapshot(ctx context.Context) (StatsSnapshot, error)
 	ListActiveGrabs(ctx context.Context) ([]GrabHistory, error)
-	// The ::text casts are required for Postgres to plan a parameterised
-	// "($1 IS NULL OR col = $1)" — without them the planner can't infer the
-	// type from `$1 IS NULL` alone and fails with SQLSTATE 42P08.
 	ListActivities(ctx context.Context, arg ListActivitiesParams) ([]ActivityLog, error)
 	ListAllEpisodeFilePaths(ctx context.Context) ([]string, error)
 	// Used by the file-existence reconciler (QW5) to walk every recorded
-	// file and stat it. Selects the minimum surface area — adding columns
+	// file and stat it. Selects the minimum surface area - adding columns
 	// here is fine, but the reconciler only needs id/episode_id/path to
 	// decide whether to delete the row.
 	ListAllEpisodeFiles(ctx context.Context) ([]ListAllEpisodeFilesRow, error)
-	ListAllTMDBIDs(ctx context.Context) ([]int32, error)
+	ListAllTMDBIDs(ctx context.Context) ([]int64, error)
 	ListAnimeCourMonitored(ctx context.Context, seriesID string) ([]AnimeCourMonitored, error)
 	ListBlocklist(ctx context.Context, arg ListBlocklistParams) ([]ListBlocklistRow, error)
 	ListDownloadClientConfigs(ctx context.Context) ([]DownloadClientConfig, error)
@@ -118,14 +114,13 @@ type Querier interface {
 	ListEpisodesByAirDateRange(ctx context.Context, arg ListEpisodesByAirDateRangeParams) ([]ListEpisodesByAirDateRangeRow, error)
 	ListEpisodesBySeasonID(ctx context.Context, seasonID string) ([]Episode, error)
 	ListEpisodesBySeriesID(ctx context.Context, seriesID string) ([]Episode, error)
-	ListExcludedTMDBIDs(ctx context.Context) ([]int32, error)
+	ListExcludedTMDBIDs(ctx context.Context) ([]int64, error)
 	ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams) ([]GrabHistory, error)
-	ListGrabHistoryByEpisode(ctx context.Context, episodeID sql.NullString) ([]GrabHistory, error)
+	ListGrabHistoryByEpisode(ctx context.Context, episodeID *string) ([]GrabHistory, error)
 	ListGrabHistoryBySeries(ctx context.Context, seriesID string) ([]GrabHistory, error)
 	// Used by the Activity page's "Recently imported" and "Needs attention" rails
-	// to window grabs by terminal status and time. The ::text casts make the
-	// types explicit to the planner; grab_history.grabbed_at is TEXT-encoded
-	// RFC3339 so the comparison is lexicographic but order-preserving.
+	// to window grabs by terminal status and time. grab_history.grabbed_at is
+	// TEXT-encoded RFC3339 so the comparison is lexicographic but order-preserving.
 	ListGrabHistoryByStatusSince(ctx context.Context, arg ListGrabHistoryByStatusSinceParams) ([]GrabHistory, error)
 	ListImportExclusions(ctx context.Context) ([]ImportExclusion, error)
 	ListImportListConfigs(ctx context.Context) ([]ImportListConfig, error)
@@ -146,7 +141,7 @@ type Querier interface {
 	// they can't make progress. Two cohorts:
 	//   1. info_hash IS NULL/empty: pilot recorded the grab but never got an
 	//      info_hash back from the download client. The stallwatcher's
-	//      info_hash-keyed pipeline is blind to these — they sit in
+	//      info_hash-keyed pipeline is blind to these - they sit in
 	//      `downloading` forever. We expire them by age.
 	//   2. info_hash IS set: stallwatcher already has a better signal (haul
 	//      reports the stall reason). Those are handled by the haul-stall
@@ -154,16 +149,16 @@ type Querier interface {
 	// Returned rows are old enough that the operator's expectation is "this
 	// should have completed by now or be reported as stalled."
 	ListStaleActiveGrabs(ctx context.Context, olderThan string) ([]GrabHistory, error)
-	ListStatsSnapshots(ctx context.Context, limit int32) ([]StatsSnapshot, error)
+	ListStatsSnapshots(ctx context.Context, limit int64) ([]StatsSnapshot, error)
 	MarkGrabRemoved(ctx context.Context, id string) error
 	PruneActivities(ctx context.Context, createdAt string) error
-	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (bool, error)
+	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (int64, error)
 	SetSetting(ctx context.Context, arg SetSettingParams) error
 	SumEpisodeFileSize(ctx context.Context) (interface{}, error)
 	UpdateDownloadClientConfig(ctx context.Context, arg UpdateDownloadClientConfigParams) (DownloadClientConfig, error)
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (Episode, error)
 	// Backfill or correct the absolute episode number. Used by the refresh
-	// path when a series is newly flagged as anime — its existing rows have
+	// path when a series is newly flagged as anime - its existing rows have
 	// absolute_number = NULL and need to be filled in retroactively.
 	UpdateEpisodeAbsoluteNumber(ctx context.Context, arg UpdateEpisodeAbsoluteNumberParams) error
 	UpdateEpisodeFilePath(ctx context.Context, arg UpdateEpisodeFilePathParams) error

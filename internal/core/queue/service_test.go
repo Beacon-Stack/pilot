@@ -8,7 +8,6 @@ package queue
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log/slog"
 	"sync"
@@ -122,6 +121,9 @@ func discardLogger() *slog.Logger {
 }
 
 // activeGrab returns a GrabHistory with the minimum fields required to
+// ptrString returns a *string pointer.
+func ptrString(s string) *string { return &s }
+
 // reach the pollClient → status-update branches.
 func activeGrab(id, clientItemID, currentStatus string) db.GrabHistory {
 	return db.GrabHistory{
@@ -130,8 +132,8 @@ func activeGrab(id, clientItemID, currentStatus string) db.GrabHistory {
 		ReleaseTitle:     "Test Release " + id,
 		Protocol:         "torrent",
 		DownloadStatus:   currentStatus,
-		DownloadClientID: sql.NullString{String: "client-1", Valid: true},
-		ClientItemID:     sql.NullString{String: clientItemID, Valid: true},
+		DownloadClientID: ptrString("client-1"),
+		ClientItemID:     ptrString(clientItemID),
 		GrabbedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
 }

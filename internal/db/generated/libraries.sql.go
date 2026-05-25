@@ -7,11 +7,10 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 const countSeriesInLibrary = `-- name: CountSeriesInLibrary :one
-SELECT COUNT(*) FROM series WHERE library_id = $1
+SELECT COUNT(*) FROM series WHERE library_id = ?
 `
 
 func (q *Queries) CountSeriesInLibrary(ctx context.Context, libraryID string) (int64, error) {
@@ -26,23 +25,23 @@ INSERT INTO libraries (
     id, name, root_path, default_quality_profile_id,
     naming_format, folder_format, min_free_space_gb, tags_json, created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4,
-    $5, $6, $7, $8, $9, $10
+    ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?
 )
 RETURNING id, name, root_path, default_quality_profile_id, naming_format, folder_format, min_free_space_gb, tags_json, created_at, updated_at
 `
 
 type CreateLibraryParams struct {
-	ID                      string         `json:"id"`
-	Name                    string         `json:"name"`
-	RootPath                string         `json:"rootPath"`
-	DefaultQualityProfileID string         `json:"defaultQualityProfileId"`
-	NamingFormat            sql.NullString `json:"namingFormat"`
-	FolderFormat            sql.NullString `json:"folderFormat"`
-	MinFreeSpaceGb          int32          `json:"minFreeSpaceGb"`
-	TagsJson                string         `json:"tagsJson"`
-	CreatedAt               string         `json:"createdAt"`
-	UpdatedAt               string         `json:"updatedAt"`
+	ID                      string  `json:"id"`
+	Name                    string  `json:"name"`
+	RootPath                string  `json:"rootPath"`
+	DefaultQualityProfileID string  `json:"defaultQualityProfileId"`
+	NamingFormat            *string `json:"namingFormat"`
+	FolderFormat            *string `json:"folderFormat"`
+	MinFreeSpaceGb          int64   `json:"minFreeSpaceGb"`
+	TagsJson                string  `json:"tagsJson"`
+	CreatedAt               string  `json:"createdAt"`
+	UpdatedAt               string  `json:"updatedAt"`
 }
 
 func (q *Queries) CreateLibrary(ctx context.Context, arg CreateLibraryParams) (Library, error) {
@@ -75,7 +74,7 @@ func (q *Queries) CreateLibrary(ctx context.Context, arg CreateLibraryParams) (L
 }
 
 const deleteLibrary = `-- name: DeleteLibrary :exec
-DELETE FROM libraries WHERE id = $1
+DELETE FROM libraries WHERE id = ?
 `
 
 func (q *Queries) DeleteLibrary(ctx context.Context, id string) error {
@@ -84,7 +83,7 @@ func (q *Queries) DeleteLibrary(ctx context.Context, id string) error {
 }
 
 const getLibrary = `-- name: GetLibrary :one
-SELECT id, name, root_path, default_quality_profile_id, naming_format, folder_format, min_free_space_gb, tags_json, created_at, updated_at FROM libraries WHERE id = $1
+SELECT id, name, root_path, default_quality_profile_id, naming_format, folder_format, min_free_space_gb, tags_json, created_at, updated_at FROM libraries WHERE id = ?
 `
 
 func (q *Queries) GetLibrary(ctx context.Context, id string) (Library, error) {
@@ -145,28 +144,28 @@ func (q *Queries) ListLibraries(ctx context.Context) ([]Library, error) {
 
 const updateLibrary = `-- name: UpdateLibrary :one
 UPDATE libraries SET
-    name                        = $1,
-    root_path                   = $2,
-    default_quality_profile_id  = $3,
-    naming_format               = $4,
-    folder_format               = $5,
-    min_free_space_gb           = $6,
-    tags_json                   = $7,
-    updated_at                  = $8
-WHERE id = $9
+    name                        = ?,
+    root_path                   = ?,
+    default_quality_profile_id  = ?,
+    naming_format               = ?,
+    folder_format               = ?,
+    min_free_space_gb           = ?,
+    tags_json                   = ?,
+    updated_at                  = ?
+WHERE id = ?
 RETURNING id, name, root_path, default_quality_profile_id, naming_format, folder_format, min_free_space_gb, tags_json, created_at, updated_at
 `
 
 type UpdateLibraryParams struct {
-	Name                    string         `json:"name"`
-	RootPath                string         `json:"rootPath"`
-	DefaultQualityProfileID string         `json:"defaultQualityProfileId"`
-	NamingFormat            sql.NullString `json:"namingFormat"`
-	FolderFormat            sql.NullString `json:"folderFormat"`
-	MinFreeSpaceGb          int32          `json:"minFreeSpaceGb"`
-	TagsJson                string         `json:"tagsJson"`
-	UpdatedAt               string         `json:"updatedAt"`
-	ID                      string         `json:"id"`
+	Name                    string  `json:"name"`
+	RootPath                string  `json:"rootPath"`
+	DefaultQualityProfileID string  `json:"defaultQualityProfileId"`
+	NamingFormat            *string `json:"namingFormat"`
+	FolderFormat            *string `json:"folderFormat"`
+	MinFreeSpaceGb          int64   `json:"minFreeSpaceGb"`
+	TagsJson                string  `json:"tagsJson"`
+	UpdatedAt               string  `json:"updatedAt"`
+	ID                      string  `json:"id"`
 }
 
 func (q *Queries) UpdateLibrary(ctx context.Context, arg UpdateLibraryParams) (Library, error) {

@@ -41,7 +41,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
+	_ "modernc.org/sqlite"
 
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
@@ -111,7 +111,7 @@ type mockQuerier struct {
 type updateStatusCall struct {
 	GrabID         string
 	DownloadStatus string
-	Bytes          int32
+	Bytes          int64
 }
 
 func newMockQuerier() *mockQuerier {
@@ -122,13 +122,13 @@ func newMockQuerier() *mockQuerier {
 	}
 }
 
-func (m *mockQuerier) GetGrabByInfoHash(ctx context.Context, infoHash sql.NullString) (db.GrabHistory, error) {
+func (m *mockQuerier) GetGrabByInfoHash(ctx context.Context, infoHash *string) (db.GrabHistory, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if !infoHash.Valid {
+	if infoHash == nil {
 		return db.GrabHistory{}, sql.ErrNoRows
 	}
-	row, ok := m.grabByInfoHash[infoHash.String]
+	row, ok := m.grabByInfoHash[*infoHash]
 	if !ok {
 		return db.GrabHistory{}, sql.ErrNoRows
 	}
@@ -168,7 +168,11 @@ func (m *mockQuerier) CreateBlocklistEntry(ctx context.Context, arg db.CreateBlo
 func (m *mockQuerier) CountRecentStallsForEpisode(ctx context.Context, arg db.CountRecentStallsForEpisodeParams) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := arg.SeriesID + "|" + arg.EpisodeID.String
+	epID := ""
+	if arg.EpisodeID != nil {
+		epID = *arg.EpisodeID
+	}
+	key := arg.SeriesID + "|" + epID
 	return m.stallCountsByEpisode[key], nil
 }
 
@@ -188,7 +192,7 @@ func (m *mockQuerier) ListStaleActiveGrabs(ctx context.Context, olderThan string
 		if !nonTerminal[g.DownloadStatus] {
 			continue
 		}
-		if g.InfoHash.Valid && g.InfoHash.String != "" {
+		if g.InfoHash != nil && *g.InfoHash != "" {
 			continue // has info_hash — handled by the haul-stall path
 		}
 		if g.GrabbedAt >= olderThan {
@@ -207,13 +211,33 @@ func (m *mockQuerier) DeleteBlocklistEntryByGUID(ctx context.Context, releaseGui
 	return nil
 }
 
+// ptr returns a pointer to s; used to feed *string nullable params.
+func ptr(s string) *string { return &s }
+
 // errUniqueViolation is the sentinel error used by the mock to simulate
-// Postgres's unique constraint violation. Uses the real pgconn.PgError
-// type so dbutil.IsUniqueViolation's errors.As check matches and the
-// blocklist service converts it to ErrAlreadyBlocklisted.
-var errUniqueViolation = &pgconn.PgError{
-	Code:    "23505",
-	Message: "duplicate key value violates unique constraint",
+// a unique constraint violation. We trigger a real SQLite unique
+// violation against an in-memory DB so dbutil.IsUniqueViolation's
+// errors.As check against *sqlite.Error matches and the blocklist
+// service converts it to ErrAlreadyBlocklisted.
+var errUniqueViolation = newUniqueViolationErr()
+
+func newUniqueViolationErr() error {
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		panic(err)
+	}
+	defer sqlDB.Close()
+	if _, err := sqlDB.Exec("CREATE TABLE t(k TEXT UNIQUE)"); err != nil {
+		panic(err)
+	}
+	if _, err := sqlDB.Exec("INSERT INTO t VALUES('x')"); err != nil {
+		panic(err)
+	}
+	_, err = sqlDB.Exec("INSERT INTO t VALUES('x')")
+	if err == nil {
+		panic("expected unique violation, got nil")
+	}
+	return err
 }
 
 // ── Fake downloader lister ────────────────────────────────────────────────────
@@ -297,15 +321,15 @@ func TestTick_BlocklistsStalledGrab(t *testing.T) {
 	rig.mock.grabByInfoHash["deadbeef00"] = db.GrabHistory{
 		ID:             "grab-1",
 		SeriesID:       "series-1",
-		EpisodeID:      sql.NullString{String: "ep-1", Valid: true},
+		EpisodeID:      ptr("ep-1"),
 		ReleaseGuid:    "guid-1",
 		ReleaseTitle:   "Raised.by.Wolves.2020.S01E01.WEB.x264-PHOENiX[TGx]",
-		IndexerID:      sql.NullString{String: "idx-1337x", Valid: true},
+		IndexerID:      ptr("idx-1337x"),
 		Protocol:       "torrent",
 		Size:           365599177,
 		DownloadStatus: "queued",
 		Source:         "interactive",
-		InfoHash:       sql.NullString{String: "deadbeef00", Valid: true},
+		InfoHash:       ptr("deadbeef00"),
 	}
 
 	rig.haul.setStalls([]map[string]any{
@@ -334,8 +358,8 @@ func TestTick_BlocklistsStalledGrab(t *testing.T) {
 	if bl.Reason != blocklist.ReasonStallNoPeersEver {
 		t.Errorf("wrong blocklist reason: got %q want %q", bl.Reason, blocklist.ReasonStallNoPeersEver)
 	}
-	if bl.InfoHash.String != "deadbeef00" {
-		t.Errorf("blocklist info_hash should be deadbeef00, got %q", bl.InfoHash.String)
+	if bl.InfoHash == nil || *bl.InfoHash != "deadbeef00" {
+		t.Errorf("blocklist info_hash should be deadbeef00, got %v", bl.InfoHash)
 	}
 
 	// Grab status should be updated to "stalled".
@@ -388,13 +412,13 @@ func TestTick_RespectsStartupGrace(t *testing.T) {
 	rig.mock.grabByInfoHash["deadbeef00"] = db.GrabHistory{
 		ID:             "grab-1",
 		SeriesID:       "series-1",
-		EpisodeID:      sql.NullString{String: "ep-1", Valid: true},
+		EpisodeID:      ptr("ep-1"),
 		ReleaseGuid:    "guid-1",
 		ReleaseTitle:   "test",
 		Protocol:       "torrent",
 		DownloadStatus: "queued",
 		Source:         "interactive",
-		InfoHash:       sql.NullString{String: "deadbeef00", Valid: true},
+		InfoHash:       ptr("deadbeef00"),
 	}
 	rig.haul.setStalls([]map[string]any{
 		{"info_hash": "deadbeef00", "reason": "no_peers_ever", "level": 4},
@@ -420,13 +444,13 @@ func TestTick_SkipsAlreadyTerminalGrabs(t *testing.T) {
 	rig.mock.grabByInfoHash["deadbeef00"] = db.GrabHistory{
 		ID:             "grab-1",
 		SeriesID:       "series-1",
-		EpisodeID:      sql.NullString{String: "ep-1", Valid: true},
+		EpisodeID:      ptr("ep-1"),
 		ReleaseGuid:    "guid-1",
 		ReleaseTitle:   "test",
 		Protocol:       "torrent",
 		DownloadStatus: "stalled", // already stalled
 		Source:         "interactive",
-		InfoHash:       sql.NullString{String: "deadbeef00", Valid: true},
+		InfoHash:       ptr("deadbeef00"),
 	}
 	rig.haul.setStalls([]map[string]any{
 		{"info_hash": "deadbeef00", "reason": "no_peers_ever", "level": 4},
@@ -452,13 +476,13 @@ func TestTick_CircuitBreaker(t *testing.T) {
 	rig.mock.grabByInfoHash["deadbeef00"] = db.GrabHistory{
 		ID:             "grab-1",
 		SeriesID:       "series-1",
-		EpisodeID:      sql.NullString{String: "ep-1", Valid: true},
+		EpisodeID:      ptr("ep-1"),
 		ReleaseGuid:    "guid-1",
 		ReleaseTitle:   "test",
 		Protocol:       "torrent",
 		DownloadStatus: "queued",
 		Source:         "auto_search",
-		InfoHash:       sql.NullString{String: "deadbeef00", Valid: true},
+		InfoHash:       ptr("deadbeef00"),
 	}
 	// Simulate 3 already-stalled-and-blocklisted entries for this episode.
 	rig.mock.stallCountsByEpisode["series-1|ep-1"] = 3
@@ -502,13 +526,13 @@ func TestTick_AutoSearchTriggersRetry(t *testing.T) {
 	rig.mock.grabByInfoHash["deadbeef00"] = db.GrabHistory{
 		ID:             "grab-1",
 		SeriesID:       "series-1",
-		EpisodeID:      sql.NullString{String: "ep-1", Valid: true},
+		EpisodeID:      ptr("ep-1"),
 		ReleaseGuid:    "guid-1",
 		ReleaseTitle:   "test",
 		Protocol:       "torrent",
 		DownloadStatus: "queued",
 		Source:         "auto_search",
-		InfoHash:       sql.NullString{String: "deadbeef00", Valid: true},
+		InfoHash:       ptr("deadbeef00"),
 	}
 	// 0 existing stalls for this episode
 	rig.haul.setStalls([]map[string]any{
@@ -541,13 +565,13 @@ func TestTick_InteractiveDoesNotAutoRetry(t *testing.T) {
 	rig.mock.grabByInfoHash["deadbeef00"] = db.GrabHistory{
 		ID:             "grab-1",
 		SeriesID:       "series-1",
-		EpisodeID:      sql.NullString{String: "ep-1", Valid: true},
+		EpisodeID:      ptr("ep-1"),
 		ReleaseGuid:    "guid-1",
 		ReleaseTitle:   "test",
 		Protocol:       "torrent",
 		DownloadStatus: "queued",
 		Source:         "interactive",
-		InfoHash:       sql.NullString{String: "deadbeef00", Valid: true},
+		InfoHash:       ptr("deadbeef00"),
 	}
 	rig.haul.setStalls([]map[string]any{
 		{"info_hash": "deadbeef00", "reason": "no_peers_ever", "level": 4},
@@ -664,13 +688,13 @@ func TestTick_SweepsStuckGrabsWithoutInfoHash(t *testing.T) {
 	rig.mock.grabByInfoHash[""] = db.GrabHistory{
 		ID:             "stale-grab-1",
 		SeriesID:       "series-1",
-		EpisodeID:      sql.NullString{String: "ep-1", Valid: true},
+		EpisodeID:      ptr("ep-1"),
 		ReleaseGuid:    "guid-stale",
 		ReleaseTitle:   "Star.Wars.Maul.S01E07.WEB.h264-ETHEL",
 		Protocol:       "torrent",
 		DownloadStatus: "downloading",
 		Source:         "auto_search",
-		InfoHash:       sql.NullString{Valid: false}, // explicit no-hash
+		InfoHash:       nil, // explicit no-hash
 		GrabbedAt:      staleGrabbed,
 	}
 
@@ -705,7 +729,7 @@ func TestTick_SweepLeavesFreshGrabsAlone(t *testing.T) {
 	rig.mock.grabByInfoHash[""] = db.GrabHistory{
 		ID:             "fresh-grab-1",
 		DownloadStatus: "downloading",
-		InfoHash:       sql.NullString{Valid: false},
+		InfoHash:       nil,
 		GrabbedAt:      freshGrabbed,
 	}
 
@@ -728,7 +752,7 @@ func TestTick_SweepIgnoresGrabsWithInfoHash(t *testing.T) {
 	rig.mock.grabByInfoHash["abcd1234"] = db.GrabHistory{
 		ID:             "with-hash-grab-1",
 		DownloadStatus: "downloading",
-		InfoHash:       sql.NullString{String: "abcd1234", Valid: true},
+		InfoHash:       ptr("abcd1234"),
 		GrabbedAt:      staleGrabbed,
 	}
 
@@ -754,7 +778,7 @@ func TestTick_SweepRespectsStartupGrace(t *testing.T) {
 	rig.mock.grabByInfoHash[""] = db.GrabHistory{
 		ID:             "would-be-stale",
 		DownloadStatus: "downloading",
-		InfoHash:       sql.NullString{Valid: false},
+		InfoHash:       nil,
 		GrabbedAt:      staleGrabbed,
 	}
 

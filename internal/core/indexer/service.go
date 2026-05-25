@@ -26,9 +26,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
-	"github.com/beacon-stack/pilot/internal/dbutil"
 	"github.com/beacon-stack/pilot/internal/events"
 	"github.com/beacon-stack/pilot/internal/ratelimit"
 	"github.com/beacon-stack/pilot/internal/registry"
@@ -178,9 +178,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Config, error)
 		Name:       req.Name,
 		Kind:       req.Kind,
 		Enabled:    req.Enabled,
-		Priority:   int32(priority),
+		Priority:   int64(priority),
 		Settings:   string(settings),
-		MinSeeders: int32(minSeeders),
+		MinSeeders: int64(minSeeders),
 		CreatedAt:  now.Format(time.RFC3339),
 		UpdatedAt:  now.Format(time.RFC3339),
 	})
@@ -257,9 +257,9 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Con
 		Name:       req.Name,
 		Kind:       req.Kind,
 		Enabled:    req.Enabled,
-		Priority:   int32(priority),
+		Priority:   int64(priority),
 		Settings:   string(settings),
-		MinSeeders: int32(minSeeders),
+		MinSeeders: int64(minSeeders),
 		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 	})
 	if err != nil {
@@ -657,19 +657,10 @@ func (s *Service) GrabHistory(ctx context.Context, seriesID string) ([]db.GrabHi
 // and optionally to a specific episode. Pass empty strings for fields that are
 // not applicable (e.g. season-pack grabs have no episodeID).
 func (s *Service) CreateGrab(ctx context.Context, req GrabRequest) (db.GrabHistory, error) {
-	idxID := sql.NullString{}
-	if req.IndexerID != "" {
-		idxID = sql.NullString{String: req.IndexerID, Valid: true}
-	}
-
-	episodeID := sql.NullString{}
-	if req.EpisodeID != "" {
-		episodeID = sql.NullString{String: req.EpisodeID, Valid: true}
-	}
-
-	seasonNumber := sql.NullInt32{}
+	var seasonNumber *int64
 	if req.SeasonNumber > 0 {
-		seasonNumber = sql.NullInt32{Int32: int32(req.SeasonNumber), Valid: true}
+		sn := int64(req.SeasonNumber)
+		seasonNumber = &sn
 	}
 
 	source := req.Source
@@ -681,9 +672,9 @@ func (s *Service) CreateGrab(ctx context.Context, req GrabRequest) (db.GrabHisto
 	row, err := s.q.CreateGrabHistory(ctx, db.CreateGrabHistoryParams{
 		ID:                uuid.New().String(),
 		SeriesID:          req.SeriesID,
-		EpisodeID:         episodeID,
+		EpisodeID:         dbutil.NullableString(req.EpisodeID),
 		SeasonNumber:      seasonNumber,
-		IndexerID:         idxID,
+		IndexerID:         dbutil.NullableString(req.IndexerID),
 		ReleaseGuid:       req.Release.GUID,
 		ReleaseTitle:      req.Release.Title,
 		ReleaseSource:     string(req.Release.Quality.Source),
@@ -691,14 +682,14 @@ func (s *Service) CreateGrab(ctx context.Context, req GrabRequest) (db.GrabHisto
 		ReleaseCodec:      string(req.Release.Quality.Codec),
 		ReleaseHdr:        string(req.Release.Quality.HDR),
 		Protocol:          string(req.Release.Protocol),
-		Size:              int32(req.Release.Size),
-		DownloadClientID:  sql.NullString{},
-		ClientItemID:      sql.NullString{},
+		Size:              req.Release.Size,
+		DownloadClientID:  nil,
+		ClientItemID:      nil,
 		DownloadStatus:    "queued",
-		ScoreBreakdown:    sql.NullString{},
+		ScoreBreakdown:    nil,
 		GrabbedAt:         now,
 		Source:            source,
-		InfoHash:          sql.NullString{}, // populated later when Haul reports it via UpdateGrabInfoHash
+		InfoHash:          nil, // populated later when Haul reports it via UpdateGrabInfoHash
 	})
 	if err != nil {
 		return db.GrabHistory{}, fmt.Errorf("recording grab history: %w", err)
@@ -747,7 +738,7 @@ func (s *Service) UpdateGrabStatus(ctx context.Context, grabID, status string) e
 // grab that initiated them.
 func (s *Service) UpdateGrabInfoHash(ctx context.Context, grabID, infoHash string) error {
 	if err := s.q.UpdateGrabInfoHash(ctx, db.UpdateGrabInfoHashParams{
-		InfoHash: sql.NullString{String: infoHash, Valid: infoHash != ""},
+		InfoHash: dbutil.NullableString(infoHash),
 		ID:       grabID,
 	}); err != nil {
 		return fmt.Errorf("updating grab info_hash: %w", err)
@@ -761,7 +752,7 @@ func (s *Service) UpdateGrabInfoHash(ctx context.Context, grabID, infoHash strin
 // endpoint to find the original grab so it can blocklist the dead
 // release and retry.
 func (s *Service) GetGrabByInfoHash(ctx context.Context, infoHash string) (db.GrabHistory, error) {
-	return s.q.GetGrabByInfoHash(ctx, sql.NullString{String: infoHash, Valid: infoHash != ""})
+	return s.q.GetGrabByInfoHash(ctx, dbutil.NullableString(infoHash))
 }
 
 func rowToConfig(row db.IndexerConfig) (Config, error) {

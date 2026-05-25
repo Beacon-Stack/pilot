@@ -11,7 +11,7 @@ import (
 
 const createDownloadClientConfig = `-- name: CreateDownloadClientConfig :one
 INSERT INTO download_client_configs (id, name, kind, enabled, priority, settings, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, name, kind, enabled, priority, settings, created_at, updated_at
 `
 
@@ -20,7 +20,7 @@ type CreateDownloadClientConfigParams struct {
 	Name      string `json:"name"`
 	Kind      string `json:"kind"`
 	Enabled   bool   `json:"enabled"`
-	Priority  int32  `json:"priority"`
+	Priority  int64  `json:"priority"`
 	Settings  string `json:"settings"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
@@ -52,7 +52,7 @@ func (q *Queries) CreateDownloadClientConfig(ctx context.Context, arg CreateDown
 }
 
 const deleteDownloadClientConfig = `-- name: DeleteDownloadClientConfig :exec
-DELETE FROM download_client_configs WHERE id = $1
+DELETE FROM download_client_configs WHERE id = ?
 `
 
 func (q *Queries) DeleteDownloadClientConfig(ctx context.Context, id string) error {
@@ -61,7 +61,7 @@ func (q *Queries) DeleteDownloadClientConfig(ctx context.Context, id string) err
 }
 
 const getDownloadClientConfig = `-- name: GetDownloadClientConfig :one
-SELECT id, name, kind, enabled, priority, settings, created_at, updated_at FROM download_client_configs WHERE id = $1
+SELECT id, name, kind, enabled, priority, settings, created_at, updated_at FROM download_client_configs WHERE id = ?
 `
 
 func (q *Queries) GetDownloadClientConfig(ctx context.Context, id string) (DownloadClientConfig, error) {
@@ -154,13 +154,13 @@ func (q *Queries) ListEnabledDownloadClients(ctx context.Context) ([]DownloadCli
 
 const updateDownloadClientConfig = `-- name: UpdateDownloadClientConfig :one
 UPDATE download_client_configs SET
-    name       = $1,
-    kind       = $2,
-    enabled    = $3,
-    priority   = $4,
-    settings   = $5,
-    updated_at = $6
-WHERE id = $7
+    name       = ?,
+    kind       = ?,
+    enabled    = ?,
+    priority   = ?,
+    settings   = ?,
+    updated_at = ?
+WHERE id = ?
 RETURNING id, name, kind, enabled, priority, settings, created_at, updated_at
 `
 
@@ -168,7 +168,7 @@ type UpdateDownloadClientConfigParams struct {
 	Name      string `json:"name"`
 	Kind      string `json:"kind"`
 	Enabled   bool   `json:"enabled"`
-	Priority  int32  `json:"priority"`
+	Priority  int64  `json:"priority"`
 	Settings  string `json:"settings"`
 	UpdatedAt string `json:"updatedAt"`
 	ID        string `json:"id"`

@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 )
 
 const createQualityProfile = `-- name: CreateQualityProfile :one
@@ -16,25 +15,25 @@ INSERT INTO quality_profiles (
     upgrade_allowed, upgrade_until_json, created_at, updated_at,
     min_custom_format_score, upgrade_until_cf_score, managed_by_pulse
 ) VALUES (
-    $1, $2, $3, $4,
-    $5, $6, $7, $8,
-    $9, $10, $11
+    ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?
 )
 RETURNING id, name, cutoff_json, qualities_json, upgrade_allowed, upgrade_until_json, min_custom_format_score, upgrade_until_cf_score, created_at, updated_at, managed_by_pulse
 `
 
 type CreateQualityProfileParams struct {
-	ID                   string         `json:"id"`
-	Name                 string         `json:"name"`
-	CutoffJson           string         `json:"cutoffJson"`
-	QualitiesJson        string         `json:"qualitiesJson"`
-	UpgradeAllowed       bool           `json:"upgradeAllowed"`
-	UpgradeUntilJson     sql.NullString `json:"upgradeUntilJson"`
-	CreatedAt            string         `json:"createdAt"`
-	UpdatedAt            string         `json:"updatedAt"`
-	MinCustomFormatScore int32          `json:"minCustomFormatScore"`
-	UpgradeUntilCfScore  int32          `json:"upgradeUntilCfScore"`
-	ManagedByPulse       bool           `json:"managedByPulse"`
+	ID                   string  `json:"id"`
+	Name                 string  `json:"name"`
+	CutoffJson           string  `json:"cutoffJson"`
+	QualitiesJson        string  `json:"qualitiesJson"`
+	UpgradeAllowed       bool    `json:"upgradeAllowed"`
+	UpgradeUntilJson     *string `json:"upgradeUntilJson"`
+	CreatedAt            string  `json:"createdAt"`
+	UpdatedAt            string  `json:"updatedAt"`
+	MinCustomFormatScore int64   `json:"minCustomFormatScore"`
+	UpgradeUntilCfScore  int64   `json:"upgradeUntilCfScore"`
+	ManagedByPulse       bool    `json:"managedByPulse"`
 }
 
 func (q *Queries) CreateQualityProfile(ctx context.Context, arg CreateQualityProfileParams) (QualityProfile, error) {
@@ -69,7 +68,7 @@ func (q *Queries) CreateQualityProfile(ctx context.Context, arg CreateQualityPro
 }
 
 const deleteQualityProfile = `-- name: DeleteQualityProfile :exec
-DELETE FROM quality_profiles WHERE id = $1
+DELETE FROM quality_profiles WHERE id = ?
 `
 
 func (q *Queries) DeleteQualityProfile(ctx context.Context, id string) error {
@@ -78,7 +77,7 @@ func (q *Queries) DeleteQualityProfile(ctx context.Context, id string) error {
 }
 
 const detachQualityProfileFromPulse = `-- name: DetachQualityProfileFromPulse :exec
-UPDATE quality_profiles SET managed_by_pulse = FALSE WHERE id = $1
+UPDATE quality_profiles SET managed_by_pulse = FALSE WHERE id = ?
 `
 
 func (q *Queries) DetachQualityProfileFromPulse(ctx context.Context, id string) error {
@@ -87,7 +86,7 @@ func (q *Queries) DetachQualityProfileFromPulse(ctx context.Context, id string) 
 }
 
 const getQualityProfile = `-- name: GetQualityProfile :one
-SELECT id, name, cutoff_json, qualities_json, upgrade_allowed, upgrade_until_json, min_custom_format_score, upgrade_until_cf_score, created_at, updated_at, managed_by_pulse FROM quality_profiles WHERE id = $1
+SELECT id, name, cutoff_json, qualities_json, upgrade_allowed, upgrade_until_json, min_custom_format_score, upgrade_until_cf_score, created_at, updated_at, managed_by_pulse FROM quality_profiles WHERE id = ?
 `
 
 func (q *Queries) GetQualityProfile(ctx context.Context, id string) (QualityProfile, error) {
@@ -189,9 +188,9 @@ func (q *Queries) ListQualityProfiles(ctx context.Context) ([]QualityProfile, er
 
 const qualityProfileInUse = `-- name: QualityProfileInUse :one
 SELECT EXISTS (
-    SELECT 1 FROM series WHERE quality_profile_id = $1
+    SELECT 1 FROM series WHERE quality_profile_id = ?
     UNION ALL
-    SELECT 1 FROM libraries WHERE default_quality_profile_id = $2
+    SELECT 1 FROM libraries WHERE default_quality_profile_id = ?
 ) AS in_use
 `
 
@@ -200,37 +199,37 @@ type QualityProfileInUseParams struct {
 	DefaultQualityProfileID string `json:"defaultQualityProfileId"`
 }
 
-func (q *Queries) QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (bool, error) {
+func (q *Queries) QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, qualityProfileInUse, arg.QualityProfileID, arg.DefaultQualityProfileID)
-	var in_use bool
+	var in_use int64
 	err := row.Scan(&in_use)
 	return in_use, err
 }
 
 const updateQualityProfile = `-- name: UpdateQualityProfile :one
 UPDATE quality_profiles SET
-    name                     = $1,
-    cutoff_json              = $2,
-    qualities_json           = $3,
-    upgrade_allowed          = $4,
-    upgrade_until_json       = $5,
-    updated_at               = $6,
-    min_custom_format_score  = $7,
-    upgrade_until_cf_score   = $8
-WHERE id = $9
+    name                     = ?,
+    cutoff_json              = ?,
+    qualities_json           = ?,
+    upgrade_allowed          = ?,
+    upgrade_until_json       = ?,
+    updated_at               = ?,
+    min_custom_format_score  = ?,
+    upgrade_until_cf_score   = ?
+WHERE id = ?
 RETURNING id, name, cutoff_json, qualities_json, upgrade_allowed, upgrade_until_json, min_custom_format_score, upgrade_until_cf_score, created_at, updated_at, managed_by_pulse
 `
 
 type UpdateQualityProfileParams struct {
-	Name                 string         `json:"name"`
-	CutoffJson           string         `json:"cutoffJson"`
-	QualitiesJson        string         `json:"qualitiesJson"`
-	UpgradeAllowed       bool           `json:"upgradeAllowed"`
-	UpgradeUntilJson     sql.NullString `json:"upgradeUntilJson"`
-	UpdatedAt            string         `json:"updatedAt"`
-	MinCustomFormatScore int32          `json:"minCustomFormatScore"`
-	UpgradeUntilCfScore  int32          `json:"upgradeUntilCfScore"`
-	ID                   string         `json:"id"`
+	Name                 string  `json:"name"`
+	CutoffJson           string  `json:"cutoffJson"`
+	QualitiesJson        string  `json:"qualitiesJson"`
+	UpgradeAllowed       bool    `json:"upgradeAllowed"`
+	UpgradeUntilJson     *string `json:"upgradeUntilJson"`
+	UpdatedAt            string  `json:"updatedAt"`
+	MinCustomFormatScore int64   `json:"minCustomFormatScore"`
+	UpgradeUntilCfScore  int64   `json:"upgradeUntilCfScore"`
+	ID                   string  `json:"id"`
 }
 
 func (q *Queries) UpdateQualityProfile(ctx context.Context, arg UpdateQualityProfileParams) (QualityProfile, error) {

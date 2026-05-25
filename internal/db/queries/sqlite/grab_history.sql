@@ -6,34 +6,34 @@ INSERT INTO grab_history (
     download_client_id, client_item_id, download_status,
     score_breakdown, grabbed_at, source, info_hash
 ) VALUES (
-    $1, $2, $3, $4, $5,
-    $6, $7, $8, $9,
-    $10, $11, $12, $13,
-    $14, $15, $16,
-    $17, $18, $19, $20
+    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?, ?, ?
 )
 RETURNING *;
 
 -- name: ListGrabHistoryBySeries :many
-SELECT * FROM grab_history WHERE series_id = $1 ORDER BY grabbed_at DESC;
+SELECT * FROM grab_history WHERE series_id = ? ORDER BY grabbed_at DESC;
 
 -- name: ListGrabHistoryByEpisode :many
-SELECT * FROM grab_history WHERE episode_id = $1 ORDER BY grabbed_at DESC;
+SELECT * FROM grab_history WHERE episode_id = ? ORDER BY grabbed_at DESC;
 
 -- name: ListGrabHistory :many
-SELECT * FROM grab_history ORDER BY grabbed_at DESC LIMIT $1 OFFSET $2;
+SELECT * FROM grab_history ORDER BY grabbed_at DESC LIMIT ? OFFSET ?;
 
 -- name: GetGrabByID :one
-SELECT * FROM grab_history WHERE id = $1;
+SELECT * FROM grab_history WHERE id = ?;
 
 -- name: UpdateGrabStatus :exec
-UPDATE grab_history SET download_status = $1, downloaded_bytes = $2 WHERE id = $3;
+UPDATE grab_history SET download_status = ?, downloaded_bytes = ? WHERE id = ?;
 
 -- name: UpdateGrabDownloadClient :exec
-UPDATE grab_history SET download_client_id = $1, client_item_id = $2 WHERE id = $3;
+UPDATE grab_history SET download_client_id = ?, client_item_id = ? WHERE id = ?;
 
 -- name: UpdateGrabInfoHash :exec
-UPDATE grab_history SET info_hash = $1 WHERE id = $2;
+UPDATE grab_history SET info_hash = ? WHERE id = ?;
 
 -- name: ListActiveGrabs :many
 SELECT * FROM grab_history WHERE download_status NOT IN ('completed', 'failed', 'removed', 'stalled') ORDER BY grabbed_at DESC;
@@ -43,7 +43,7 @@ SELECT * FROM grab_history WHERE download_status NOT IN ('completed', 'failed', 
 -- they can't make progress. Two cohorts:
 --   1. info_hash IS NULL/empty: pilot recorded the grab but never got an
 --      info_hash back from the download client. The stallwatcher's
---      info_hash-keyed pipeline is blind to these — they sit in
+--      info_hash-keyed pipeline is blind to these - they sit in
 --      `downloading` forever. We expire them by age.
 --   2. info_hash IS set: stallwatcher already has a better signal (haul
 --      reports the stall reason). Those are handled by the haul-stall
@@ -53,25 +53,24 @@ SELECT * FROM grab_history WHERE download_status NOT IN ('completed', 'failed', 
 SELECT * FROM grab_history
  WHERE download_status IN ('downloading', 'queued', 'pending')
    AND (info_hash IS NULL OR info_hash = '')
-   AND grabbed_at < sqlc.arg('older_than')::text
+   AND grabbed_at < sqlc.arg('older_than')
  ORDER BY grabbed_at ASC;
 
 -- name: GetGrabByClientItemID :one
-SELECT * FROM grab_history WHERE client_item_id = $1 LIMIT 1;
+SELECT * FROM grab_history WHERE client_item_id = ? LIMIT 1;
 
 -- name: GetGrabByInfoHash :one
-SELECT * FROM grab_history WHERE info_hash = $1 ORDER BY grabbed_at DESC LIMIT 1;
+SELECT * FROM grab_history WHERE info_hash = ? ORDER BY grabbed_at DESC LIMIT 1;
 
 -- name: MarkGrabRemoved :exec
-UPDATE grab_history SET download_status = 'removed' WHERE id = $1;
+UPDATE grab_history SET download_status = 'removed' WHERE id = ?;
 
 -- name: ListGrabHistoryByStatusSince :many
 -- Used by the Activity page's "Recently imported" and "Needs attention" rails
--- to window grabs by terminal status and time. The ::text casts make the
--- types explicit to the planner; grab_history.grabbed_at is TEXT-encoded
--- RFC3339 so the comparison is lexicographic but order-preserving.
+-- to window grabs by terminal status and time. grab_history.grabbed_at is
+-- TEXT-encoded RFC3339 so the comparison is lexicographic but order-preserving.
 SELECT * FROM grab_history
-WHERE download_status = sqlc.arg('status')::text
-  AND grabbed_at > sqlc.arg('since')::text
+WHERE download_status = sqlc.arg('status')
+  AND grabbed_at > sqlc.arg('since')
 ORDER BY grabbed_at DESC
 LIMIT sqlc.arg('limit');

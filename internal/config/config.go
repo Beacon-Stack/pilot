@@ -38,18 +38,10 @@ type ServerConfig struct {
 	Port int    `mapstructure:"port"`
 }
 
-// DatabaseConfig selects and configures the database driver.
+// DatabaseConfig configures the SQLite database.
 type DatabaseConfig struct {
-	// Driver is "sqlite" (default) or "postgres".
-	Driver string `mapstructure:"driver"`
-	// Path is the SQLite database file path. Ignored for Postgres.
+	// Path is the SQLite database file location.
 	Path string `mapstructure:"path"`
-	// DSN is the Postgres connection string. Ignored for SQLite.
-	DSN Secret `mapstructure:"dsn"`
-	// PasswordFile is a path to a file containing the Postgres password,
-	// typically a Docker secret mounted at /run/secrets/*. When non-empty,
-	// its contents replace the password component of DSN at load time.
-	PasswordFile string `mapstructure:"password_file"`
 }
 
 // LogConfig controls log output format and verbosity.

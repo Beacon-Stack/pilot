@@ -10,7 +10,7 @@ import (
 )
 
 const deleteAnimeCourMonitoredBySeriesID = `-- name: DeleteAnimeCourMonitoredBySeriesID :exec
-DELETE FROM anime_cour_monitored WHERE series_id = $1
+DELETE FROM anime_cour_monitored WHERE series_id = ?
 `
 
 func (q *Queries) DeleteAnimeCourMonitoredBySeriesID(ctx context.Context, seriesID string) error {
@@ -20,7 +20,7 @@ func (q *Queries) DeleteAnimeCourMonitoredBySeriesID(ctx context.Context, series
 
 const listAnimeCourMonitored = `-- name: ListAnimeCourMonitored :many
 SELECT series_id, tvdb_season, monitored, updated_at FROM anime_cour_monitored
-WHERE series_id = $1
+WHERE series_id = ?
 ORDER BY tvdb_season ASC
 `
 
@@ -54,15 +54,15 @@ func (q *Queries) ListAnimeCourMonitored(ctx context.Context, seriesID string) (
 
 const upsertAnimeCourMonitored = `-- name: UpsertAnimeCourMonitored :exec
 INSERT INTO anime_cour_monitored (series_id, tvdb_season, monitored, updated_at)
-VALUES ($1, $2, $3, now())
+VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 ON CONFLICT (series_id, tvdb_season) DO UPDATE
-    SET monitored = EXCLUDED.monitored,
-        updated_at = now()
+    SET monitored = excluded.monitored,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
 `
 
 type UpsertAnimeCourMonitoredParams struct {
 	SeriesID   string `json:"seriesId"`
-	TvdbSeason int32  `json:"tvdbSeason"`
+	TvdbSeason int64  `json:"tvdbSeason"`
 	Monitored  bool   `json:"monitored"`
 }
 

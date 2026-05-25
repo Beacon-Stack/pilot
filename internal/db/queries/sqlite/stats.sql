@@ -2,12 +2,12 @@
 INSERT INTO stats_snapshots (
     id, total_series, total_episodes, monitored_episodes,
     with_file, missing, total_size_bytes, snapshot_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListStatsSnapshots :many
 SELECT * FROM stats_snapshots
 ORDER BY snapshot_at DESC
-LIMIT $1;
+LIMIT ?;
 
 -- name: LatestStatsSnapshot :one
 SELECT * FROM stats_snapshots

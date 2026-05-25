@@ -11,7 +11,7 @@ import (
 
 const createIndexerConfig = `-- name: CreateIndexerConfig :one
 INSERT INTO indexer_configs (id, name, kind, enabled, priority, settings, min_seeders, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, name, kind, enabled, priority, settings, created_at, updated_at, min_seeders
 `
 
@@ -20,9 +20,9 @@ type CreateIndexerConfigParams struct {
 	Name       string `json:"name"`
 	Kind       string `json:"kind"`
 	Enabled    bool   `json:"enabled"`
-	Priority   int32  `json:"priority"`
+	Priority   int64  `json:"priority"`
 	Settings   string `json:"settings"`
-	MinSeeders int32  `json:"minSeeders"`
+	MinSeeders int64  `json:"minSeeders"`
 	CreatedAt  string `json:"createdAt"`
 	UpdatedAt  string `json:"updatedAt"`
 }
@@ -55,7 +55,7 @@ func (q *Queries) CreateIndexerConfig(ctx context.Context, arg CreateIndexerConf
 }
 
 const deleteIndexerConfig = `-- name: DeleteIndexerConfig :exec
-DELETE FROM indexer_configs WHERE id = $1
+DELETE FROM indexer_configs WHERE id = ?
 `
 
 func (q *Queries) DeleteIndexerConfig(ctx context.Context, id string) error {
@@ -64,7 +64,7 @@ func (q *Queries) DeleteIndexerConfig(ctx context.Context, id string) error {
 }
 
 const getIndexerConfig = `-- name: GetIndexerConfig :one
-SELECT id, name, kind, enabled, priority, settings, created_at, updated_at, min_seeders FROM indexer_configs WHERE id = $1
+SELECT id, name, kind, enabled, priority, settings, created_at, updated_at, min_seeders FROM indexer_configs WHERE id = ?
 `
 
 func (q *Queries) GetIndexerConfig(ctx context.Context, id string) (IndexerConfig, error) {
@@ -160,14 +160,14 @@ func (q *Queries) ListIndexerConfigs(ctx context.Context) ([]IndexerConfig, erro
 
 const updateIndexerConfig = `-- name: UpdateIndexerConfig :one
 UPDATE indexer_configs SET
-    name        = $1,
-    kind        = $2,
-    enabled     = $3,
-    priority    = $4,
-    settings    = $5,
-    min_seeders = $6,
-    updated_at  = $7
-WHERE id = $8
+    name        = ?,
+    kind        = ?,
+    enabled     = ?,
+    priority    = ?,
+    settings    = ?,
+    min_seeders = ?,
+    updated_at  = ?
+WHERE id = ?
 RETURNING id, name, kind, enabled, priority, settings, created_at, updated_at, min_seeders
 `
 
@@ -175,9 +175,9 @@ type UpdateIndexerConfigParams struct {
 	Name       string `json:"name"`
 	Kind       string `json:"kind"`
 	Enabled    bool   `json:"enabled"`
-	Priority   int32  `json:"priority"`
+	Priority   int64  `json:"priority"`
 	Settings   string `json:"settings"`
-	MinSeeders int32  `json:"minSeeders"`
+	MinSeeders int64  `json:"minSeeders"`
 	UpdatedAt  string `json:"updatedAt"`
 	ID         string `json:"id"`
 }

@@ -2,11 +2,11 @@ package v1
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
 
@@ -21,8 +21,8 @@ type calendarEpisodeBody struct {
 	EpisodeID     string `json:"episode_id"     doc:"Episode UUID"`
 	SeriesID      string `json:"series_id"      doc:"Series UUID"`
 	SeriesTitle   string `json:"series_title"   doc:"Series title"`
-	SeasonNumber  int32  `json:"season_number"  doc:"Season number"`
-	EpisodeNumber int32  `json:"episode_number" doc:"Episode number within season"`
+	SeasonNumber  int64  `json:"season_number"  doc:"Season number"`
+	EpisodeNumber int64  `json:"episode_number" doc:"Episode number within season"`
 	EpisodeTitle  string `json:"episode_title"  doc:"Episode title"`
 	AirDate       string `json:"air_date"       doc:"Air date (YYYY-MM-DD)"`
 	HasFile       bool   `json:"has_file"       doc:"Whether a file is linked to this episode"`
@@ -43,8 +43,8 @@ func RegisterCalendarRoutes(api huma.API, q db.Querier) {
 		Tags:        []string{"Calendar"},
 	}, func(ctx context.Context, input *calendarInput) (*calendarOutput, error) {
 		rows, err := q.ListEpisodesByAirDateRange(ctx, db.ListEpisodesByAirDateRangeParams{
-			AirDate:   sql.NullString{String: input.Start, Valid: input.Start != ""},
-			AirDate_2: sql.NullString{String: input.End, Valid: input.End != ""},
+			AirDate:   dbutil.NullableString(input.Start),
+			AirDate_2: dbutil.NullableString(input.End),
 		})
 		if err != nil {
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to list calendar episodes", err)
@@ -59,7 +59,7 @@ func RegisterCalendarRoutes(api huma.API, q db.Querier) {
 				SeasonNumber:  r.SeasonNumber,
 				EpisodeNumber: r.EpisodeNumber,
 				EpisodeTitle:  r.Title,
-				AirDate:       r.AirDate.String,
+				AirDate:       dbutil.NullStringValue(r.AirDate),
 				HasFile:       r.HasFile,
 				Monitored:     r.Monitored,
 			})

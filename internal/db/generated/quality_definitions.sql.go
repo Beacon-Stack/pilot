@@ -49,14 +49,14 @@ func (q *Queries) ListQualityDefinitions(ctx context.Context) ([]QualityDefiniti
 
 const updateQualityDefinitionSizes = `-- name: UpdateQualityDefinitionSizes :exec
 UPDATE quality_definitions
-SET min_size = $1, max_size = $2, preferred_size = $3
-WHERE id = $4
+SET min_size = ?, max_size = ?, preferred_size = ?
+WHERE id = ?
 `
 
 type UpdateQualityDefinitionSizesParams struct {
-	MinSize       float32 `json:"minSize"`
-	MaxSize       float32 `json:"maxSize"`
-	PreferredSize float32 `json:"preferredSize"`
+	MinSize       float64 `json:"minSize"`
+	MaxSize       float64 `json:"maxSize"`
+	PreferredSize float64 `json:"preferredSize"`
 	ID            string  `json:"id"`
 }
 

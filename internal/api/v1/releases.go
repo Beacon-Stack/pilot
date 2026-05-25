@@ -13,6 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	"github.com/beacon-stack/pilot/internal/core/parser"
@@ -561,18 +562,18 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			}
 			_ = indexerSvc.UpdateGrabDownloadClient(ctx, db.UpdateGrabDownloadClientParams{
 				ID:               row.ID,
-				DownloadClientID: sql.NullString{String: clientID, Valid: clientID != ""},
-				ClientItemID:     sql.NullString{String: itemID, Valid: itemID != ""},
+				DownloadClientID: dbutil.NullableString(clientID),
+				ClientItemID:     dbutil.NullableString(itemID),
 			})
 			// For torrent clients (Haul), itemID is the info_hash.
 			// Record it on the grab so the stall watcher can correlate
 			// Haul's reports back to this grab.
 			if itemID != "" && release.Protocol == plugin.ProtocolTorrent {
 				_ = indexerSvc.UpdateGrabInfoHash(ctx, row.ID, itemID)
-				row.InfoHash = sql.NullString{String: itemID, Valid: true}
+				row.InfoHash = &itemID
 			}
-			row.DownloadClientID = sql.NullString{String: clientID, Valid: clientID != ""}
-			row.ClientItemID = sql.NullString{String: itemID, Valid: itemID != ""}
+			row.DownloadClientID = dbutil.NullableString(clientID)
+			row.ClientItemID = dbutil.NullableString(itemID)
 		}
 
 		return &grabOutput{Body: grabToBody(row)}, nil
@@ -823,8 +824,8 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 		}
 		_ = indexerSvc.UpdateGrabDownloadClient(ctx, db.UpdateGrabDownloadClientParams{
 			ID:               row.ID,
-			DownloadClientID: sql.NullString{String: clientID, Valid: clientID != ""},
-			ClientItemID:     sql.NullString{String: itemID, Valid: itemID != ""},
+			DownloadClientID: dbutil.NullableString(clientID),
+			ClientItemID:     dbutil.NullableString(itemID),
 		})
 		if itemID != "" && release.Protocol == plugin.ProtocolTorrent {
 			_ = indexerSvc.UpdateGrabInfoHash(ctx, row.ID, itemID)
@@ -938,30 +939,17 @@ func filterByEpisode(results []indexer.SearchResult, seriesTitle string, alterna
 }
 
 func grabToBody(row db.GrabHistory) *grabHistoryBody {
-	var epID *string
-	if row.EpisodeID.Valid {
-		epID = &row.EpisodeID.String
-	}
-	var sn *int64
-	if row.SeasonNumber.Valid {
-		v := int64(row.SeasonNumber.Int32)
-		sn = &v
-	}
-	var idxID *string
-	if row.IndexerID.Valid {
-		idxID = &row.IndexerID.String
-	}
 	grabbedAt, _ := time.Parse(time.RFC3339, row.GrabbedAt)
 	return &grabHistoryBody{
 		ID:             row.ID,
 		SeriesID:       row.SeriesID,
-		EpisodeID:      epID,
-		SeasonNumber:   sn,
-		IndexerID:      idxID,
+		EpisodeID:      row.EpisodeID,
+		SeasonNumber:   row.SeasonNumber,
+		IndexerID:      row.IndexerID,
 		ReleaseGUID:    row.ReleaseGuid,
 		ReleaseTitle:   row.ReleaseTitle,
 		Protocol:       row.Protocol,
-		Size:           int64(row.Size),
+		Size:           row.Size,
 		DownloadStatus: row.DownloadStatus,
 		GrabbedAt:      grabbedAt,
 	}
@@ -1016,12 +1004,12 @@ func registerResearchEndpoint(
 			addErr := blocklistSvc.Add(
 				ctx,
 				grab.SeriesID,
-				grab.EpisodeID.String,
+				dbutil.NullStringValue(grab.EpisodeID),
 				grab.ReleaseGuid,
 				grab.ReleaseTitle,
-				grab.IndexerID.String,
+				dbutil.NullStringValue(grab.IndexerID),
 				grab.Protocol,
-				int64(grab.Size),
+				grab.Size,
 				"user-initiated research from Haul stalled list",
 			)
 			if addErr != nil && !errors.Is(addErr, blocklist.ErrAlreadyBlocklisted) {
@@ -1034,10 +1022,10 @@ func registerResearchEndpoint(
 		// running. Best-effort: if the download client is gone or the
 		// torrent has already been removed, log and continue — losing
 		// the alternative grab because the dead one's gone is worse.
-		if downloaderSvc != nil && grab.DownloadClientID.Valid && grab.ClientItemID.Valid {
-			client, cErr := downloaderSvc.ClientFor(ctx, grab.DownloadClientID.String)
+		if downloaderSvc != nil && grab.DownloadClientID != nil && grab.ClientItemID != nil {
+			client, cErr := downloaderSvc.ClientFor(ctx, *grab.DownloadClientID)
 			if cErr == nil {
-				if rErr := client.Remove(ctx, grab.ClientItemID.String, false); rErr != nil {
+				if rErr := client.Remove(ctx, *grab.ClientItemID, false); rErr != nil {
 					// keep_files=false would also delete files on disk
 					// — but the user might want to manually rescue
 					// partial data, so we err on the safe side and only
@@ -1059,10 +1047,15 @@ func registerResearchEndpoint(
 			BlocklistSvc:  blocklistSvc,
 			QualitySvc:    qualitySvc,
 		}, autoSearchParams{
-			SeriesID:  grab.SeriesID,
-			Season:    int(grab.SeasonNumber.Int32),
+			SeriesID: grab.SeriesID,
+			Season: func() int {
+				if grab.SeasonNumber == nil {
+					return 0
+				}
+				return int(*grab.SeasonNumber)
+			}(),
 			Episode:   0, // grab_history doesn't carry episode-number; let auto-search find any episode in the season
-			EpisodeID: grab.EpisodeID.String,
+			EpisodeID: dbutil.NullStringValue(grab.EpisodeID),
 			Source:    "manual_research",
 		})
 		if err != nil {

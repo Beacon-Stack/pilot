@@ -105,7 +105,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (Config, error)
 		Name:      req.Name,
 		Kind:      req.Kind,
 		Enabled:   req.Enabled,
-		Priority:  int32(priority),
+		Priority:  int64(priority),
 		Settings:  string(settings),
 		CreatedAt: now.Format(time.RFC3339),
 		UpdatedAt: now.Format(time.RFC3339),
@@ -169,7 +169,7 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Con
 		Name:      req.Name,
 		Kind:      req.Kind,
 		Enabled:   req.Enabled,
-		Priority:  int32(priority),
+		Priority:  int64(priority),
 		Settings:  string(settings),
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	})

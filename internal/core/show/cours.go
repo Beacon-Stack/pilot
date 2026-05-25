@@ -237,7 +237,7 @@ func resolveMonitored(tvdbSeason, tmdbSeason int, overrideByCour map[int]bool, p
 func (s *Service) SetCourMonitored(ctx context.Context, seriesID string, tvdbSeason int, monitored bool) error {
 	if err := s.q.UpsertAnimeCourMonitored(ctx, db.UpsertAnimeCourMonitoredParams{
 		SeriesID:   seriesID,
-		TvdbSeason: int32(tvdbSeason),
+		TvdbSeason: int64(tvdbSeason),
 		Monitored:  monitored,
 	}); err != nil {
 		return fmt.Errorf("upsert anime cour monitored: %w", err)
@@ -473,11 +473,11 @@ func largestGapBoundaries(episodes []db.Episode, n int) []int {
 	var gaps []gap
 	for i := 1; i < len(episodes); i++ {
 		prev, curr := episodes[i-1], episodes[i]
-		if !prev.AirDate.Valid || !curr.AirDate.Valid {
+		if prev.AirDate == nil || curr.AirDate == nil {
 			continue
 		}
-		prevDate, errP := time.Parse("2006-01-02", prev.AirDate.String)
-		currDate, errC := time.Parse("2006-01-02", curr.AirDate.String)
+		prevDate, errP := time.Parse("2006-01-02", *prev.AirDate)
+		currDate, errC := time.Parse("2006-01-02", *curr.AirDate)
 		if errP != nil || errC != nil {
 			continue
 		}

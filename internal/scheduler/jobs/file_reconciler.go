@@ -152,21 +152,22 @@ func runFileExistenceReconciler(
 		logger.Warn("file_reconciler: list completed grabs failed", "error", err)
 	} else {
 		for _, g := range completed {
-			if !g.EpisodeID.Valid || g.EpisodeID.String == "" {
+			if g.EpisodeID == nil || *g.EpisodeID == "" {
 				continue // season-pack grabs have no single episode to retry
 			}
-			if _, alreadyQueued := retryEpisodes[g.EpisodeID.String]; alreadyQueued {
+			epID := *g.EpisodeID
+			if _, alreadyQueued := retryEpisodes[epID]; alreadyQueued {
 				continue
 			}
-			ep, epErr := q.GetEpisode(ctx, g.EpisodeID.String)
+			ep, epErr := q.GetEpisode(ctx, epID)
 			if epErr != nil {
 				continue // episode deleted out from under us — fine
 			}
 			if !ep.HasFile {
-				retryEpisodes[g.EpisodeID.String] = g.SeriesID
+				retryEpisodes[epID] = g.SeriesID
 				logger.Warn("file_reconciler: completed grab has no episode_files row; queuing retry",
 					"grab_id", g.ID,
-					"episode_id", g.EpisodeID.String,
+					"episode_id", epID,
 					"series_id", g.SeriesID,
 					"release", g.ReleaseTitle,
 				)

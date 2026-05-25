@@ -11,7 +11,7 @@ import (
 
 const createMediaServerConfig = `-- name: CreateMediaServerConfig :one
 INSERT INTO media_server_configs (id, name, kind, enabled, settings, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING id, name, kind, enabled, settings, created_at, updated_at
 `
 
@@ -49,7 +49,7 @@ func (q *Queries) CreateMediaServerConfig(ctx context.Context, arg CreateMediaSe
 }
 
 const deleteMediaServerConfig = `-- name: DeleteMediaServerConfig :exec
-DELETE FROM media_server_configs WHERE id = $1
+DELETE FROM media_server_configs WHERE id = ?
 `
 
 func (q *Queries) DeleteMediaServerConfig(ctx context.Context, id string) error {
@@ -58,7 +58,7 @@ func (q *Queries) DeleteMediaServerConfig(ctx context.Context, id string) error 
 }
 
 const getMediaServerConfig = `-- name: GetMediaServerConfig :one
-SELECT id, name, kind, enabled, settings, created_at, updated_at FROM media_server_configs WHERE id = $1
+SELECT id, name, kind, enabled, settings, created_at, updated_at FROM media_server_configs WHERE id = ?
 `
 
 func (q *Queries) GetMediaServerConfig(ctx context.Context, id string) (MediaServerConfig, error) {
@@ -148,12 +148,12 @@ func (q *Queries) ListMediaServerConfigs(ctx context.Context) ([]MediaServerConf
 
 const updateMediaServerConfig = `-- name: UpdateMediaServerConfig :one
 UPDATE media_server_configs SET
-    name       = $1,
-    kind       = $2,
-    enabled    = $3,
-    settings   = $4,
-    updated_at = $5
-WHERE id = $6
+    name       = ?,
+    kind       = ?,
+    enabled    = ?,
+    settings   = ?,
+    updated_at = ?
+WHERE id = ?
 RETURNING id, name, kind, enabled, settings, created_at, updated_at
 `
 
