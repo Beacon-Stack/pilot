@@ -135,10 +135,14 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          # GHCR_TOKEN is a classic PAT with write:packages scope.
-          # GITHUB_TOKEN consistently 403s on blob HEAD checks for new packages.
-          # Token expires ~2026-06-01 — renew and update secret before then.
-          password: ${{ secrets.GHCR_TOKEN }}
+          # Auto-provided GITHUB_TOKEN; the `packages: write` permission on
+
+          # this job grants the right scopes. Works because the ghcr package
+
+          # already exists (the 403-on-new-package issue only affects the
+
+          # first push).
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta

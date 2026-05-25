@@ -44,7 +44,7 @@ jobs:
           username: ${{ github.actor }}
           # GHCR_TOKEN is a classic PAT with write:packages scope.
           # See the comment in ci.yml for context.
-          password: ${{ secrets.GHCR_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
