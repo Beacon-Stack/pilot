@@ -253,7 +253,13 @@ func cleanTitle(s string) string {
 	for strings.Contains(s, "  ") {
 		s = strings.ReplaceAll(s, "  ", " ")
 	}
-	return strings.TrimSpace(s)
+	// Trim trailing separator characters left over from the split. A
+	// filename like "Show - S01E01 - Title" splits at " S01E01" and
+	// leaves "Show -" — the trailing " -" then breaks downstream
+	// title-equality lookups for legitimately-hyphenated show names
+	// like "Star Wars: Maul - Shadow Lord" (the DB title has no
+	// trailing dash).
+	return strings.TrimRight(strings.TrimSpace(s), " -._")
 }
 
 // String returns a human-readable representation of a ParsedRelease for

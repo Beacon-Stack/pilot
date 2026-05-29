@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -20,6 +21,12 @@ import (
 	"github.com/beacon-stack/pilot/internal/scheduler"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
+
+// ffprobeTimeout caps how long ffprobe is allowed to run per file. 15s is
+// generous for a single video stream probe — anything longer almost
+// certainly means a stalled NFS mount or a corrupt header, and we'd
+// rather skip than block the whole scan.
+const ffprobeTimeout = 15 * time.Second
 
 // libraryScanInterval is how often the library scan job runs.
 const libraryScanInterval = 6 * time.Hour
@@ -169,11 +176,12 @@ func discoverShows(ctx context.Context, lib library.Library, showSvc *show.Servi
 		)
 
 		_, addErr := showSvc.Add(ctx, show.AddRequest{
-			TMDBID:      best.ID,
-			LibraryID:   lib.ID,
-			Monitored:   true,
-			MonitorType: "existing",
-			SeriesType:  "standard",
+			TMDBID:           best.ID,
+			LibraryID:        lib.ID,
+			QualityProfileID: lib.DefaultQualityProfileID,
+			Monitored:        true,
+			MonitorType:      "existing",
+			SeriesType:       "standard",
 		})
 		if addErr != nil {
 			if errors.Is(addErr, show.ErrAlreadyExists) {
@@ -337,7 +345,12 @@ func importScannedFile(
 			continue
 		}
 
-		qualityJSON, _ := json.Marshal(plugin.Quality{})
+		// Probe the file for resolution/codec/HDR. Source (web-dl vs bluray
+		// etc.) is unrecoverable from a clean post-import filename and is
+		// not in the bytes themselves; leave it empty so the stats UI
+		// renders it as "unknown" rather than guessing.
+		quality := probeQuality(ctx, path, logger)
+		qualityJSON, _ := json.Marshal(quality)
 
 		if _, err := q.CreateEpisodeFile(ctx, db.CreateEpisodeFileParams{
 			ID:          uuid.New().String(),
@@ -383,3 +396,113 @@ func importScannedFile(
 
 	return nil
 }
+
+// probeQuality runs ffprobe on a file and maps the result onto a
+// plugin.Quality. Returns the zero value (which the stats UI renders as
+// "unknown") on any failure — the scan must not stall on a single bad
+// file, and a probe failure is informational, not fatal.
+//
+// Only Resolution, Codec, and HDR are populated. Source (web-dl vs
+// bluray etc.) is not recoverable from the bytes themselves, and from a
+// clean post-import filename it's also gone, so it stays empty.
+func probeQuality(ctx context.Context, path string, logger *slog.Logger) plugin.Quality {
+	probeCtx, cancel := context.WithTimeout(ctx, ffprobeTimeout)
+	defer cancel()
+
+	//nolint:gosec // path is a trusted internal value (walked from a configured library root)
+	cmd := exec.CommandContext(probeCtx, "ffprobe",
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_streams",
+		path,
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		logger.Debug("library scan: ffprobe failed (leaving quality unknown)",
+			"path", path, "error", err)
+		return plugin.Quality{}
+	}
+
+	var raw struct {
+		Streams []struct {
+			CodecType      string `json:"codec_type"`
+			CodecName      string `json:"codec_name"`
+			Height         int    `json:"height"`
+			ColorTransfer  string `json:"color_transfer"`
+			ColorPrimaries string `json:"color_primaries"`
+			SideDataList   []struct {
+				SideDataType string `json:"side_data_type"`
+			} `json:"side_data_list"`
+		} `json:"streams"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		logger.Debug("library scan: ffprobe parse failed", "path", path, "error", err)
+		return plugin.Quality{}
+	}
+
+	var q plugin.Quality
+	for _, s := range raw.Streams {
+		if s.CodecType != "video" {
+			continue
+		}
+		q.Resolution = resolutionFromHeight(s.Height)
+		q.Codec = codecFromName(s.CodecName)
+		q.HDR = hdrFromStream(s.ColorTransfer, s.SideDataList)
+		break
+	}
+	return q
+}
+
+func resolutionFromHeight(h int) plugin.Resolution {
+	switch {
+	case h >= 2160:
+		return plugin.Resolution2160p
+	case h >= 1080:
+		return plugin.Resolution1080p
+	case h >= 720:
+		return plugin.Resolution720p
+	case h >= 576:
+		return plugin.Resolution576p
+	case h >= 480:
+		return plugin.Resolution480p
+	case h > 0:
+		return plugin.ResolutionSD
+	default:
+		return ""
+	}
+}
+
+func codecFromName(name string) plugin.Codec {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "hevc", "h265":
+		return plugin.CodecX265
+	case "h264", "avc":
+		return plugin.CodecX264
+	case "av1", "av01":
+		return plugin.CodecAV1
+	case "mpeg4":
+		return plugin.CodecXVID
+	default:
+		return ""
+	}
+}
+
+func hdrFromStream(colorTransfer string, sideData []struct {
+	SideDataType string `json:"side_data_type"`
+}) plugin.HDRFormat {
+	for _, sd := range sideData {
+		t := strings.ToLower(sd.SideDataType)
+		if strings.Contains(t, "dovi") || strings.Contains(t, "dolby") {
+			return plugin.HDRDolbyVision
+		}
+	}
+	switch colorTransfer {
+	case "smpte2084":
+		return plugin.HDRHDR10
+	case "arib-std-b67":
+		return plugin.HDRHLG
+	default:
+		return plugin.HDRNone
+	}
+}
+
