@@ -33,7 +33,6 @@ import {
   type GrabStats,
 } from "@/api/stats";
 import { formatBytes } from "@/lib/utils";
-import TableScroll from "@beacon-shared/TableScroll";
 
 const GRAB_COLORS = {
   success: "var(--color-success, #22c55e)",
@@ -691,87 +690,6 @@ function GrabsCard({ data }: { data: GrabStats }) {
           />
         </div>
       </div>
-
-      {(data.top_indexers ?? []).length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--color-text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.07em",
-              marginBottom: 10,
-            }}
-          >
-            Top Indexers
-          </div>
-          <TableScroll minWidth={450}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr>
-                  {["Indexer", "Grabs", "Success Rate"].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        textAlign: h === "Indexer" ? "left" : "right",
-                        color: "var(--color-text-muted)",
-                        fontWeight: 500,
-                        paddingBottom: 8,
-                        fontSize: 12,
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.top_indexers.map((idx) => (
-                  <tr
-                    key={idx.indexer_id}
-                    style={{ borderTop: "1px solid var(--color-border-subtle)" }}
-                  >
-                    <td
-                      style={{
-                        padding: "8px 0",
-                        color: "var(--color-text-primary)",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {idx.indexer_name}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 0",
-                        textAlign: "right",
-                        color: "var(--color-text-secondary)",
-                      }}
-                    >
-                      {idx.grab_count.toLocaleString()}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px 0",
-                        textAlign: "right",
-                        color:
-                          idx.success_rate >= 0.9
-                            ? "var(--color-success)"
-                            : idx.success_rate >= 0.7
-                            ? "var(--color-warning)"
-                            : "var(--color-danger, #ef4444)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {Math.round(idx.success_rate * 100)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
-        </div>
-      )}
     </Card>
   );
 }
