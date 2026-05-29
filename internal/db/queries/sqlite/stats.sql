@@ -64,3 +64,12 @@ ORDER BY year ASC;
 
 -- name: ListSeriesGenresJSON :many
 SELECT genres_json FROM series WHERE genres_json IS NOT NULL AND genres_json != '[]';
+
+-- name: CountSeriesAddedSince :one
+SELECT COUNT(*) FROM series WHERE added_at >= ?;
+
+-- name: ListStorageSnapshots :many
+SELECT snapshot_at, total_size_bytes, with_file
+FROM stats_snapshots
+ORDER BY snapshot_at DESC
+LIMIT ?;

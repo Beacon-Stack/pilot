@@ -27,6 +27,7 @@ type Querier interface {
 	// sql.NullString; null matches blocklist rows where episode_id IS NULL.
 	CountRecentStallsForEpisode(ctx context.Context, arg CountRecentStallsForEpisodeParams) (int64, error)
 	CountSeries(ctx context.Context) (int64, error)
+	CountSeriesAddedSince(ctx context.Context, addedAt string) (int64, error)
 	CountSeriesByLibrary(ctx context.Context, libraryID string) (int64, error)
 	CountSeriesInLibrary(ctx context.Context, libraryID string) (int64, error)
 	CreateBlocklistEntry(ctx context.Context, arg CreateBlocklistEntryParams) (Blocklist, error)
@@ -154,6 +155,7 @@ type Querier interface {
 	// should have completed by now or be reported as stalled."
 	ListStaleActiveGrabs(ctx context.Context, olderThan string) ([]GrabHistory, error)
 	ListStatsSnapshots(ctx context.Context, limit int64) ([]StatsSnapshot, error)
+	ListStorageSnapshots(ctx context.Context, limit int64) ([]ListStorageSnapshotsRow, error)
 	MarkGrabRemoved(ctx context.Context, id string) error
 	PruneActivities(ctx context.Context, createdAt string) error
 	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (int64, error)

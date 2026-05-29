@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  Area,
+  AreaChart,
   BarChart,
   Bar,
   CartesianGrid,
@@ -148,6 +150,16 @@ function CollectionCard({ data }: { data: CollectionStats }) {
           value={data.missing.toLocaleString()}
           accent={data.missing > 0 ? "var(--color-warning)" : undefined}
         />
+        <StatBlock
+          label="Needs Upgrade"
+          value={data.needs_upgrade.toLocaleString()}
+          accent={data.needs_upgrade > 0 ? "var(--color-warning)" : undefined}
+        />
+        <StatBlock
+          label="Added Last 30d"
+          value={data.recently_added.toLocaleString()}
+          accent={data.recently_added > 0 ? "var(--color-success)" : undefined}
+        />
       </div>
     </Card>
   );
@@ -155,10 +167,35 @@ function CollectionCard({ data }: { data: CollectionStats }) {
 
 // ── Storage card ──────────────────────────────────────────────────────────────
 
+function EmptyChart({ message }: { message: string }) {
+  return (
+    <div
+      style={{
+        height: 80,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--color-text-muted)",
+        fontSize: 12,
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
 function StorageCard({ data }: { data: StorageStats }) {
+  const trendData = (data.trend ?? []).map((p) => ({
+    bytes: p.total_bytes,
+    label: new Date(p.captured_at).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    }),
+  }));
+
   return (
     <Card title="Storage">
-      <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 32, flexWrap: "wrap", marginBottom: 16 }}>
         <StatBlock label="Total Used" value={formatBytes(data.total_bytes)} />
         <StatBlock label="Files" value={data.file_count.toLocaleString()} />
         {data.file_count > 0 && (
@@ -168,6 +205,54 @@ function StorageCard({ data }: { data: StorageStats }) {
           />
         )}
       </div>
+
+      {trendData.length >= 2 ? (
+        <>
+          <div
+            style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 6 }}
+          >
+            Storage over time
+          </div>
+          <ResponsiveContainer width="100%" height={100}>
+            <AreaChart data={trendData} margin={{ top: 4, right: 0, left: -32, bottom: 0 }}>
+              <defs>
+                <linearGradient id="storageGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="label"
+                tick={axisStyle}
+                axisLine={false}
+                tickLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tick={axisStyle}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(v) => formatBytes(Number(v))}
+              />
+              <Tooltip
+                contentStyle={tooltipStyle.contentStyle}
+                wrapperStyle={tooltipStyle.wrapperStyle}
+                formatter={(v) => [formatBytes(Number(v ?? 0)), "Storage"]}
+              />
+              <Area
+                type="monotone"
+                dataKey="bytes"
+                stroke="var(--color-accent)"
+                strokeWidth={2}
+                fill="url(#storageGrad)"
+                dot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </>
+      ) : (
+        <EmptyChart message="Trend data is collecting — check back tomorrow." />
+      )}
     </Card>
   );
 }
@@ -377,62 +462,66 @@ function QualityCard({ data, tierData }: { data: QualityBucket[]; tierData?: Qua
   );
 }
 
-// ── Growth card (CSS sparkline — no recharts) ─────────────────────────────────
+// ── Growth card ───────────────────────────────────────────────────────────────
 
 function GrowthCard({ data }: { data: GrowthPoint[] }) {
   if (data.length < 2) {
     return (
       <Card title="Library Growth">
-        <p style={{ color: "var(--color-text-muted)", fontSize: 13, margin: 0 }}>
-          Keep adding series — growth chart will appear here.
-        </p>
+        <EmptyChart message="Keep adding series — growth chart will appear here." />
       </Card>
     );
   }
 
-  const max = Math.max(...data.map((p) => p.total_series));
-  const chartH = 80;
-  const chartW = 400;
-
-  const points = data.map((p, i) => {
-    const x = (i / (data.length - 1)) * chartW;
-    const y = max > 0 ? chartH - (p.total_series / max) * chartH : chartH;
-    return `${x},${y}`;
-  });
-
-  const polyline = points.join(" ");
-  const areaPath = `M0,${chartH} L${polyline.replace(/,/g, " L").split(" L").join(" L")} L${chartW},${chartH} Z`;
+  const chartData = data.map((p) => ({
+    cumulative: p.total_series,
+    label: p.snapshot_at
+      ? new Date(p.snapshot_at).toLocaleDateString(undefined, {
+          month: "short",
+          year: "2-digit",
+        })
+      : "",
+  }));
 
   return (
     <Card title="Library Growth">
-      <svg
-        viewBox={`0 0 ${chartW} ${chartH}`}
-        style={{ width: "100%", height: chartH, display: "block", overflow: "visible" }}
-        preserveAspectRatio="none"
-      >
-        <defs>
-          <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={areaPath} fill="url(#growthGrad)" />
-        <polyline
-          points={polyline}
-          fill="none"
-          stroke="var(--color-accent)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: "var(--color-text-muted)" }}>
-        <span>{new Date(data[0].snapshot_at).toLocaleDateString(undefined, { month: "short", year: "2-digit" })}</span>
-        <span style={{ color: "var(--color-text-secondary)", fontWeight: 500 }}>
-          {data[data.length - 1].total_series.toLocaleString()} series now
-        </span>
-        <span>{new Date(data[data.length - 1].snapshot_at).toLocaleDateString(undefined, { month: "short", year: "2-digit" })}</span>
-      </div>
+      <ResponsiveContainer width="100%" height={180}>
+        <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+          <defs>
+            <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="var(--color-border-subtle)"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="label"
+            tick={axisStyle}
+            axisLine={false}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
+          <Tooltip
+            contentStyle={tooltipStyle.contentStyle}
+            wrapperStyle={tooltipStyle.wrapperStyle}
+            formatter={(v) => [Number(v ?? 0).toLocaleString(), "Series"]}
+            labelFormatter={(label) => label}
+          />
+          <Area
+            type="monotone"
+            dataKey="cumulative"
+            stroke="var(--color-accent)"
+            strokeWidth={2}
+            fill="url(#growthGrad)"
+            dot={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
     </Card>
   );
 }

@@ -7,11 +7,20 @@ export interface CollectionStats {
   monitored: number;
   with_file: number;
   missing: number;
+  needs_upgrade: number;
+  recently_added: number;
+}
+
+export interface StoragePoint {
+  captured_at: string;
+  total_bytes: number;
+  file_count: number;
 }
 
 export interface StorageStats {
   total_bytes: number;
   file_count: number;
+  trend: StoragePoint[];
 }
 
 export interface QualityTier {

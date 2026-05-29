@@ -53,6 +53,17 @@ func (q *Queries) CountMonitoredEpisodes(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countSeriesAddedSince = `-- name: CountSeriesAddedSince :one
+SELECT COUNT(*) FROM series WHERE added_at >= ?
+`
+
+func (q *Queries) CountSeriesAddedSince(ctx context.Context, addedAt string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSeriesAddedSince, addedAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getGrabStats = `-- name: GetGrabStats :one
 SELECT
     COUNT(*)                                                                       AS total_grabs,
@@ -324,6 +335,42 @@ func (q *Queries) ListStatsSnapshots(ctx context.Context, limit int64) ([]StatsS
 			&i.TotalSizeBytes,
 			&i.SnapshotAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStorageSnapshots = `-- name: ListStorageSnapshots :many
+SELECT snapshot_at, total_size_bytes, with_file
+FROM stats_snapshots
+ORDER BY snapshot_at DESC
+LIMIT ?
+`
+
+type ListStorageSnapshotsRow struct {
+	SnapshotAt     string `json:"snapshotAt"`
+	TotalSizeBytes int64  `json:"totalSizeBytes"`
+	WithFile       int64  `json:"withFile"`
+}
+
+func (q *Queries) ListStorageSnapshots(ctx context.Context, limit int64) ([]ListStorageSnapshotsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listStorageSnapshots, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStorageSnapshotsRow
+	for rows.Next() {
+		var i ListStorageSnapshotsRow
+		if err := rows.Scan(&i.SnapshotAt, &i.TotalSizeBytes, &i.WithFile); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

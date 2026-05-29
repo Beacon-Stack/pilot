@@ -21,12 +21,22 @@ type CollectionStats struct {
 	WithFile      int64 `json:"with_file"`
 	Missing       int64 `json:"missing"`
 	NeedsUpgrade  int64 `json:"needs_upgrade"`
+	RecentlyAdded int64 `json:"recently_added"` // series added in the last 30 days
 }
 
-// StorageStat is the current total storage used by episode files.
+// StoragePoint is one historical sample of total storage usage.
+type StoragePoint struct {
+	CapturedAt string `json:"captured_at"` // RFC3339
+	TotalBytes int64  `json:"total_bytes"`
+	FileCount  int64  `json:"file_count"`
+}
+
+// StorageStat is the current total storage used by episode files,
+// plus a trend series for the in-card sparkline.
 type StorageStat struct {
-	TotalBytes int64 `json:"total_bytes"`
-	FileCount  int64 `json:"file_count"`
+	TotalBytes int64          `json:"total_bytes"`
+	FileCount  int64          `json:"file_count"`
+	Trend      []StoragePoint `json:"trend"`
 }
 
 // QualityTier is a resolution+source group with a unique-series count.
@@ -120,6 +130,14 @@ func (s *Service) Collection(ctx context.Context) (CollectionStats, error) {
 		return CollectionStats{}, fmt.Errorf("counting missing episodes: %w", err)
 	}
 
+	// Series added within the last 30 days. added_at is TEXT RFC3339 in
+	// the SQLite schema, so the cutoff string sorts lexicographically.
+	cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
+	recentlyAdded, err := s.q.CountSeriesAddedSince(ctx, cutoff)
+	if err != nil {
+		return CollectionStats{}, fmt.Errorf("counting recently added series: %w", err)
+	}
+
 	return CollectionStats{
 		TotalSeries:   totalSeries,
 		TotalEpisodes: totalEpisodes,
@@ -127,6 +145,7 @@ func (s *Service) Collection(ctx context.Context) (CollectionStats, error) {
 		WithFile:      withFile,
 		Missing:       missing,
 		NeedsUpgrade:  0, // not yet implemented
+		RecentlyAdded: recentlyAdded,
 	}, nil
 }
 
@@ -142,10 +161,37 @@ func (s *Service) Storage(ctx context.Context) (StorageStat, error) {
 		return StorageStat{}, fmt.Errorf("counting episode files: %w", err)
 	}
 
+	trend, err := s.storageTrend(ctx, 90)
+	if err != nil {
+		// Trend failure is informational — return the current totals.
+		trend = nil
+	}
+
 	return StorageStat{
 		TotalBytes: toInt64(rawBytes),
 		FileCount:  fileCount,
+		Trend:      trend,
 	}, nil
+}
+
+// storageTrend returns up to `limit` historical storage points, oldest
+// first. Backs the in-card "Storage over time" sparkline.
+func (s *Service) storageTrend(ctx context.Context, limit int) ([]StoragePoint, error) {
+	rows, err := s.q.ListStorageSnapshots(ctx, int64(limit))
+	if err != nil {
+		return nil, fmt.Errorf("listing storage snapshots: %w", err)
+	}
+	// sqlc returns newest-first; reverse for chronological order so the
+	// frontend can plot left-to-right without re-sorting.
+	points := make([]StoragePoint, len(rows))
+	for i, r := range rows {
+		points[len(rows)-1-i] = StoragePoint{
+			CapturedAt: r.SnapshotAt,
+			TotalBytes: r.TotalSizeBytes,
+			FileCount:  int64(r.WithFile),
+		}
+	}
+	return points, nil
 }
 
 // QualityTiers returns unique series counts grouped by resolution+source.
