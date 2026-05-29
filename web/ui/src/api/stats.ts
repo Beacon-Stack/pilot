@@ -86,3 +86,52 @@ export function useSeriesByQualityTier(resolution: string, source: string, enabl
     enabled: enabled && (!!resolution || !!source),
   });
 }
+
+export interface DecadeBucket {
+  decade: string;
+  count: number;
+}
+
+export interface GenreBucket {
+  genre: string;
+  count: number;
+}
+
+export interface IndexerStat {
+  indexer_id: string;
+  indexer_name: string;
+  grab_count: number;
+  success_rate: number;
+}
+
+export interface GrabStats {
+  total_grabs: number;
+  successful: number;
+  failed: number;
+  success_rate: number;
+  top_indexers: IndexerStat[];
+}
+
+export function useDecadesStats() {
+  return useQuery({
+    queryKey: ["stats", "decades"],
+    queryFn: () => apiFetch<DecadeBucket[]>("/stats/decades"),
+    staleTime: 60_000,
+  });
+}
+
+export function useGenresStats() {
+  return useQuery({
+    queryKey: ["stats", "genres"],
+    queryFn: () => apiFetch<GenreBucket[]>("/stats/genres"),
+    staleTime: 60_000,
+  });
+}
+
+export function useGrabsStats() {
+  return useQuery({
+    queryKey: ["stats", "grabs"],
+    queryFn: () => apiFetch<GrabStats>("/stats/grabs"),
+    staleTime: 60_000,
+  });
+}

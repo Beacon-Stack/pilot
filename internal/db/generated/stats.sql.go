@@ -53,6 +53,112 @@ func (q *Queries) CountMonitoredEpisodes(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const getGrabStats = `-- name: GetGrabStats :one
+SELECT
+    COUNT(*)                                                                       AS total_grabs,
+    COALESCE(SUM(CASE WHEN download_status = 'completed' THEN 1 ELSE 0 END), 0)  AS successful,
+    COALESCE(SUM(CASE WHEN download_status = 'failed' THEN 1 ELSE 0 END), 0)     AS failed
+FROM grab_history
+`
+
+type GetGrabStatsRow struct {
+	TotalGrabs int64       `json:"totalGrabs"`
+	Successful interface{} `json:"successful"`
+	Failed     interface{} `json:"failed"`
+}
+
+func (q *Queries) GetGrabStats(ctx context.Context) (GetGrabStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, getGrabStats)
+	var i GetGrabStatsRow
+	err := row.Scan(&i.TotalGrabs, &i.Successful, &i.Failed)
+	return i, err
+}
+
+const getSeriesYearDistribution = `-- name: GetSeriesYearDistribution :many
+SELECT year, COUNT(*) AS count
+FROM series
+WHERE year > 0
+GROUP BY year
+ORDER BY year ASC
+`
+
+type GetSeriesYearDistributionRow struct {
+	Year  int64 `json:"year"`
+	Count int64 `json:"count"`
+}
+
+func (q *Queries) GetSeriesYearDistribution(ctx context.Context) ([]GetSeriesYearDistributionRow, error) {
+	rows, err := q.db.QueryContext(ctx, getSeriesYearDistribution)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSeriesYearDistributionRow
+	for rows.Next() {
+		var i GetSeriesYearDistributionRow
+		if err := rows.Scan(&i.Year, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTopIndexers = `-- name: GetTopIndexers :many
+SELECT
+    gh.indexer_id,
+    COALESCE(ic.name, gh.indexer_id)                                                  AS indexer_name,
+    COUNT(*)                                                                          AS grab_count,
+    COALESCE(SUM(CASE WHEN gh.download_status = 'completed' THEN 1 ELSE 0 END), 0)  AS success_count
+FROM grab_history gh
+LEFT JOIN indexer_configs ic ON ic.id = gh.indexer_id
+WHERE gh.indexer_id IS NOT NULL AND gh.indexer_id != ''
+GROUP BY gh.indexer_id, ic.name
+ORDER BY grab_count DESC
+LIMIT 10
+`
+
+type GetTopIndexersRow struct {
+	IndexerID    *string     `json:"indexerId"`
+	IndexerName  string      `json:"indexerName"`
+	GrabCount    int64       `json:"grabCount"`
+	SuccessCount interface{} `json:"successCount"`
+}
+
+func (q *Queries) GetTopIndexers(ctx context.Context) ([]GetTopIndexersRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTopIndexers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTopIndexersRow
+	for rows.Next() {
+		var i GetTopIndexersRow
+		if err := rows.Scan(
+			&i.IndexerID,
+			&i.IndexerName,
+			&i.GrabCount,
+			&i.SuccessCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertStatsSnapshot = `-- name: InsertStatsSnapshot :exec
 INSERT INTO stats_snapshots (
     id, total_series, total_episodes, monitored_episodes,
@@ -156,6 +262,33 @@ func (q *Queries) ListEpisodeFileQualitiesWithSeriesIDs(ctx context.Context) ([]
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSeriesGenresJSON = `-- name: ListSeriesGenresJSON :many
+SELECT genres_json FROM series WHERE genres_json IS NOT NULL AND genres_json != '[]'
+`
+
+func (q *Queries) ListSeriesGenresJSON(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listSeriesGenresJSON)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var genres_json string
+		if err := rows.Scan(&genres_json); err != nil {
+			return nil, err
+		}
+		items = append(items, genres_json)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

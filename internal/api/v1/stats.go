@@ -40,6 +40,26 @@ type statsGrowthOutput struct {
 	Body []stats.GrowthPoint
 }
 
+type statsDecadesOutput struct {
+	Body []stats.DecadeBucket
+}
+
+type statsGenresOutput struct {
+	Body []stats.GenreBucket
+}
+
+type statsGrabsBody struct {
+	TotalGrabs  int64               `json:"total_grabs"`
+	Successful  int64               `json:"successful"`
+	Failed      int64               `json:"failed"`
+	SuccessRate float64             `json:"success_rate"`
+	TopIndexers []stats.IndexerStat `json:"top_indexers"`
+}
+
+type statsGrabsOutput struct {
+	Body statsGrabsBody
+}
+
 // RegisterStatsRoutes registers the /api/v1/stats/* endpoints.
 func RegisterStatsRoutes(humaAPI huma.API, svc *stats.Service) {
 	// GET /api/v1/stats/collection
@@ -142,5 +162,65 @@ func RegisterStatsRoutes(humaAPI huma.API, svc *stats.Service) {
 			points = []stats.GrowthPoint{}
 		}
 		return &statsGrowthOutput{Body: points}, nil
+	})
+
+	// GET /api/v1/stats/decades
+	huma.Register(humaAPI, huma.Operation{
+		OperationID: "get-stats-decades",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/stats/decades",
+		Summary:     "Series counts grouped by decade",
+		Tags:        []string{"Statistics"},
+	}, func(ctx context.Context, _ *struct{}) (*statsDecadesOutput, error) {
+		buckets, err := svc.DecadeDistribution(ctx)
+		if err != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to get decade distribution", err)
+		}
+		if buckets == nil {
+			buckets = []stats.DecadeBucket{}
+		}
+		return &statsDecadesOutput{Body: buckets}, nil
+	})
+
+	// GET /api/v1/stats/genres
+	huma.Register(humaAPI, huma.Operation{
+		OperationID: "get-stats-genres",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/stats/genres",
+		Summary:     "Top 15 genres by series count",
+		Tags:        []string{"Statistics"},
+	}, func(ctx context.Context, _ *struct{}) (*statsGenresOutput, error) {
+		buckets, err := svc.GenreDistribution(ctx)
+		if err != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to get genre distribution", err)
+		}
+		if buckets == nil {
+			buckets = []stats.GenreBucket{}
+		}
+		return &statsGenresOutput{Body: buckets}, nil
+	})
+
+	// GET /api/v1/stats/grabs
+	huma.Register(humaAPI, huma.Operation{
+		OperationID: "get-stats-grabs",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/stats/grabs",
+		Summary:     "Overall grab counts plus top indexers by volume",
+		Tags:        []string{"Statistics"},
+	}, func(ctx context.Context, _ *struct{}) (*statsGrabsOutput, error) {
+		overall, indexers, err := svc.GrabPerformance(ctx)
+		if err != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to get grab stats", err)
+		}
+		if indexers == nil {
+			indexers = []stats.IndexerStat{}
+		}
+		return &statsGrabsOutput{Body: statsGrabsBody{
+			TotalGrabs:  overall.TotalGrabs,
+			Successful:  overall.Successful,
+			Failed:      overall.Failed,
+			SuccessRate: overall.SuccessRate,
+			TopIndexers: indexers,
+		}}, nil
 	})
 }

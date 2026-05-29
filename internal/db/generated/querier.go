@@ -68,6 +68,7 @@ type Querier interface {
 	GetGrabByClientItemID(ctx context.Context, clientItemID *string) (GrabHistory, error)
 	GetGrabByID(ctx context.Context, id string) (GrabHistory, error)
 	GetGrabByInfoHash(ctx context.Context, infoHash *string) (GrabHistory, error)
+	GetGrabStats(ctx context.Context) (GetGrabStatsRow, error)
 	GetImportExclusionByTMDBID(ctx context.Context, tmdbID int64) (ImportExclusion, error)
 	GetImportListConfig(ctx context.Context, id string) (ImportListConfig, error)
 	GetIndexerConfig(ctx context.Context, id string) (IndexerConfig, error)
@@ -79,7 +80,9 @@ type Querier interface {
 	GetSeason(ctx context.Context, id string) (Season, error)
 	GetSeries(ctx context.Context, id string) (Series, error)
 	GetSeriesByTMDBID(ctx context.Context, tmdbID int64) (Series, error)
+	GetSeriesYearDistribution(ctx context.Context) ([]GetSeriesYearDistributionRow, error)
 	GetSetting(ctx context.Context, key string) (string, error)
+	GetTopIndexers(ctx context.Context) ([]GetTopIndexersRow, error)
 	InsertActivity(ctx context.Context, arg InsertActivityParams) error
 	InsertStatsSnapshot(ctx context.Context, arg InsertStatsSnapshotParams) error
 	IsBlocklisted(ctx context.Context, releaseGuid string) (int64, error)
@@ -137,6 +140,7 @@ type Querier interface {
 	ListSeasonsBySeriesID(ctx context.Context, seriesID string) ([]Season, error)
 	ListSeries(ctx context.Context, arg ListSeriesParams) ([]Series, error)
 	ListSeriesByLibrary(ctx context.Context, arg ListSeriesByLibraryParams) ([]Series, error)
+	ListSeriesGenresJSON(ctx context.Context) ([]string, error)
 	// Stuck-downloading grabs that the stallwatcher should expire because
 	// they can't make progress. Two cohorts:
 	//   1. info_hash IS NULL/empty: pilot recorded the grab but never got an

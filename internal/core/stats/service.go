@@ -55,6 +55,34 @@ type GrowthPoint struct {
 	TotalBytes    int64  `json:"total_bytes"`
 }
 
+// GrabStats summarizes overall grab activity.
+type GrabStats struct {
+	TotalGrabs  int64   `json:"total_grabs"`
+	Successful  int64   `json:"successful"`
+	Failed      int64   `json:"failed"`
+	SuccessRate float64 `json:"success_rate"`
+}
+
+// IndexerStat is one row of the top-indexers list.
+type IndexerStat struct {
+	IndexerID   string  `json:"indexer_id"`
+	IndexerName string  `json:"indexer_name"`
+	GrabCount   int64   `json:"grab_count"`
+	SuccessRate float64 `json:"success_rate"`
+}
+
+// DecadeBucket is a series count for one decade.
+type DecadeBucket struct {
+	Decade string `json:"decade"` // e.g. "1990s"
+	Count  int64  `json:"count"`
+}
+
+// GenreBucket is a series count for one genre.
+type GenreBucket struct {
+	Genre string `json:"genre"`
+	Count int64  `json:"count"`
+}
+
 // Service provides library statistics.
 type Service struct {
 	q db.Querier
@@ -303,6 +331,120 @@ func (s *Service) Growth(ctx context.Context) ([]GrowthPoint, error) {
 		}
 	}
 	return points, nil
+}
+
+// GrabPerformance returns overall grab counts and the top-10 indexers
+// by grab volume. Mirrors prism's same-named endpoint so the dashboard
+// renders identically across pilot and prism.
+func (s *Service) GrabPerformance(ctx context.Context) (GrabStats, []IndexerStat, error) {
+	gr, err := s.q.GetGrabStats(ctx)
+	if err != nil {
+		return GrabStats{}, nil, fmt.Errorf("getting grab stats: %w", err)
+	}
+	successful := toInt64(gr.Successful)
+	failed := toInt64(gr.Failed)
+
+	var rate float64
+	if gr.TotalGrabs > 0 {
+		rate = float64(successful) / float64(gr.TotalGrabs)
+	}
+
+	grabStats := GrabStats{
+		TotalGrabs:  gr.TotalGrabs,
+		Successful:  successful,
+		Failed:      failed,
+		SuccessRate: rate,
+	}
+
+	indexerRows, err := s.q.GetTopIndexers(ctx)
+	if err != nil {
+		return grabStats, nil, fmt.Errorf("getting top indexers: %w", err)
+	}
+
+	indexers := make([]IndexerStat, len(indexerRows))
+	for i, r := range indexerRows {
+		idxID := ""
+		if r.IndexerID != nil {
+			idxID = *r.IndexerID
+		}
+		successes := toInt64(r.SuccessCount)
+		var idxRate float64
+		if r.GrabCount > 0 {
+			idxRate = float64(successes) / float64(r.GrabCount)
+		}
+		indexers[i] = IndexerStat{
+			IndexerID:   idxID,
+			IndexerName: r.IndexerName,
+			GrabCount:   r.GrabCount,
+			SuccessRate: idxRate,
+		}
+	}
+	return grabStats, indexers, nil
+}
+
+// DecadeDistribution returns series counts grouped by decade ("1990s",
+// "2000s", …) in chronological order.
+func (s *Service) DecadeDistribution(ctx context.Context) ([]DecadeBucket, error) {
+	rows, err := s.q.GetSeriesYearDistribution(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting year distribution: %w", err)
+	}
+	totals := make(map[int]int64)
+	for _, r := range rows {
+		decade := (int(r.Year) / 10) * 10
+		totals[decade] += r.Count
+	}
+	buckets := make([]DecadeBucket, 0, len(totals))
+	for decade, count := range totals {
+		buckets = append(buckets, DecadeBucket{
+			Decade: fmt.Sprintf("%ds", decade),
+			Count:  count,
+		})
+	}
+	// Sort chronologically — small N (one bucket per active decade), so
+	// insertion sort is the right shape; avoids importing "sort" just
+	// for this.
+	for i := 1; i < len(buckets); i++ {
+		for j := i; j > 0 && buckets[j].Decade < buckets[j-1].Decade; j-- {
+			buckets[j], buckets[j-1] = buckets[j-1], buckets[j]
+		}
+	}
+	return buckets, nil
+}
+
+// GenreDistribution returns the top 15 genres by series count.
+func (s *Service) GenreDistribution(ctx context.Context) ([]GenreBucket, error) {
+	rows, err := s.q.ListSeriesGenresJSON(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing genres: %w", err)
+	}
+	counts := make(map[string]int64)
+	for _, raw := range rows {
+		var genres []string
+		if err := json.Unmarshal([]byte(raw), &genres); err != nil {
+			continue
+		}
+		for _, g := range genres {
+			if g != "" {
+				counts[g]++
+			}
+		}
+	}
+	buckets := make([]GenreBucket, 0, len(counts))
+	for genre, count := range counts {
+		buckets = append(buckets, GenreBucket{Genre: genre, Count: count})
+	}
+	// Sort by count desc, then take top N.
+	for i := 1; i < len(buckets); i++ {
+		for j := i; j > 0 && buckets[j].Count > buckets[j-1].Count; j-- {
+			buckets[j], buckets[j-1] = buckets[j-1], buckets[j]
+		}
+	}
+	const maxGenres = 15
+	if len(buckets) > maxGenres {
+		buckets = buckets[:maxGenres]
+	}
+	return buckets, nil
 }
 
 // toInt64 converts the interface{} returned by COALESCE(SUM(...), 0) to int64.

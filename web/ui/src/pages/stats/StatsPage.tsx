@@ -3,7 +3,10 @@ import { useNavigate } from "react-router-dom";
 import {
   BarChart,
   Bar,
+  CartesianGrid,
   Cell,
+  PieChart,
+  Pie,
   XAxis,
   YAxis,
   Tooltip,
@@ -15,13 +18,25 @@ import {
   useQualityStats,
   useQualityTiers,
   useGrowthStats,
+  useDecadesStats,
+  useGenresStats,
+  useGrabsStats,
   type CollectionStats,
   type StorageStats,
   type QualityBucket,
   type QualityTier,
   type GrowthPoint,
+  type DecadeBucket,
+  type GenreBucket,
+  type GrabStats,
 } from "@/api/stats";
 import { formatBytes } from "@/lib/utils";
+import TableScroll from "@beacon-shared/TableScroll";
+
+const GRAB_COLORS = {
+  success: "var(--color-success, #22c55e)",
+  failed: "var(--color-danger, #ef4444)",
+};
 
 const tooltipStyle = {
   contentStyle: {
@@ -422,6 +437,243 @@ function GrowthCard({ data }: { data: GrowthPoint[] }) {
   );
 }
 
+// ── Decades card ──────────────────────────────────────────────────────────────
+
+function DecadesCard({ data }: { data: DecadeBucket[] }) {
+  if (data.length === 0) {
+    return (
+      <Card title="Series by Decade">
+        <p style={{ color: "var(--color-text-muted)", fontSize: 13, margin: 0 }}>
+          Add series to see your decade breakdown.
+        </p>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Series by Decade">
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="var(--color-border-subtle)"
+            vertical={false}
+          />
+          <XAxis dataKey="decade" tick={axisStyle} axisLine={false} tickLine={false} />
+          <YAxis tick={axisStyle} axisLine={false} tickLine={false} allowDecimals={false} />
+          <Tooltip
+            contentStyle={tooltipStyle.contentStyle}
+            wrapperStyle={tooltipStyle.wrapperStyle}
+            cursor={tooltipStyle.cursor}
+            formatter={(v) => [Number(v ?? 0).toLocaleString(), "Series"]}
+          />
+          <Bar dataKey="count" fill="var(--color-accent)" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </Card>
+  );
+}
+
+// ── Genres card ───────────────────────────────────────────────────────────────
+
+function GenresCard({ data }: { data: GenreBucket[] }) {
+  if (data.length === 0) {
+    return (
+      <Card title="Top Genres">
+        <p style={{ color: "var(--color-text-muted)", fontSize: 13, margin: 0 }}>
+          No genre data yet.
+        </p>
+      </Card>
+    );
+  }
+
+  const max = data[0]?.count ?? 1;
+
+  return (
+    <Card title="Top Genres">
+      <ResponsiveContainer width="100%" height={data.length * 30 + 8}>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 0, right: 48, left: 0, bottom: 0 }}
+        >
+          <XAxis type="number" hide domain={[0, max]} />
+          <YAxis
+            type="category"
+            dataKey="genre"
+            tick={axisStyle}
+            axisLine={false}
+            tickLine={false}
+            width={100}
+          />
+          <Tooltip
+            contentStyle={tooltipStyle.contentStyle}
+            wrapperStyle={tooltipStyle.wrapperStyle}
+            cursor={tooltipStyle.cursor}
+            formatter={(v) => [Number(v ?? 0).toLocaleString(), "Series"]}
+          />
+          <Bar dataKey="count" fill="var(--color-accent)" radius={[0, 4, 4, 0]}>
+            {data.map((_, i) => (
+              <Cell
+                key={i}
+                fill="var(--color-accent)"
+                fillOpacity={1 - i * (0.45 / Math.max(data.length - 1, 1))}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </Card>
+  );
+}
+
+// ── Grabs card ────────────────────────────────────────────────────────────────
+
+function GrabsCard({ data }: { data: GrabStats }) {
+  const successPct = Math.round(data.success_rate * 100);
+  const pieData =
+    data.total_grabs > 0
+      ? [
+          { name: "Successful", value: data.successful },
+          { name: "Failed", value: data.failed },
+        ]
+      : [];
+
+  return (
+    <Card title="Grab Performance">
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        {pieData.length > 0 && (
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <PieChart width={120} height={120}>
+              <Pie
+                data={pieData}
+                cx={55}
+                cy={55}
+                innerRadius={36}
+                outerRadius={54}
+                dataKey="value"
+                strokeWidth={0}
+              >
+                <Cell fill={GRAB_COLORS.success} />
+                <Cell fill={GRAB_COLORS.failed} />
+              </Pie>
+            </PieChart>
+            <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--color-text-muted)" }}>
+              <span>
+                <span style={{ color: GRAB_COLORS.success }}>● </span>OK
+              </span>
+              <span>
+                <span style={{ color: GRAB_COLORS.failed }}>● </span>Failed
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", flex: 1 }}>
+          <StatBlock label="Total Grabs" value={data.total_grabs.toLocaleString()} />
+          <StatBlock label="Successful" value={data.successful.toLocaleString()} />
+          <StatBlock
+            label="Failed"
+            value={data.failed.toLocaleString()}
+            accent={data.failed > 0 ? "var(--color-danger, #ef4444)" : undefined}
+          />
+          <StatBlock
+            label="Success Rate"
+            value={`${successPct}%`}
+            accent={
+              successPct >= 90
+                ? "var(--color-success)"
+                : successPct >= 70
+                ? "var(--color-warning)"
+                : "var(--color-danger, #ef4444)"
+            }
+          />
+        </div>
+      </div>
+
+      {(data.top_indexers ?? []).length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--color-text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.07em",
+              marginBottom: 10,
+            }}
+          >
+            Top Indexers
+          </div>
+          <TableScroll minWidth={450}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr>
+                  {["Indexer", "Grabs", "Success Rate"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: h === "Indexer" ? "left" : "right",
+                        color: "var(--color-text-muted)",
+                        fontWeight: 500,
+                        paddingBottom: 8,
+                        fontSize: 12,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.top_indexers.map((idx) => (
+                  <tr
+                    key={idx.indexer_id}
+                    style={{ borderTop: "1px solid var(--color-border-subtle)" }}
+                  >
+                    <td
+                      style={{
+                        padding: "8px 0",
+                        color: "var(--color-text-primary)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      {idx.indexer_name}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px 0",
+                        textAlign: "right",
+                        color: "var(--color-text-secondary)",
+                      }}
+                    >
+                      {idx.grab_count.toLocaleString()}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px 0",
+                        textAlign: "right",
+                        color:
+                          idx.success_rate >= 0.9
+                            ? "var(--color-success)"
+                            : idx.success_rate >= 0.7
+                            ? "var(--color-warning)"
+                            : "var(--color-danger, #ef4444)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {Math.round(idx.success_rate * 100)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function StatsPage() {
@@ -430,6 +682,9 @@ export default function StatsPage() {
   const quality = useQualityStats();
   const qualityTiers = useQualityTiers();
   const growth = useGrowthStats();
+  const decades = useDecadesStats();
+  const genres = useGenresStats();
+  const grabs = useGrabsStats();
 
   const twoCol: React.CSSProperties = {
     display: "grid",
@@ -461,14 +716,14 @@ export default function StatsPage() {
           <CollectionCard data={collection.data} />
         ) : null}
 
-        {/* Storage | Growth */}
+        {/* Decades | Growth */}
         <div style={twoCol}>
-          {storage.isLoading ? (
-            <CardSkeleton height={140} />
-          ) : storage.error ? (
-            <ErrorCard title="Storage" />
-          ) : storage.data ? (
-            <StorageCard data={storage.data} />
+          {decades.isLoading ? (
+            <CardSkeleton height={220} />
+          ) : decades.error ? (
+            <ErrorCard title="Series by Decade" />
+          ) : decades.data ? (
+            <DecadesCard data={decades.data} />
           ) : null}
 
           {growth.isLoading ? (
@@ -487,6 +742,34 @@ export default function StatsPage() {
           <ErrorCard title="Quality Distribution" />
         ) : quality.data ? (
           <QualityCard data={quality.data} tierData={qualityTiers.data} />
+        ) : null}
+
+        {/* Storage | Grabs */}
+        <div style={twoCol}>
+          {storage.isLoading ? (
+            <CardSkeleton height={140} />
+          ) : storage.error ? (
+            <ErrorCard title="Storage" />
+          ) : storage.data ? (
+            <StorageCard data={storage.data} />
+          ) : null}
+
+          {grabs.isLoading ? (
+            <CardSkeleton height={220} />
+          ) : grabs.error ? (
+            <ErrorCard title="Grab Performance" />
+          ) : grabs.data ? (
+            <GrabsCard data={grabs.data} />
+          ) : null}
+        </div>
+
+        {/* Genres — full width */}
+        {genres.isLoading ? (
+          <CardSkeleton height={300} />
+        ) : genres.error ? (
+          <ErrorCard title="Top Genres" />
+        ) : genres.data ? (
+          <GenresCard data={genres.data} />
         ) : null}
       </div>
     </div>
