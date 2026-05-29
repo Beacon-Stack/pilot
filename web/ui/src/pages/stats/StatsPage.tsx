@@ -657,14 +657,27 @@ function GrabsCard({ data }: { data: GrabStats }) {
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", flex: 1 }}>
-          <StatBlock label="Total Grabs" value={data.total_grabs.toLocaleString()} />
-          <StatBlock label="Successful" value={data.successful.toLocaleString()} />
-          <StatBlock
-            label="Failed"
-            value={data.failed.toLocaleString()}
-            accent={data.failed > 0 ? "var(--color-danger, #ef4444)" : undefined}
-          />
+        {/* CSS Grid (not flex) forces exactly 3 count blocks on row 1 so
+            Success Rate consistently lands on row 2 as a hero metric,
+            the way prism's card renders. A flex-wrap setup is sensitive
+            to number width — pilot's longer values would otherwise
+            collapse it into 2x2. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 16,
+            }}
+          >
+            <StatBlock label="Total Grabs" value={data.total_grabs.toLocaleString()} />
+            <StatBlock label="Successful" value={data.successful.toLocaleString()} />
+            <StatBlock
+              label="Failed"
+              value={data.failed.toLocaleString()}
+              accent={data.failed > 0 ? "var(--color-danger, #ef4444)" : undefined}
+            />
+          </div>
           <StatBlock
             label="Success Rate"
             value={`${successPct}%`}
