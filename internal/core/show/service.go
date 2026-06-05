@@ -609,11 +609,35 @@ func (s *Service) List(ctx context.Context, req ListRequest) (ListResult, error)
 
 	series := make([]Series, 0, len(rows))
 	for _, row := range rows {
-		sr, err := s.buildSeries(ctx, row)
+		sr, err := rowToSeries(row)
 		if err != nil {
 			return ListResult{}, err
 		}
 		series = append(series, sr)
+	}
+
+	// Populate episode + file counts for the whole page in two queries total
+	// (one batched count) rather than the two-per-series that buildSeries
+	// would issue — important under the single SQLite connection.
+	if len(series) > 0 {
+		ids := make([]string, len(series))
+		for i := range series {
+			ids[i] = series[i].ID
+		}
+		counts, err := s.q.ListEpisodeCountsBySeriesIDs(ctx, ids)
+		if err != nil {
+			return ListResult{}, fmt.Errorf("list episode counts: %w", err)
+		}
+		totals := make(map[string]int64, len(counts))
+		withFile := make(map[string]int64, len(counts))
+		for _, c := range counts {
+			totals[c.SeriesID] = c.TotalCount
+			withFile[c.SeriesID] = c.FileCount
+		}
+		for i := range series {
+			series[i].EpisodeCount = totals[series[i].ID]
+			series[i].EpisodeFileCount = withFile[series[i].ID]
+		}
 	}
 
 	return ListResult{

@@ -111,6 +111,9 @@ type Querier interface {
 	ListEnabledIndexers(ctx context.Context) ([]IndexerConfig, error)
 	ListEnabledMediaServers(ctx context.Context) ([]MediaServerConfig, error)
 	ListEnabledNotifications(ctx context.Context) ([]NotificationConfig, error)
+	// Batched episode + file counts for a page of series, so the series list can
+	// populate counts in a single round-trip instead of two queries per series.
+	ListEpisodeCountsBySeriesIDs(ctx context.Context, seriesIds []string) ([]ListEpisodeCountsBySeriesIDsRow, error)
 	ListEpisodeFileQualities(ctx context.Context) ([]string, error)
 	ListEpisodeFileQualitiesWithSeriesIDs(ctx context.Context) ([]ListEpisodeFileQualitiesWithSeriesIDsRow, error)
 	ListEpisodeFilesByEpisodeID(ctx context.Context, episodeID string) ([]EpisodeFile, error)

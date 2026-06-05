@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const countEpisodesBySeriesID = `-- name: CountEpisodesBySeriesID :one
@@ -138,6 +139,56 @@ func (q *Queries) GetEpisode(ctx context.Context, id string) (Episode, error) {
 		&i.RuntimeMinutes,
 	)
 	return i, err
+}
+
+const listEpisodeCountsBySeriesIDs = `-- name: ListEpisodeCountsBySeriesIDs :many
+SELECT series_id,
+       COUNT(*) AS total_count,
+       COUNT(*) FILTER (WHERE has_file = 1) AS file_count
+FROM episodes
+WHERE series_id IN (/*SLICE:series_ids*/?)
+GROUP BY series_id
+`
+
+type ListEpisodeCountsBySeriesIDsRow struct {
+	SeriesID   string `json:"seriesId"`
+	TotalCount int64  `json:"totalCount"`
+	FileCount  int64  `json:"fileCount"`
+}
+
+// Batched episode + file counts for a page of series, so the series list can
+// populate counts in a single round-trip instead of two queries per series.
+func (q *Queries) ListEpisodeCountsBySeriesIDs(ctx context.Context, seriesIds []string) ([]ListEpisodeCountsBySeriesIDsRow, error) {
+	query := listEpisodeCountsBySeriesIDs
+	var queryParams []interface{}
+	if len(seriesIds) > 0 {
+		for _, v := range seriesIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:series_ids*/?", strings.Repeat(",?", len(seriesIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:series_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEpisodeCountsBySeriesIDsRow
+	for rows.Next() {
+		var i ListEpisodeCountsBySeriesIDsRow
+		if err := rows.Scan(&i.SeriesID, &i.TotalCount, &i.FileCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listEpisodesByAirDateRange = `-- name: ListEpisodesByAirDateRange :many

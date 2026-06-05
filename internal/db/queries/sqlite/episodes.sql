@@ -55,6 +55,16 @@ SELECT COUNT(*) FROM episodes WHERE series_id = ?;
 -- name: CountEpisodesWithFileBySeriesID :one
 SELECT COUNT(*) FROM episodes WHERE series_id = ? AND has_file = 1;
 
+-- name: ListEpisodeCountsBySeriesIDs :many
+-- Batched episode + file counts for a page of series, so the series list can
+-- populate counts in a single round-trip instead of two queries per series.
+SELECT series_id,
+       COUNT(*) AS total_count,
+       COUNT(*) FILTER (WHERE has_file = 1) AS file_count
+FROM episodes
+WHERE series_id IN (sqlc.slice('series_ids'))
+GROUP BY series_id;
+
 -- name: CountMissingEpisodes :one
 SELECT COUNT(*) FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= strftime('%Y-%m-%d', 'now');
 
