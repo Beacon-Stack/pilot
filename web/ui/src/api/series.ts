@@ -4,10 +4,31 @@ import type { Series, Season, Cour, Episode, SeriesListResponse } from "@/types"
 
 // ── Series list & detail ─────────────────────────────────────────────────────
 
+// useSeriesList loads the entire library. The server paginates (default 50
+// per page), so we accumulate pages until we have all `total` rows — the
+// dashboard renders a single grid and filters client-side, so a partial page
+// would silently hide series and make the "N series" count disagree with the
+// grid. Chunked at 200 to keep individual responses small.
 export function useSeriesList() {
   return useQuery({
     queryKey: ["series"],
-    queryFn: () => apiFetch<SeriesListResponse>("/series"),
+    queryFn: async () => {
+      const perPage = 200;
+      const first = await apiFetch<SeriesListResponse>(
+        `/series?page=1&per_page=${perPage}`,
+      );
+      const series = [...first.series];
+      let page = 2;
+      while (series.length < first.total) {
+        const next = await apiFetch<SeriesListResponse>(
+          `/series?page=${page}&per_page=${perPage}`,
+        );
+        if (next.series.length === 0) break;
+        series.push(...next.series);
+        page += 1;
+      }
+      return { ...first, series, per_page: series.length };
+    },
   });
 }
 
