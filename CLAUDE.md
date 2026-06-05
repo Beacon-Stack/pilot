@@ -15,10 +15,10 @@ banner, API responses, docs) updates automatically.
 
 ## GitHub
 
-All `gh` commands MUST target `pilot/pilot`:
+All `gh` commands MUST target `Beacon-Stack/pilot`:
 
 ```sh
-gh <command> --repo pilot/pilot
+gh <command> --repo Beacon-Stack/pilot
 ```
 
 ## Branching
