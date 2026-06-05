@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/beacon-stack/pilot/internal/appinfo"
 )
@@ -19,6 +22,14 @@ const (
 	defaultBaseURL = "https://api.themoviedb.org/3"
 	httpTimeout    = 30 * time.Second
 	redactedAPIKey = "***"
+
+	// TMDB allows ~50 req/s; we stay well under it to leave headroom for
+	// bursts (Discover browsing, metadata refresh) and avoid 429s.
+	rateLimitPerSec = 20
+	rateLimitBurst  = 20
+
+	cacheTTL        = 15 * time.Minute
+	cacheMaxEntries = 2000
 )
 
 // userAgent is the value sent in every outbound request's User-Agent header.
@@ -26,12 +37,15 @@ var userAgent = appinfo.AppName + "/0.1.0"
 
 // Client is a TMDB API v3 HTTP client scoped to TV series endpoints.
 // All outbound requests are logged. The API key is never logged.
-// Client is safe for concurrent use.
+// Outbound calls are rate-limited and GET responses are cached for a short
+// TTL. Client is safe for concurrent use.
 type Client struct {
 	apiKey  string
 	baseURL string
 	http    *http.Client
 	logger  *slog.Logger
+	limiter *rate.Limiter
+	cache   *responseCache
 }
 
 // New creates a new tmdbtv Client.
@@ -43,6 +57,8 @@ func New(apiKey string, logger *slog.Logger) *Client {
 		baseURL: defaultBaseURL,
 		http:    &http.Client{Timeout: httpTimeout},
 		logger:  logger,
+		limiter: rate.NewLimiter(rate.Limit(rateLimitPerSec), rateLimitBurst),
+		cache:   newResponseCache(cacheTTL, cacheMaxEntries),
 	}
 }
 
@@ -329,8 +345,20 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, dst an
 	if params == nil {
 		params = url.Values{}
 	}
-	params.Set("api_key", c.apiKey)
 
+	// Cache key is the path+query without the API key, so it's stable across
+	// key rotations and never embeds the secret.
+	cacheKey := path + "?" + params.Encode()
+	if c.cache != nil {
+		if body, ok := c.cache.get(cacheKey); ok {
+			if err := json.Unmarshal(body, dst); err != nil {
+				return fmt.Errorf("decoding cached response: %w", err)
+			}
+			return nil
+		}
+	}
+
+	params.Set("api_key", c.apiKey)
 	rawURL := c.baseURL + path + "?" + params.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -345,11 +373,22 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, dst an
 		slog.String("url", redactAPIKey(rawURL, c.apiKey)),
 	)
 
+	if c.limiter != nil {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return fmt.Errorf("rate limiter: %w", err)
+		}
+	}
+
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading response: %w", err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		// Try to extract the TMDB error message for context.
@@ -357,15 +396,19 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, dst an
 			StatusMessage string `json:"status_message"`
 			StatusCode    int    `json:"status_code"`
 		}
-		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
+		_ = json.Unmarshal(body, &apiErr)
 		if apiErr.StatusMessage != "" {
 			return fmt.Errorf("http %d: %s", resp.StatusCode, apiErr.StatusMessage)
 		}
 		return fmt.Errorf("http %d", resp.StatusCode)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
+	if err := json.Unmarshal(body, dst); err != nil {
 		return fmt.Errorf("decoding response: %w", err)
+	}
+
+	if c.cache != nil {
+		c.cache.set(cacheKey, body)
 	}
 
 	return nil
