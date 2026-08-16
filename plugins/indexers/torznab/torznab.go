@@ -94,7 +94,11 @@ func (idx *Indexer) Capabilities(ctx context.Context) (plugin.Capabilities, erro
 	}
 
 	var caps capsResponse
-	if err := xml.NewDecoder(resp.Body).Decode(&caps); err != nil {
+	if err := decodeXML(resp.Body, &caps); err != nil {
+		var terr *torznabError
+		if errors.As(err, &terr) {
+			return plugin.Capabilities{}, fmt.Errorf("torznab: %w", terr)
+		}
 		return plugin.Capabilities{}, fmt.Errorf("torznab: decoding capabilities: %w", err)
 	}
 
@@ -179,13 +183,18 @@ func (idx *Indexer) Test(ctx context.Context) error {
 	}
 
 	var caps capsResponse
-	if err := xml.NewDecoder(resp.Body).Decode(&caps); err != nil {
-		// EOF means the body was empty — the indexer answered HTTP 200 but
-		// returned no caps document. Some Prowlarr-backed indexers do this
-		// while still serving search results.
-		if !errors.Is(err, io.EOF) {
-			return fmt.Errorf("torznab: invalid caps response (wrong URL?): %w", err)
+	if err := decodeXML(resp.Body, &caps); err != nil {
+		// An empty body means the indexer answered HTTP 200 but returned no
+		// caps document. Some Prowlarr-backed indexers do this while still
+		// serving search results.
+		if errors.Is(err, errEmptyBody) {
+			return nil
 		}
+		var terr *torznabError
+		if errors.As(err, &terr) {
+			return fmt.Errorf("torznab: %w", terr)
+		}
+		return fmt.Errorf("torznab: invalid caps response (wrong URL?): %w", err)
 	}
 	return nil
 }
@@ -213,6 +222,47 @@ func (idx *Indexer) get(ctx context.Context, rawURL string) (*http.Response, err
 	return idx.client.Do(req)
 }
 
+// maxResponseBytes caps how much of a response body decodeXML will read.
+// The largest legitimate feeds are a few MB; the cap only guards against a
+// misbehaving endpoint streaming forever.
+const maxResponseBytes = 32 << 20
+
+// errEmptyBody signals an HTTP-200 response with an empty body. Callers map
+// it to their own contextual message (Test tolerates it entirely).
+var errEmptyBody = errors.New("empty response body")
+
+// torznabError is the protocol's standard failure document
+// (<error code="…" description="…"/>), served with HTTP 200.
+type torznabError struct {
+	XMLName     xml.Name `xml:"error"`
+	Code        string   `xml:"code,attr"`
+	Description string   `xml:"description,attr"`
+}
+
+func (e *torznabError) Error() string {
+	return fmt.Sprintf("indexer reported error %s: %s", e.Code, e.Description)
+}
+
+// decodeXML buffers the response body and decodes it into v. Torznab signals
+// failures as an <error> document rather than an HTTP status, so that case is
+// decoded explicitly and returned as *torznabError — otherwise the indexer's
+// own description would be swallowed by an opaque "expected element type
+// <rss>" mismatch from the decoder.
+func decodeXML(r io.Reader, v any) error {
+	data, err := io.ReadAll(io.LimitReader(r, maxResponseBytes))
+	if err != nil {
+		return fmt.Errorf("reading response: %w", err)
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return errEmptyBody
+	}
+	protoErr := &torznabError{}
+	if xml.Unmarshal(data, protoErr) == nil {
+		return protoErr
+	}
+	return xml.Unmarshal(data, v)
+}
+
 // fetchReleases performs a GET to rawURL, decodes the Torznab RSS response,
 // and returns the parsed releases.
 func (idx *Indexer) fetchReleases(ctx context.Context, rawURL string) ([]plugin.Release, error) {
@@ -227,9 +277,13 @@ func (idx *Indexer) fetchReleases(ctx context.Context, rawURL string) ([]plugin.
 	}
 
 	var feed rssResponse
-	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
-		if errors.Is(err, io.EOF) {
+	if err := decodeXML(resp.Body, &feed); err != nil {
+		if errors.Is(err, errEmptyBody) {
 			return nil, fmt.Errorf("torznab: empty response body — check the API key and indexer URL")
+		}
+		var terr *torznabError
+		if errors.As(err, &terr) {
+			return nil, fmt.Errorf("torznab: %w", terr)
 		}
 		return nil, fmt.Errorf("torznab: decoding response: %w", err)
 	}
