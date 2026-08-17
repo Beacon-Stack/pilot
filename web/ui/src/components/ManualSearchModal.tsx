@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { X, Download, Wifi, HardDrive, Loader2, AlertTriangle, ArrowUp, ArrowDown, RefreshCw, History } from "lucide-react";
 import { toast } from "sonner";
 import { useSearchReleases, useGrabRelease } from "@/api/releases";
@@ -470,6 +470,22 @@ export default function ManualSearchModal({
   const releases = data?.releases;
   const indexerOutcomes = data?.indexers ?? [];
   const failedIndexers = indexerOutcomes.filter((o) => o.error);
+  const pendingIndexers = indexerOutcomes.filter((o) => o.pending && !o.error);
+
+  // While Cloudflare-walled indexers are still solving server-side,
+  // silently re-search every 30s — their results land in Pulse's cache
+  // and merge in. Capped so a genuinely stuck indexer doesn't poll
+  // forever; previous results stay on screen during each refetch.
+  const [pendingRetries, setPendingRetries] = useState(0);
+  const maxPendingRetries = 5;
+  useEffect(() => {
+    if (pendingIndexers.length === 0 || pendingRetries >= maxPendingRetries || isFetching) return;
+    const t = setTimeout(() => {
+      setPendingRetries((n) => n + 1);
+      refetch();
+    }, 30_000);
+    return () => clearTimeout(t);
+  }, [pendingIndexers.length, pendingRetries, isFetching, refetch]);
   const grab = useGrabRelease(seriesId);
   const confirm = useConfirm();
   const [sort, setSort] = useState<{ field: SortField; dir: SortDir } | null>(null);
@@ -778,6 +794,47 @@ export default function ManualSearchModal({
                 Retry
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Still-searching notice — Cloudflare-walled indexers keep
+            solving server-side; their results merge in automatically. */}
+        {!isLoading && !isError && pendingIndexers.length > 0 && pendingRetries < maxPendingRetries && (
+          <div
+            style={{
+              margin: "12px 20px 0",
+              padding: "10px 14px",
+              background: "color-mix(in srgb, var(--color-accent) 8%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "var(--color-text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <Loader2 size={13} style={{ color: "var(--color-accent)", animation: "spin 1s linear infinite", flexShrink: 0 }} />
+            <span>
+              Still searching {pendingIndexers.map((o) => o.indexer_name).join(", ")} — Cloudflare
+              solving takes a minute or two; results appear here automatically.
+            </span>
+          </div>
+        )}
+        {!isLoading && !isError && pendingIndexers.length > 0 && pendingRetries >= maxPendingRetries && (
+          <div
+            style={{
+              margin: "12px 20px 0",
+              padding: "10px 14px",
+              background: "color-mix(in srgb, var(--color-warning) 8%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "var(--color-warning)",
+            }}
+          >
+            {pendingIndexers.map((o) => o.indexer_name).join(", ")} did not respond after several
+            attempts — they may be down. Use Search Again to retry.
           </div>
         )}
 

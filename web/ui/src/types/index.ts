@@ -199,6 +199,10 @@ export interface IndexerSearchOutcome {
   indexer_name: string;
   results: number;
   error?: string;
+  // The indexer's scrape is still running server-side (Cloudflare
+  // solving) and will be cached — re-searching shortly returns its
+  // results. Rendered as "still searching", never as a failure.
+  pending?: boolean;
 }
 
 export interface ReleaseSearchResponse {

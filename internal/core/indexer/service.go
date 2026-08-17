@@ -459,6 +459,11 @@ type Outcome struct {
 	IndexerName string
 	Results     int
 	Error       string // empty on success
+	// Pending means the indexer hit our deadline but its scrape continues
+	// server-side (Pulse detaches Cloudflare-walled scrapes and caches
+	// the result) — a retry shortly will be served from cache. NOT a
+	// failure; the UI shows "still searching", not an error.
+	Pending bool
 }
 
 // Search queries all enabled indexers with the given search query and returns
@@ -570,6 +575,18 @@ func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) 
 
 	for res := range resultsCh {
 		if res.err != nil {
+			// Deadline hits are "pending", not failures: the scrape
+			// continues server-side and its result will be cached. Only
+			// genuine errors (torznab <error> docs, connection failures)
+			// count as failed.
+			if errors.Is(res.err, errSearchTimedOut) {
+				outcomes = append(outcomes, Outcome{
+					IndexerID:   res.indexerID,
+					IndexerName: res.indexerName,
+					Pending:     true,
+				})
+				continue
+			}
 			errs = append(errs, fmt.Errorf("indexer %q: %w", res.indexerName, res.err))
 			outcomes = append(outcomes, Outcome{
 				IndexerID:   res.indexerID,

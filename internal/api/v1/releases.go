@@ -74,6 +74,10 @@ type indexerOutcomeBody struct {
 	IndexerName string `json:"indexer_name"`
 	Results     int    `json:"results"`
 	Error       string `json:"error,omitempty"`
+	// Pending: the indexer's scrape is still running server-side and will
+	// be cached — re-searching shortly returns its results. Rendered as
+	// "still searching", never as a failure.
+	Pending bool `json:"pending,omitempty"`
 }
 
 type releaseListBody struct {
@@ -93,6 +97,7 @@ func outcomesToBodies(outcomes []indexer.Outcome) []indexerOutcomeBody {
 			IndexerName: oc.IndexerName,
 			Results:     oc.Results,
 			Error:       oc.Error,
+			Pending:     oc.Pending,
 		}
 	}
 	return out
@@ -355,6 +360,7 @@ func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries 
 			if existing.Error == "" {
 				existing.Error = oc.Error
 			}
+			existing.Pending = existing.Pending || oc.Pending
 		}
 		for _, r := range qr.results {
 			if _, ok := seen[r.GUID]; ok {
