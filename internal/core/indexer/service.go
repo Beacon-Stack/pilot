@@ -121,7 +121,11 @@ type GrabRequest struct {
 // cap the outbound concurrency was queries×indexers — a thundering herd
 // against providers and the local FD table. The semaphore is shared so the
 // bound holds across concurrent Search/GetRecent calls, not just within one.
-const maxConcurrentIndexerSearches = 8
+// 16 slots: a season search issues 2 query variants × ~10 indexers = 20
+// tasks; at 8 slots the tail waited a full scrape-round before starting
+// and blew the interactive budget. Pulse rate-limits per site anyway, so
+// the extra concurrency doesn't hammer providers.
+const maxConcurrentIndexerSearches = 16
 
 // perIndexerSearchTimeout bounds how long a single indexer call may run (and
 // thus hold a semaphore slot). It inherits any earlier deadline on the parent

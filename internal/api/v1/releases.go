@@ -415,14 +415,17 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		}
 		queries := buildEpisodeQueries(series.Title, input.Season, input.Episode, absoluteEp, isAnime)
 
-		// Hard interactive-search cut-off. A single dead/walled indexer
-		// can otherwise hold the search at the per-indexer client timeout
-		// (~30s). Empirically healthy indexers come back in 0.2–10s
-		// (Cloudflare-walled torznab providers tend to be the slow tail);
-		// 12s leaves room for those while killing genuinely dead ones
-		// quickly. Stragglers show up in pilot logs as `indexer search
-		// failed duration_ms=12000+ error=context deadline exceeded`.
-		searchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+		// Hard interactive-search cut-off. This was 12s when half the
+		// fleet failed instantly (masked HTTP 400s) and dead indexers were
+		// the thing to kill quickly. With the 2026-08-17 engine fixes all
+		// indexers genuinely scrape — 2 query variants × N indexers queue
+		// behind the global semaphore and Pulse's per-site rate limiting,
+		// so a cold-cache season search legitimately needs 20s+. Failures
+		// are now fast and honest (torznab <error> docs, no hangs), so the
+		// budget matches the 25s per-indexer timeout plus queue headroom.
+		// Stragglers show up in pilot logs as `indexer search failed
+		// duration_ms=30000+ error=context deadline exceeded`.
+		searchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
 		results, outcomes, searchErr := searchAllQueries(searchCtx, indexerSvc, queries, input.Season, input.Episode)
