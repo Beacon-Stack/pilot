@@ -285,7 +285,10 @@ func (c *Client) GetQueue(ctx context.Context) ([]plugin.QueueItem, error) {
 	return items, nil
 }
 
-// Remove deletes a torrent from Haul.
+// Remove deletes a torrent from Haul. A 404 maps to ErrItemNotFound —
+// the item is already gone, which removal callers (download_cleanup,
+// queue removal) treat as success; returning a plain error left such
+// grabs permanently stuck as cleanup candidates.
 func (c *Client) Remove(ctx context.Context, clientItemID string, deleteFiles bool) error {
 	url := fmt.Sprintf("/api/v1/torrents/%s?delete_files=%t", clientItemID, deleteFiles)
 	resp, err := c.delete(ctx, url)
@@ -293,6 +296,9 @@ func (c *Client) Remove(ctx context.Context, clientItemID string, deleteFiles bo
 		return fmt.Errorf("haul: remove failed: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return plugin.ErrItemNotFound
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("haul: remove returned status %d", resp.StatusCode)
 	}
