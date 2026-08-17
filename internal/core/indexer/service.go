@@ -127,6 +127,12 @@ type GrabRequest struct {
 // the extra concurrency doesn't hammer providers.
 const maxConcurrentIndexerSearches = 16
 
+// errSearchTimedOut replaces a raw context.DeadlineExceeded in
+// user-facing per-indexer outcomes. Slow (Cloudflare-protected)
+// indexers finish their scrape server-side after we disconnect and the
+// result is cached — retrying is the fix, and the message should say so.
+var errSearchTimedOut = errors.New("timed out — slow (Cloudflare-protected) indexers finish in the background; search again shortly for cached results")
+
 // perIndexerSearchTimeout bounds how long a single indexer call may run (and
 // thus hold a semaphore slot). It inherits any earlier deadline on the parent
 // context, so a tight per-request budget still wins; this only stops one hung
@@ -539,6 +545,13 @@ func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) 
 					"duration_ms", elapsed.Milliseconds(),
 					"results", len(releases))
 			}
+			// A deadline hit is almost always a Cloudflare-walled indexer
+			// mid-solve: Pulse keeps scraping after we hang up and caches
+			// the result, so a retry shortly succeeds instantly. Say that
+			// instead of a bare "context deadline exceeded".
+			if err != nil && errors.Is(err, context.DeadlineExceeded) {
+				err = errSearchTimedOut
+			}
 			resultsCh <- indexerResult{
 				indexerID:   cfg.ID,
 				indexerName: cfg.Name,
@@ -689,6 +702,13 @@ func (s *Service) GetRecent(ctx context.Context) ([]SearchResult, error) {
 				return
 			}
 			releases, err := idx.GetRecent(sctx)
+			// A deadline hit is almost always a Cloudflare-walled indexer
+			// mid-solve: Pulse keeps scraping after we hang up and caches
+			// the result, so a retry shortly succeeds instantly. Say that
+			// instead of a bare "context deadline exceeded".
+			if err != nil && errors.Is(err, context.DeadlineExceeded) {
+				err = errSearchTimedOut
+			}
 			resultsCh <- indexerResult{
 				indexerID:   cfg.ID,
 				indexerName: cfg.Name,
