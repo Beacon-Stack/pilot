@@ -463,10 +463,13 @@ export default function ManualSearchModal({
   displayEpisodeNumber,
   onClose,
 }: ManualSearchModalProps) {
-  const { data: releases, isLoading, isError, error, refetch, isFetching } = useSearchReleases(
+  const { data, isLoading, isError, error, refetch, isFetching } = useSearchReleases(
     { seriesId, season: seasonNumber, episode: episodeNumber },
     true
   );
+  const releases = data?.releases;
+  const indexerOutcomes = data?.indexers ?? [];
+  const failedIndexers = indexerOutcomes.filter((o) => o.error);
   const grab = useGrabRelease(seriesId);
   const confirm = useConfirm();
   const [sort, setSort] = useState<{ field: SortField; dir: SortDir } | null>(null);
@@ -778,6 +781,31 @@ export default function ManualSearchModal({
           </div>
         )}
 
+        {/* Per-indexer failures — shown whenever any indexer errored, so
+            partial results never silently hide a broken fleet. */}
+        {!isLoading && !isError && failedIndexers.length > 0 && (
+          <div
+            style={{
+              margin: "12px 20px 0",
+              padding: "10px 14px",
+              background: "color-mix(in srgb, var(--color-warning) 8%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "var(--color-warning)",
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>
+              {failedIndexers.length} of {indexerOutcomes.length} indexer{indexerOutcomes.length === 1 ? "" : "s"} failed
+            </div>
+            {failedIndexers.map((o) => (
+              <div key={o.indexer_id} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontWeight: 500 }}>{o.indexer_name}</span>: {o.error}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Empty */}
         {!isLoading && !isError && releases && releases.length === 0 && (
           <div
@@ -791,7 +819,12 @@ export default function ManualSearchModal({
               color: "var(--color-text-muted)",
             }}
           >
-            No releases found.
+            <div>
+              No releases found.
+              {indexerOutcomes.length > 0 && failedIndexers.length === 0 && (
+                <span> {indexerOutcomes.length} indexer{indexerOutcomes.length === 1 ? "" : "s"} searched successfully.</span>
+              )}
+            </div>
             <button
               onClick={() => refetch()}
               style={{

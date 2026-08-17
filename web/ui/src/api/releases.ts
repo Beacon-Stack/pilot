@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import type { ReleaseResult } from "@/types";
+import type { ReleaseSearchResponse } from "@/types";
 
 interface SearchReleasesParams {
   seriesId: string;
@@ -17,7 +17,7 @@ export function useSearchReleases({ seriesId, season, episode }: SearchReleasesP
   return useQuery({
     queryKey: ["releases", seriesId, season, episode],
     queryFn: () =>
-      apiFetch<ReleaseResult[]>(`/series/${seriesId}/releases${qs ? `?${qs}` : ""}`),
+      apiFetch<ReleaseSearchResponse>(`/series/${seriesId}/releases${qs ? `?${qs}` : ""}`),
     enabled: enabled && !!seriesId,
     staleTime: 0,
     gcTime: 0,       // don't cache stale/error results across modal opens

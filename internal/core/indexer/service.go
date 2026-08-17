@@ -439,18 +439,36 @@ func seedWeight(seeds int, ageDays float64) int {
 	return bucket
 }
 
+// Outcome summarizes one indexer's contribution to a search —
+// the raw material for the per-indexer breakdown the UI shows instead of
+// a bare "No releases found." This data was previously computed and
+// thrown away, which made "half the fleet is broken" indistinguishable
+// from "nothing matched".
+type Outcome struct {
+	IndexerID   string
+	IndexerName string
+	Results     int
+	Error       string // empty on success
+}
+
 // Search queries all enabled indexers with the given search query and returns
 // results sorted by quality score, then an age-aware log10 seed weight, then
 // release age. Errors from individual indexers are collected; a combined error
 // is returned alongside any results that were gathered.
 func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchResult, error) {
+	results, _, err := s.SearchWithOutcomes(ctx, q)
+	return results, err
+}
+
+// SearchWithOutcomes is Search plus the per-indexer outcome list.
+func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) ([]SearchResult, []Outcome, error) {
 	rows, err := s.q.ListEnabledIndexers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("listing enabled indexers: %w", err)
+		return nil, nil, fmt.Errorf("listing enabled indexers: %w", err)
 	}
 
 	if len(rows) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	type indexerResult struct {
@@ -531,12 +549,23 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 
 	var allResults []SearchResult
 	var errs []error
+	var outcomes []Outcome
 
 	for res := range resultsCh {
 		if res.err != nil {
 			errs = append(errs, fmt.Errorf("indexer %q: %w", res.indexerName, res.err))
+			outcomes = append(outcomes, Outcome{
+				IndexerID:   res.indexerID,
+				IndexerName: res.indexerName,
+				Error:       res.err.Error(),
+			})
 			continue
 		}
+		outcomes = append(outcomes, Outcome{
+			IndexerID:   res.indexerID,
+			IndexerName: res.indexerName,
+			Results:     len(res.releases),
+		})
 		for _, r := range res.releases {
 			if r.Indexer == "" {
 				r.Indexer = res.indexerName
@@ -598,7 +627,7 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 		combinedErr = fmt.Errorf("%d indexer(s) failed: %v", len(errs), msgs)
 	}
 
-	return allResults, combinedErr
+	return allResults, outcomes, combinedErr
 }
 
 // GetRecent fetches the most recent releases from all enabled indexers via

@@ -135,6 +135,7 @@ func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.
 	// "Andor" → "Anderson / Andrea" substring garbage. The downside of
 	// duplication (text gate + structured gate stacking) is strictly
 	// less harmful than losing 95% of results from a healthy indexer.
+	var tvSearchErr error
 	if q.Season > 0 || q.TVDBID != 0 {
 		params := url.Values{}
 		params.Set("q", q.Query)
@@ -152,14 +153,24 @@ func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.
 		if err == nil && len(releases) > 0 {
 			return releases, nil
 		}
-		// Zero results or error — fall through to text search.
+		// Zero results or error — fall through to text search, but keep
+		// the error: if the fallback is also empty, a failed tvsearch must
+		// not be reported as a healthy zero-result search.
+		tvSearchErr = err
 	}
 
 	// 2. Free-text search — universally supported fallback.
 	params := url.Values{}
 	params.Set("q", q.Query)
 	u := idx.buildURL("search", params)
-	return idx.fetchReleases(ctx, u)
+	releases, err := idx.fetchReleases(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	if len(releases) == 0 && tvSearchErr != nil {
+		return nil, tvSearchErr
+	}
+	return releases, nil
 }
 
 // GetRecent returns the most recent releases from the indexer's RSS feed.
