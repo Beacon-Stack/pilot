@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
@@ -33,6 +34,7 @@ func RSSSync(
 	idxSvc *indexer.Service,
 	showQ db.Querier,
 	dlSvc *downloader.Service,
+	blocklistSvc *blocklist.Service,
 	logger *slog.Logger,
 ) scheduler.Job {
 	return scheduler.Job{
@@ -42,7 +44,7 @@ func RSSSync(
 			logger.Info("task started", "task", "rss_sync")
 			start := time.Now()
 
-			grabbed, err := runRSSSync(ctx, idxSvc, showQ, dlSvc, logger)
+			grabbed, err := runRSSSync(ctx, idxSvc, showQ, dlSvc, blocklistSvc, logger)
 			if err != nil {
 				logger.Warn("task failed",
 					"task", "rss_sync",
@@ -66,6 +68,7 @@ func runRSSSync(
 	idxSvc *indexer.Service,
 	q db.Querier,
 	dlSvc *downloader.Service,
+	blocklistSvc *blocklist.Service,
 	logger *slog.Logger,
 ) (int, error) {
 	// 1. Fetch recent releases from all enabled indexers.
@@ -175,6 +178,18 @@ func runRSSSync(
 		}
 		if recentlyCompletedEpisodes[ep.ID] {
 			continue // recently completed; importer is the right place to recover, not RSS
+		}
+
+		// Blocklist guard. Interactive/manual search always filtered on
+		// the blocklist; RSS never did — so a blocklisted fake (stalled
+		// or unimportable) could still be auto-grabbed forever. Matched
+		// by GUID (RSS releases don't carry an info hash pre-grab; the
+		// blocklist query's two-keyed match still catches hash-keyed
+		// entries whose GUID matches).
+		if blocklistSvc != nil {
+			if blocked, bErr := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, rel.GUID, ""); bErr == nil && blocked {
+				continue
+			}
 		}
 
 		// Submit to a download client.
@@ -318,9 +333,14 @@ func extractEpisodeNumbers(title string) (season, episode int, ok bool) {
 // "importer hasn't run / file in flight" race that produced 11
 // duplicate grab_history rows for one release in production.
 func buildRecentlyCompletedEpisodes(ctx context.Context, q db.Querier, since time.Time) (map[string]bool, error) {
+	// Limit MUST be set: it binds to a SQL `LIMIT ?`, and the zero value
+	// means `LIMIT 0` — zero rows, silently. That exact omission made this
+	// entire guard a no-op in production: the map was always empty and RSS
+	// re-grabbed the same fake release every 15 minutes, forever.
 	rows, err := q.ListGrabHistoryByStatusSince(ctx, db.ListGrabHistoryByStatusSinceParams{
 		Status: "completed",
 		Since:  since.Format(time.RFC3339),
+		Limit:  500,
 	})
 	if err != nil {
 		return nil, err

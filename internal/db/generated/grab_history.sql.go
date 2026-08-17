@@ -9,6 +9,18 @@ import (
 	"context"
 )
 
+const clearGrabClientItem = `-- name: ClearGrabClientItem :exec
+UPDATE grab_history SET client_item_id = NULL WHERE id = ?
+`
+
+// Detaches a grab from its download-client item after seed-target
+// cleanup removed the torrent. download_status stays 'completed' --
+// the grab did succeed; only the client-side artifact is gone.
+func (q *Queries) ClearGrabClientItem(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, clearGrabClientItem, id)
+	return err
+}
+
 const createGrabHistory = `-- name: CreateGrabHistory :one
 INSERT INTO grab_history (
     id, series_id, episode_id, season_number, indexer_id,
@@ -23,7 +35,7 @@ INSERT INTO grab_history (
     ?, ?, ?,
     ?, ?, ?, ?
 )
-RETURNING id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash
+RETURNING id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error
 `
 
 type CreateGrabHistoryParams struct {
@@ -95,12 +107,15 @@ func (q *Queries) CreateGrabHistory(ctx context.Context, arg CreateGrabHistoryPa
 		&i.GrabbedAt,
 		&i.Source,
 		&i.InfoHash,
+		&i.ImportStatus,
+		&i.ImportedAt,
+		&i.ImportError,
 	)
 	return i, err
 }
 
 const getGrabByClientItemID = `-- name: GetGrabByClientItemID :one
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE client_item_id = ? LIMIT 1
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history WHERE client_item_id = ? LIMIT 1
 `
 
 func (q *Queries) GetGrabByClientItemID(ctx context.Context, clientItemID *string) (GrabHistory, error) {
@@ -128,12 +143,15 @@ func (q *Queries) GetGrabByClientItemID(ctx context.Context, clientItemID *strin
 		&i.GrabbedAt,
 		&i.Source,
 		&i.InfoHash,
+		&i.ImportStatus,
+		&i.ImportedAt,
+		&i.ImportError,
 	)
 	return i, err
 }
 
 const getGrabByID = `-- name: GetGrabByID :one
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE id = ?
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history WHERE id = ?
 `
 
 func (q *Queries) GetGrabByID(ctx context.Context, id string) (GrabHistory, error) {
@@ -161,12 +179,15 @@ func (q *Queries) GetGrabByID(ctx context.Context, id string) (GrabHistory, erro
 		&i.GrabbedAt,
 		&i.Source,
 		&i.InfoHash,
+		&i.ImportStatus,
+		&i.ImportedAt,
+		&i.ImportError,
 	)
 	return i, err
 }
 
 const getGrabByInfoHash = `-- name: GetGrabByInfoHash :one
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE info_hash = ? ORDER BY grabbed_at DESC LIMIT 1
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history WHERE info_hash = ? ORDER BY grabbed_at DESC LIMIT 1
 `
 
 func (q *Queries) GetGrabByInfoHash(ctx context.Context, infoHash *string) (GrabHistory, error) {
@@ -194,12 +215,15 @@ func (q *Queries) GetGrabByInfoHash(ctx context.Context, infoHash *string) (Grab
 		&i.GrabbedAt,
 		&i.Source,
 		&i.InfoHash,
+		&i.ImportStatus,
+		&i.ImportedAt,
+		&i.ImportError,
 	)
 	return i, err
 }
 
 const listActiveGrabs = `-- name: ListActiveGrabs :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE download_status NOT IN ('completed', 'failed', 'removed', 'stalled') ORDER BY grabbed_at DESC
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history WHERE download_status NOT IN ('completed', 'failed', 'removed', 'stalled') ORDER BY grabbed_at DESC
 `
 
 func (q *Queries) ListActiveGrabs(ctx context.Context) ([]GrabHistory, error) {
@@ -233,6 +257,69 @@ func (q *Queries) ListActiveGrabs(ctx context.Context) ([]GrabHistory, error) {
 			&i.GrabbedAt,
 			&i.Source,
 			&i.InfoHash,
+			&i.ImportStatus,
+			&i.ImportedAt,
+			&i.ImportError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCleanupCandidateGrabs = `-- name: ListCleanupCandidateGrabs :many
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history
+WHERE download_status = 'completed'
+  AND import_status != ''
+  AND client_item_id IS NOT NULL
+ORDER BY grabbed_at ASC
+LIMIT ?
+`
+
+// Grabs still present on a download client whose import outcome is known --
+// the download_cleanup job removes them (with data) once the seed target
+// is met (imported) or immediately (failed + blocklisted garbage).
+func (q *Queries) ListCleanupCandidateGrabs(ctx context.Context, limit int64) ([]GrabHistory, error) {
+	rows, err := q.db.QueryContext(ctx, listCleanupCandidateGrabs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GrabHistory
+	for rows.Next() {
+		var i GrabHistory
+		if err := rows.Scan(
+			&i.ID,
+			&i.SeriesID,
+			&i.EpisodeID,
+			&i.SeasonNumber,
+			&i.IndexerID,
+			&i.ReleaseGuid,
+			&i.ReleaseTitle,
+			&i.ReleaseSource,
+			&i.ReleaseResolution,
+			&i.ReleaseCodec,
+			&i.ReleaseHdr,
+			&i.Protocol,
+			&i.Size,
+			&i.DownloadClientID,
+			&i.ClientItemID,
+			&i.DownloadStatus,
+			&i.DownloadedBytes,
+			&i.ScoreBreakdown,
+			&i.GrabbedAt,
+			&i.Source,
+			&i.InfoHash,
+			&i.ImportStatus,
+			&i.ImportedAt,
+			&i.ImportError,
 		); err != nil {
 			return nil, err
 		}
@@ -248,7 +335,7 @@ func (q *Queries) ListActiveGrabs(ctx context.Context) ([]GrabHistory, error) {
 }
 
 const listGrabHistory = `-- name: ListGrabHistory :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history ORDER BY grabbed_at DESC LIMIT ? OFFSET ?
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history ORDER BY grabbed_at DESC LIMIT ? OFFSET ?
 `
 
 type ListGrabHistoryParams struct {
@@ -287,6 +374,9 @@ func (q *Queries) ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams
 			&i.GrabbedAt,
 			&i.Source,
 			&i.InfoHash,
+			&i.ImportStatus,
+			&i.ImportedAt,
+			&i.ImportError,
 		); err != nil {
 			return nil, err
 		}
@@ -302,7 +392,7 @@ func (q *Queries) ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams
 }
 
 const listGrabHistoryByEpisode = `-- name: ListGrabHistoryByEpisode :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE episode_id = ? ORDER BY grabbed_at DESC
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history WHERE episode_id = ? ORDER BY grabbed_at DESC
 `
 
 func (q *Queries) ListGrabHistoryByEpisode(ctx context.Context, episodeID *string) ([]GrabHistory, error) {
@@ -336,6 +426,9 @@ func (q *Queries) ListGrabHistoryByEpisode(ctx context.Context, episodeID *strin
 			&i.GrabbedAt,
 			&i.Source,
 			&i.InfoHash,
+			&i.ImportStatus,
+			&i.ImportedAt,
+			&i.ImportError,
 		); err != nil {
 			return nil, err
 		}
@@ -351,7 +444,7 @@ func (q *Queries) ListGrabHistoryByEpisode(ctx context.Context, episodeID *strin
 }
 
 const listGrabHistoryBySeries = `-- name: ListGrabHistoryBySeries :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history WHERE series_id = ? ORDER BY grabbed_at DESC
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history WHERE series_id = ? ORDER BY grabbed_at DESC
 `
 
 func (q *Queries) ListGrabHistoryBySeries(ctx context.Context, seriesID string) ([]GrabHistory, error) {
@@ -385,6 +478,9 @@ func (q *Queries) ListGrabHistoryBySeries(ctx context.Context, seriesID string) 
 			&i.GrabbedAt,
 			&i.Source,
 			&i.InfoHash,
+			&i.ImportStatus,
+			&i.ImportedAt,
+			&i.ImportError,
 		); err != nil {
 			return nil, err
 		}
@@ -400,7 +496,7 @@ func (q *Queries) ListGrabHistoryBySeries(ctx context.Context, seriesID string) 
 }
 
 const listGrabHistoryByStatusSince = `-- name: ListGrabHistoryByStatusSince :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history
 WHERE download_status = ?1
   AND grabbed_at > ?2
 ORDER BY grabbed_at DESC
@@ -447,6 +543,9 @@ func (q *Queries) ListGrabHistoryByStatusSince(ctx context.Context, arg ListGrab
 			&i.GrabbedAt,
 			&i.Source,
 			&i.InfoHash,
+			&i.ImportStatus,
+			&i.ImportedAt,
+			&i.ImportError,
 		); err != nil {
 			return nil, err
 		}
@@ -462,7 +561,7 @@ func (q *Queries) ListGrabHistoryByStatusSince(ctx context.Context, arg ListGrab
 }
 
 const listStaleActiveGrabs = `-- name: ListStaleActiveGrabs :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash FROM grab_history
+SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error FROM grab_history
  WHERE download_status IN ('downloading', 'queued', 'pending')
    AND (info_hash IS NULL OR info_hash = '')
    AND grabbed_at < ?1
@@ -512,6 +611,9 @@ func (q *Queries) ListStaleActiveGrabs(ctx context.Context, olderThan string) ([
 			&i.GrabbedAt,
 			&i.Source,
 			&i.InfoHash,
+			&i.ImportStatus,
+			&i.ImportedAt,
+			&i.ImportError,
 		); err != nil {
 			return nil, err
 		}
@@ -532,6 +634,31 @@ UPDATE grab_history SET download_status = 'removed' WHERE id = ?
 
 func (q *Queries) MarkGrabRemoved(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, markGrabRemoved, id)
+	return err
+}
+
+const setGrabImportState = `-- name: SetGrabImportState :exec
+UPDATE grab_history SET
+    import_status = ?,
+    imported_at   = ?,
+    import_error  = ?
+WHERE id = ?
+`
+
+type SetGrabImportStateParams struct {
+	ImportStatus string `json:"importStatus"`
+	ImportedAt   string `json:"importedAt"`
+	ImportError  string `json:"importError"`
+	ID           string `json:"id"`
+}
+
+func (q *Queries) SetGrabImportState(ctx context.Context, arg SetGrabImportStateParams) error {
+	_, err := q.db.ExecContext(ctx, setGrabImportState,
+		arg.ImportStatus,
+		arg.ImportedAt,
+		arg.ImportError,
+		arg.ID,
+	)
 	return err
 }
 

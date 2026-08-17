@@ -36,6 +36,10 @@ const (
 	ReasonUserMarked        = "user_marked"
 	ReasonStallNoPeersEver  = "stall_no_peers_ever"
 	ReasonStallActivityLost = "stall_activity_lost"
+	// ReasonImportFailed marks releases whose downloaded content can never
+	// import (fake .exe/.scr uploads). Deliberately NOT a stall_* prefix:
+	// it must not feed the stall circuit breaker.
+	ReasonImportFailed = "import_failed"
 )
 
 // Entry is the domain representation of a blocklist record.
@@ -88,6 +92,16 @@ func (s *Service) Add(ctx context.Context, seriesID, episodeID, releaseGUID, rel
 // be empty if unavailable. Idempotent — double-fires are swallowed via
 // ErrAlreadyBlocklisted (callers usually treat that as success).
 func (s *Service) AddFromStall(ctx context.Context, p StallEntry) error {
+	return s.insert(ctx, insertParams(p))
+}
+
+// AddFromImportFailure inserts a blocklist entry for a release whose
+// downloaded content can never import (e.g. a fake upload delivering a
+// .exe). Reason is forced to ReasonImportFailed; InfoHash should be set
+// when known so the two-keyed dedup also catches the same payload
+// re-listed under a new GUID. Idempotent like AddFromStall.
+func (s *Service) AddFromImportFailure(ctx context.Context, p StallEntry) error {
+	p.Reason = ReasonImportFailed
 	return s.insert(ctx, insertParams(p))
 }
 

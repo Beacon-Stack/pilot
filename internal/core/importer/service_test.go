@@ -11,9 +11,11 @@ package importer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 
+	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
 
@@ -59,6 +61,95 @@ func newSvc(q db.Querier, r AbsoluteEpisodeResolver) *Service {
 		q:      q,
 		logger: slog.New(slog.DiscardHandler),
 		animeR: r,
+	}
+}
+
+// outcomeQuerier records import-state writes and blocklist inserts for
+// the recordImportOutcome tests.
+type outcomeQuerier struct {
+	db.Querier
+	importStates []db.SetGrabImportStateParams
+	blocklisted  []db.CreateBlocklistEntryParams
+	grab         db.GrabHistory
+}
+
+func (q *outcomeQuerier) SetGrabImportState(_ context.Context, arg db.SetGrabImportStateParams) error {
+	q.importStates = append(q.importStates, arg)
+	return nil
+}
+
+func (q *outcomeQuerier) GetGrabByID(_ context.Context, _ string) (db.GrabHistory, error) {
+	return q.grab, nil
+}
+
+func (q *outcomeQuerier) CreateBlocklistEntry(_ context.Context, arg db.CreateBlocklistEntryParams) (db.Blocklist, error) {
+	q.blocklisted = append(q.blocklisted, arg)
+	return db.Blocklist{}, nil
+}
+
+func newOutcomeSvc(q db.Querier) *Service {
+	return &Service{
+		q:         q,
+		logger:    slog.New(slog.DiscardHandler),
+		blocklist: blocklist.NewService(q),
+	}
+}
+
+// ── recordImportOutcome ─────────────────────────────────────────────────────
+
+func TestRecordImportOutcome_SuccessRecordsImported(t *testing.T) {
+	q := &outcomeQuerier{}
+	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", nil)
+
+	if len(q.importStates) != 1 || q.importStates[0].ImportStatus != "imported" || q.importStates[0].ImportedAt == "" {
+		t.Fatalf("import states = %+v, want one 'imported' with timestamp", q.importStates)
+	}
+	if len(q.blocklisted) != 0 {
+		t.Fatalf("success must not blocklist, got %d entries", len(q.blocklisted))
+	}
+}
+
+// The fake-upload case (a .exe delivered instead of video): the failure
+// is permanent, so the release must be blocklisted — by GUID AND info
+// hash, so the same payload re-listed under a new GUID is also caught.
+// Without this, RSS re-grabbed the same fake every 15 minutes forever.
+func TestRecordImportOutcome_HardFailureBlocklists(t *testing.T) {
+	hash := "abc123"
+	idx := "idx-1"
+	ep := "ep-1"
+	q := &outcomeQuerier{grab: db.GrabHistory{
+		ID: "g1", SeriesID: "s1", EpisodeID: &ep, ReleaseGuid: "guid-1",
+		ReleaseTitle: "Fake.exe", Protocol: "torrent", IndexerID: &idx, InfoHash: &hash,
+	}}
+	hardErr := fmt.Errorf("%w: not a recognised video extension: %q", ErrUnimportableContent, ".exe")
+	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", hardErr)
+
+	if len(q.importStates) != 1 || q.importStates[0].ImportStatus != "failed" {
+		t.Fatalf("import states = %+v, want one 'failed'", q.importStates)
+	}
+	if len(q.blocklisted) != 1 {
+		t.Fatalf("hard failure must blocklist, got %d entries", len(q.blocklisted))
+	}
+	b := q.blocklisted[0]
+	if b.Reason != blocklist.ReasonImportFailed {
+		t.Errorf("reason = %q, want %q", b.Reason, blocklist.ReasonImportFailed)
+	}
+	if b.ReleaseGuid != "guid-1" || b.InfoHash == nil || *b.InfoHash != hash {
+		t.Errorf("blocklist entry missing GUID/info hash: %+v", b)
+	}
+}
+
+// A transient failure (full disk, DB hiccup) is recorded but must NOT
+// blocklist — the release itself may be perfectly fine.
+func TestRecordImportOutcome_SoftFailureDoesNotBlocklist(t *testing.T) {
+	q := &outcomeQuerier{grab: db.GrabHistory{ID: "g1"}}
+	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", fmt.Errorf("stat content path: transient"))
+
+	if len(q.importStates) != 1 || q.importStates[0].ImportStatus != "failed" {
+		t.Fatalf("import states = %+v, want one 'failed'", q.importStates)
+	}
+	if len(q.blocklisted) != 0 {
+		t.Fatalf("soft failure must not blocklist, got %d entries", len(q.blocklisted))
 	}
 }
 

@@ -10,6 +10,10 @@ import (
 
 type Querier interface {
 	ClearBlocklist(ctx context.Context) error
+	// Detaches a grab from its download-client item after seed-target
+	// cleanup removed the torrent. download_status stays 'completed' --
+	// the grab did succeed; only the client-side artifact is gone.
+	ClearGrabClientItem(ctx context.Context, id string) error
 	CountActivities(ctx context.Context, arg CountActivitiesParams) (int64, error)
 	CountAllEpisodes(ctx context.Context) (int64, error)
 	CountBlocklist(ctx context.Context) (int64, error)
@@ -105,6 +109,10 @@ type Querier interface {
 	ListAllTMDBIDs(ctx context.Context) ([]int64, error)
 	ListAnimeCourMonitored(ctx context.Context, seriesID string) ([]AnimeCourMonitored, error)
 	ListBlocklist(ctx context.Context, arg ListBlocklistParams) ([]ListBlocklistRow, error)
+	// Grabs still present on a download client whose import outcome is known --
+	// the download_cleanup job removes them (with data) once the seed target
+	// is met (imported) or immediately (failed + blocklisted garbage).
+	ListCleanupCandidateGrabs(ctx context.Context, limit int64) ([]GrabHistory, error)
 	ListDownloadClientConfigs(ctx context.Context) ([]DownloadClientConfig, error)
 	ListEnabledDownloadClients(ctx context.Context) ([]DownloadClientConfig, error)
 	ListEnabledImportLists(ctx context.Context) ([]ImportListConfig, error)
@@ -162,6 +170,7 @@ type Querier interface {
 	MarkGrabRemoved(ctx context.Context, id string) error
 	PruneActivities(ctx context.Context, createdAt string) error
 	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (int64, error)
+	SetGrabImportState(ctx context.Context, arg SetGrabImportStateParams) error
 	SetSetting(ctx context.Context, arg SetSettingParams) error
 	SumEpisodeFileSize(ctx context.Context) (interface{}, error)
 	UpdateDownloadClientConfig(ctx context.Context, arg UpdateDownloadClientConfigParams) (DownloadClientConfig, error)
