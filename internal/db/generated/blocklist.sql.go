@@ -42,8 +42,9 @@ type CountRecentStallsForEpisodeParams struct {
 	EpisodeID *string `json:"episodeId"`
 }
 
-// Circuit breaker for auto-re-search: how many stall-reason blocklist
-// entries exist for this (series, episode) within the last 24 hours?
+// Circuit breaker for auto-re-search: how many stall- or download-failure
+// blocklist entries exist for this (series, episode) within the last 24
+// hours? Both kinds share one retry budget per episode.
 // Auto-re-search caps at 3 to avoid infinite retry loops when every
 // release for an episode happens to be dead. Pass episode_id as a
 // sql.NullString; null matches blocklist rows where episode_id IS NULL.
