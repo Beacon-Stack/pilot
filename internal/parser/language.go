@@ -73,8 +73,29 @@ func init() {
 	reLangToken = regexp.MustCompile(`(?i)\b(?:` + strings.Join(tokens, "|") + `)\b`)
 }
 
+// reLangTailStart finds where the show name ends: the first episode,
+// season, year, absolute-episode or resolution marker. Language tags are
+// only read after it, so a show named "Dan Da Dan" or "The French
+// Dispatch" isn't tagged Danish or French.
+var reLangTailStart = regexp.MustCompile(
+	`(?i)\bS\d{1,2}(?:E\d{1,3})?\b` +
+		`|\b\d{1,2}x\d{2,3}\b` +
+		`|\bSeason \d` +
+		`|\b(?:19|20)\d{2}\b` +
+		`|\s-\s*\d{2,4}\b` +
+		`|\b\d{3,4}p\b`)
+
+// languageTail returns the part of norm after the show name. With no
+// marker the whole string is returned.
+func languageTail(norm string) string {
+	if loc := reLangTailStart.FindStringIndex(norm); loc != nil {
+		return norm[loc[0]:]
+	}
+	return norm
+}
+
 func parseLanguages(norm string) []Language {
-	matches := reLangToken.FindAllString(norm, -1)
+	matches := reLangToken.FindAllString(languageTail(norm), -1)
 	if len(matches) == 0 {
 		return nil
 	}
