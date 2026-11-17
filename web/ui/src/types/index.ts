@@ -238,26 +238,6 @@ export interface TestResult {
   message?: string;
 }
 
-export interface DownloadHandling {
-  enable_completed: boolean;
-  check_interval_minutes: number;
-  redownload_failed: boolean;
-  redownload_failed_interactive: boolean;
-}
-
-export interface RemotePathMapping {
-  id: string;
-  host: string;
-  remote_path: string;
-  local_path: string;
-}
-
-export interface CreateRemotePathMappingRequest {
-  host: string;
-  remote_path: string;
-  local_path: string;
-}
-
 // ── Notifications ───────────────────────────────────────────────────────────
 
 export interface NotificationConfig {
