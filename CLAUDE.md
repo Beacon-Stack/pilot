@@ -75,6 +75,15 @@ tags, no `-short` gating.
   tier, more seeds still wins.
 - `TestSearchSort_AgeTiebreakerOnTies` — the final tiebreaker on
   quality + seed bucket is release age (newer wins).
+- `TestNewSearchResult_*` / `TestSearchSort_QualityPrimacyFromTitles` —
+  quality (and PROPER/REPACK revision) is parsed from the release title
+  at ingestion. Indexer plugins return no quality; before this every
+  result scored 0 and ranking silently fell through to seeds. These
+  start from raw titles; the tests above set `QualityScore` by hand.
+- `TestSearchSort_ProperBeatsOriginalOfSameQuality` /
+  `ProperDoesNotBeatHigherQuality` — revision is the tier right after
+  quality. `sortSearchResults` in the tests calls the real
+  `searchResultLess` comparator, so tests and production can't drift.
 - `TestFilterPass_BelowMinSeedersGetsTagged` / `AboveMinSeedersUntagged`
   / `FreshMultiIndexerBypass` / `OldReleaseNoBypass` /
   `SingleIndexerFreshNoBypass` / `DefaultMinSeeders` /
