@@ -25,6 +25,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/renamer"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
+	releaseparser "github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -597,7 +598,7 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 }
 
 // sameImportedFile reports whether dest already holds the file being
-// imported: the same inode (hardlinked by an earlier attempt), or, for a
+// imported: the same inode (linked there by an earlier attempt), or, for a
 // cross-device copy, the same size.
 func sameImportedFile(src, dest string, srcSize int64) bool {
 	di, err := os.Stat(dest)
@@ -667,14 +668,18 @@ func pathWithin(root, p string) bool {
 }
 
 // qualityFromGrab reconstructs a plugin.Quality from the denormalized fields
-// stored in grab_history.
+// stored in grab_history. Name must be filled in too: the renamer's
+// {Quality Full} token renders Name, and without it every imported
+// filename lost its quality (and upgrades collided on one filename).
 func qualityFromGrab(g db.GrabHistory) plugin.Quality {
-	return plugin.Quality{
+	q := plugin.Quality{
 		Resolution: plugin.Resolution(g.ReleaseResolution),
 		Source:     plugin.Source(g.ReleaseSource),
 		Codec:      plugin.Codec(g.ReleaseCodec),
 		HDR:        plugin.HDRFormat(g.ReleaseHdr),
 	}
+	q.Name = releaseparser.QualityName(q)
+	return q
 }
 
 // transferFile copies src to dst using hardlink first, falling back to

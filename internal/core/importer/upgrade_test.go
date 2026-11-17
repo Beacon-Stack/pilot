@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -160,5 +161,21 @@ func TestPathWithin(t *testing.T) {
 		if got := pathWithin(c.root, c.p); got != c.want {
 			t.Errorf("pathWithin(%q, %q) = %v, want %v", c.root, c.p, got, c.want)
 		}
+	}
+}
+
+// Regression: qualityFromGrab left Name empty, so {Quality Full} rendered
+// as nothing and every grab import produced a filename with no quality.
+func TestQualityFromGrab_SetsName(t *testing.T) {
+	q := qualityFromGrab(db.GrabHistory{
+		ReleaseResolution: string(plugin.Resolution("1080p")),
+		ReleaseSource:     string(plugin.SourceBluRay),
+		ReleaseCodec:      "x265",
+	})
+	if q.Name == "" {
+		t.Fatal("quality Name is empty; {Quality Full} would render as nothing")
+	}
+	if !strings.Contains(q.Name, "1080p") {
+		t.Fatalf("Name = %q, want it to include the resolution", q.Name)
 	}
 }
