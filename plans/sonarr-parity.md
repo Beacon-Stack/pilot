@@ -58,6 +58,9 @@ download-correctness bugs first, then quality rules, then operations.
 
 ## Phase D: larger features (separate design pass first)
 
+Design and order: `plans/phase-d-design.md` (D1 bulk editor, D2 manual
+import, D3 custom formats, D4 integrations, D5 scene numbering).
+
 - Scene numbering / alternate episode orders (TheXEM)
 - Manual import from any folder; reviewable library import
 - Custom formats backend (then restore the page from A1)
