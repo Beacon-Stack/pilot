@@ -404,12 +404,6 @@ function LogRow({ entry, isLast }: { entry: LogEntry; isLast: boolean }) {
         <span style={{ color: "var(--color-text-primary)", wordBreak: "break-word", flex: 1, minWidth: 0 }}>
           {entry.message}
         </span>
-        {/* Inline first-2 fields preview when collapsed */}
-        {!open && hasPayload && (
-          <span style={{ color: "var(--color-text-muted)", flexShrink: 0, maxWidth: "40%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {previewFields(entry.fields!)}
-          </span>
-        )}
       </div>
 
       {open && hasPayload && (
@@ -481,19 +475,6 @@ function formatTime(iso: string): string {
   } catch {
     return iso;
   }
-}
-
-function previewFields(fields: Record<string, unknown>): string {
-  // Pick the most useful 2 fields for the inline preview. Skip "service"
-  // and "error" — service is always set and noisy; error is shown
-  // expanded.
-  const keys = Object.keys(fields).filter((k) => k !== "service" && k !== "error");
-  const preview = keys.slice(0, 2).map((k) => {
-    const v = fields[k];
-    const s = typeof v === "string" ? v : JSON.stringify(v);
-    return `${k}=${s.length > 40 ? s.slice(0, 40) + "…" : s}`;
-  });
-  return preview.join(" ");
 }
 
 // ── Reusable styles ──────────────────────────────────────────────────────────

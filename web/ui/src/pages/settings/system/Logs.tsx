@@ -7,7 +7,7 @@ import LogViewer from "@beacon-shared/LogViewer";
 
 export default function LogsPage() {
   return (
-    <div style={{ padding: "24px 32px", maxWidth: 1300, margin: "0 auto" }}>
+    <div style={{ padding: 24, maxWidth: 1300 }}>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: "var(--color-text-primary)", margin: 0 }}>
           Logs
