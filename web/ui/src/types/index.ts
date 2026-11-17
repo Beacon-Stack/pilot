@@ -571,6 +571,19 @@ export interface ReleaseProfileRequest {
 }
 
 // Matches delayProfileBody in internal/api/v1/delay_profile.go.
+export interface HealthIssue {
+  source: "library" | "download_client" | "indexer";
+  level: "error" | "warning";
+  message: string;
+}
+
+export interface HealthReport {
+  /** Errors first. Empty when healthy. */
+  issues: HealthIssue[];
+  /** When clients and indexers were last tested (RFC3339); "" if never. */
+  connectivity_checked_at: string;
+}
+
 export interface LanguagePreference {
   /** Wanted audio languages; empty means any language. */
   languages: string[];
