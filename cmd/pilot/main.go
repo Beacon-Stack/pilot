@@ -74,6 +74,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
+	"github.com/beacon-stack/pilot/internal/core/remotepath"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stallwatcher"
 	"github.com/beacon-stack/pilot/internal/core/stats"
@@ -302,6 +303,8 @@ func run() error {
 	queueSvc := queue.NewService(queries, downloaderSvc, bus, logger)
 	// Failed downloads: blocklist + request a re-search (all clients).
 	queueSvc.SetFailureHandler(failedgrab.New(blocklistSvc, bus, logger))
+	remotePathSvc := remotepath.NewService(queries)
+	queueSvc.SetPathMapper(remotePathSvc)
 	stallWatcher := stallwatcher.NewService(queries, blocklistSvc, downloaderSvc, bus, logger)
 
 	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc, animeListSvc, blocklistSvc)
@@ -384,6 +387,7 @@ func run() error {
 		SonarrImportService:    sonarrImportSvc,
 		ProviderResolver:       providerResolver,
 		ReleaseProfileService:  releaseprofile.NewService(queries),
+		RemotePathService:      remotePathSvc,
 		WSHub:                  wsHub,
 		Scheduler:              sched,
 		HealthService:          healthSvc,

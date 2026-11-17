@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/beacon-stack/pilot/internal/diskspace"
@@ -85,5 +86,19 @@ func TestAttachFile_RespectsLibraryMinimum(t *testing.T) {
 	f.exec(`UPDATE libraries SET min_free_space_gb = 0 WHERE id = 'lib'`)
 	if err := f.svc.AttachFile(ctx, "ep-1", "series-1", src, size, q1080); err != nil {
 		t.Fatalf("with no minimum: %v", err)
+	}
+}
+
+// A path that doesn't exist for Pilot (a client in a container reporting
+// its own paths) points the user at remote path mappings, and stays a
+// soft failure.
+func TestImportFile_MissingPathSuggestsRemotePathMapping(t *testing.T) {
+	f := newRetryFixture(t)
+	err := f.svc.ImportFile(context.Background(), f.grabID, "/downloads/Show.S01.1080p.WEB")
+	if err == nil || !strings.Contains(err.Error(), "remote path mapping") {
+		t.Fatalf("err = %v, want a remote path mapping hint", err)
+	}
+	if errors.Is(err, ErrUnimportableContent) {
+		t.Fatal("a missing path must never blocklist the release")
 	}
 }

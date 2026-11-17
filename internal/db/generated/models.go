@@ -237,6 +237,15 @@ type ReleaseProfile struct {
 	UpdatedAt    string  `json:"updatedAt"`
 }
 
+type RemotePathMapping struct {
+	ID               string  `json:"id"`
+	DownloadClientID *string `json:"downloadClientId"`
+	RemotePath       string  `json:"remotePath"`
+	LocalPath        string  `json:"localPath"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
+}
+
 type Season struct {
 	ID           string `json:"id"`
 	SeriesID     string `json:"seriesId"`
