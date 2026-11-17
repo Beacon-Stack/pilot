@@ -1,6 +1,9 @@
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
+import { summarizeHealth, useHealth } from "@/api/health";
 import {
   Activity,
+  AlertTriangle,
   ArrowDownToLine,
   Ban,
   BarChart2,
@@ -98,6 +101,36 @@ function AppIcon() {
   );
 }
 
+// Shows "N errors, M warnings" in the sidebar footer, linking to the
+// System page, when health checks found something. Nothing when healthy.
+function HealthIndicator() {
+  const { data } = useHealth();
+  const summary = summarizeHealth(data);
+  if (!summary) return null;
+  const hasError = data?.issues.some((i) => i.level === "error");
+  const color = hasError ? "var(--color-danger)" : "var(--color-warning)";
+  return (
+    <Link
+      to="/settings/system"
+      title="Health issues"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "0 12px",
+        height: "36px",
+        color,
+        fontSize: "12px",
+        textDecoration: "none",
+        borderRadius: "6px",
+      }}
+    >
+      <AlertTriangle size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
+      <span>{summary}</span>
+    </Link>
+  );
+}
+
 // Pilot's docs link sits in the sidebar footer. Rendered as a slot
 // rather than via Shell's docsUrl so we keep parity with the previous
 // inline styling.
@@ -169,6 +202,7 @@ export default function PilotShell() {
       collapsedStorageKey="pilot-sidebar-collapsed"
       sidebarFooterExtras={
         <>
+          <HealthIndicator />
           <DocsLink />
           <LogoutButton />
         </>

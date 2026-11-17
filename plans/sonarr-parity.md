@@ -26,6 +26,7 @@ download-correctness bugs first, then quality rules, then operations.
 - **A5:** Wanted > Cutoff Unmet was a stub; auto-search ignored the file on disk, didn't re-rank results merged from several queries, and let a multi-indexer 720p beat a 2160p. The Wanted page also showed blank episode titles (field-name mismatch). All fixed in A5.
 - **B1:** the Sonarr import ignored each quality's `allowed` flag, so imported profiles allowed everything. Fixed in B1.
 - **B4:** the release parser read language tags anywhere in the title, show name included ("Dan Da Dan" parsed as Danish). Nothing used parsed languages until B4, which reads them only after the show name.
+- **C1:** each library's `min_free_space_gb` was stored and shown but never read, so imports could fill the disk. Enforced in C1 when an import copies (hardlinks take no space).
 - Still open:
   - The Wanted > Missing list includes episodes of unmonitored series (the search-all action skips them).
   - `quality.Profile.WantRelease`/`RejectReason` are unused, use the strict quality match, and accept an *equal* quality below the cutoff (a re-grab loop if ever wired up). Replace or delete them in B1.
@@ -48,7 +49,7 @@ download-correctness bugs first, then quality rules, then operations.
 
 | # | Section | Branch | Status |
 |---|---------|--------|--------|
-| C1 | Health checks (disk, indexers, clients) + enforce `min_free_space_gb` | `feat/health-checks` | |
+| C1 | Health checks (disk, indexers, clients) + enforce `min_free_space_gb` | `feat/health-checks` | Done, #54 (backend), #55 (UI) |
 | C2 | Remote path mappings | `feat/remote-path-mappings` | |
 | C3 | Scheduled backups with retention | `feat/scheduled-backups` | |
 | C4 | Recycle bin for replaced/deleted files | `feat/recycle-bin` | |
