@@ -22,7 +22,6 @@ import MediaServerList from "@/pages/settings/media-servers/MediaServerList";
 import BlocklistPage from "@/pages/settings/blocklist/BlocklistPage";
 import MediaManagementPage from "@/pages/settings/media-management/MediaManagementPage";
 import QualityDefinitionsPage from "@/pages/settings/quality-definitions/QualityDefinitionsPage";
-import CustomFormatsPage from "@/pages/settings/custom-formats/CustomFormatsPage";
 import ImportListList from "@/pages/settings/import-lists/ImportListList";
 import ImportExclusions from "@/pages/settings/import-lists/ImportExclusions";
 import ImportPage from "@/pages/settings/import/ImportPage";
@@ -67,7 +66,7 @@ export default function App() {
             <Route path="settings/media-management" element={<MediaManagementPage />} />
             <Route path="settings/quality-profiles" element={<QualityProfileList />} />
             <Route path="settings/quality-definitions" element={<QualityDefinitionsPage />} />
-            <Route path="settings/custom-formats" element={<CustomFormatsPage />} />
+            {/* settings/custom-formats is hidden until the backend exists (plans/sonarr-parity.md, Phase D). */}
             <Route path="settings/indexers" element={<IndexerList />} />
             <Route path="settings/download-clients" element={<DownloadClientList />} />
             <Route path="settings/notifications" element={<NotificationList />} />
