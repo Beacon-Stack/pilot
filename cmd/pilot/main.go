@@ -315,7 +315,7 @@ func run() error {
 
 	sonarrImportSvc := sonarrimport.NewService(showSvc, qualitySvc, librarySvc, indexerSvc, downloaderSvc)
 
-	wsHub := ws.NewHub(logger, []byte(cfg.Auth.APIKey.Value()))
+	wsHub := ws.NewHub(logger)
 	bus.Subscribe(wsHub.HandleEvent)
 
 	// ── Scheduler ─────────────────────────────────────────────────────────────

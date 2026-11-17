@@ -1,7 +1,6 @@
 package api
 
 import (
-	"crypto/subtle"
 	"database/sql"
 	"log/slog"
 	"net/http"
@@ -94,35 +93,32 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// Browser login/logout — the only unauthenticated /api routes.
+	auth := middleware.NewAuth(cfg.Auth.Value())
+	r.Post("/api/v1/auth/login", auth.LoginHandler())
+	r.Post("/api/v1/auth/logout", auth.LogoutHandler())
+
+	// Every route registered on `protected` (including the huma API and
+	// its docs) requires an X-Api-Key header or a session cookie. Auth is
+	// attached per route rather than by path prefix so nothing can route
+	// around it.
+	protected := r.With(auth.Middleware)
+
 	// Pulse sync webhook — called by Beacon Pulse when configs change.
 	if cfg.PulseSyncHandler != nil {
-		r.Post("/api/v1/hooks/pulse/sync", cfg.PulseSyncHandler)
+		protected.Post("/api/v1/hooks/pulse/sync", cfg.PulseSyncHandler)
 	}
 
 	// WebSocket endpoint — registered directly on chi so the upgrade
 	// bypasses the huma JSON middleware stack.
 	if cfg.WSHub != nil {
-		r.Get("/api/v1/ws", cfg.WSHub.ServeHTTP)
+		protected.Get("/api/v1/ws", cfg.WSHub.ServeHTTP)
 	}
 
 	// Backup / restore — registered directly on chi (binary body/response, not JSON).
 	if cfg.DB != nil && cfg.DBPath != "" {
-		authKey := []byte(cfg.Auth.Value())
-		withAuth := func(next http.HandlerFunc) http.HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Sec-Fetch-Site") == "same-origin" {
-					next(w, r)
-					return
-				}
-				if len(authKey) > 0 && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Api-Key")), authKey) == 1 {
-					next(w, r)
-					return
-				}
-				http.Error(w, `{"status":401,"title":"Unauthorized"}`, http.StatusUnauthorized)
-			}
-		}
-		r.Get("/api/v1/system/backup", withAuth(v1.BackupHandler(cfg.DB, cfg.DBPath, cfg.Logger)))
-		r.Post("/api/v1/system/restore", withAuth(v1.RestoreHandler(cfg.DBPath, cfg.Logger)))
+		protected.Get("/api/v1/system/backup", v1.BackupHandler(cfg.DB, cfg.DBPath, cfg.Logger))
+		protected.Post("/api/v1/system/restore", v1.RestoreHandler(cfg.DBPath, cfg.Logger))
 	}
 
 	humaConfig := huma.DefaultConfig(appinfo.AppName+" API", version.Version)
@@ -130,9 +126,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	humaConfig.OpenAPIPath = "/api/openapi"
 	humaConfig.SchemasPath = "/api/schemas"
 	humaConfig.Info.Description = appinfo.AppName + " TV series manager API. " +
-		"Browser requests are authenticated via Sec-Fetch-Site; external clients must provide X-Api-Key."
+		"Browsers authenticate with a session cookie from POST /api/v1/auth/login; " +
+		"other clients must provide X-Api-Key."
 
-	humaAPI := humachi.New(r, humaConfig)
+	humaAPI := humachi.New(protected, humaConfig)
 
 	// Register X-Api-Key security scheme for the docs UI.
 	oapi := humaAPI.OpenAPI()
@@ -148,21 +145,6 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		Name: "X-Api-Key",
 	}
 	oapi.Security = []map[string][]string{{"ApiKeyAuth": {}}}
-
-	// Auth middleware: same-origin browser requests are trusted; external
-	// consumers must provide a valid X-Api-Key header.
-	apiKeyBytes := []byte(cfg.Auth.Value())
-	humaAPI.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
-		if ctx.Header("Sec-Fetch-Site") == "same-origin" {
-			next(ctx)
-			return
-		}
-		if len(apiKeyBytes) > 0 && subtle.ConstantTimeCompare([]byte(ctx.Header("X-Api-Key")), apiKeyBytes) == 1 {
-			next(ctx)
-			return
-		}
-		_ = huma.WriteErr(humaAPI, ctx, http.StatusUnauthorized, "A valid X-Api-Key header is required.")
-	})
 
 	v1.RegisterSystemRoutes(humaAPI, cfg.StartTime, cfg.DBType, cfg.DBPath, cfg.ConfigFile, cfg.Auth.Value(), cfg.TMDBKeyConfigured, cfg.TMDBKeyIsDefault, cfg.Logger)
 	v1.RegisterRuntimeRoutes(humaAPI, cfg.StartTime)
