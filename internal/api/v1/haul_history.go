@@ -22,6 +22,7 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/importer"
+	"github.com/beacon-stack/pilot/internal/core/remotepath"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 	"github.com/beacon-stack/pilot/plugins/downloaders/haul"
@@ -100,7 +101,10 @@ func validateReimportGrab(grab db.GrabHistory) string {
 }
 
 // RegisterHaulHistoryRoutes wires the haul-history endpoints.
-func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downloader.Service, importerSvc *importer.Service) {
+//
+// Haul reports paths as it sees them; paths maps them to Pilot's view
+// (remote path mappings). A nil paths uses them as reported.
+func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downloader.Service, importerSvc *importer.Service, paths *remotepath.Service) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-series-haul-history",
 		Method:      http.MethodGet,
@@ -109,7 +113,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 		Description: "Returns Haul's view of every torrent grabbed against this series, regardless of whether the corresponding files are linked in the Pilot library. Used by the per-episode \"Haul has it\" badge.",
 		Tags:        []string{"Haul"},
 	}, func(ctx context.Context, input *seriesHaulHistoryInput) (*seriesHaulHistoryOutput, error) {
-		client, err := firstHaulClient(ctx, downloaderSvc)
+		client, _, err := firstHaulClient(ctx, downloaderSvc)
 		if err != nil {
 			return nil, huma.Error503ServiceUnavailable(err.Error())
 		}
@@ -144,7 +148,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 		if hash == "" {
 			return nil, huma.Error400BadRequest("info_hash is required")
 		}
-		client, err := firstHaulClient(ctx, downloaderSvc)
+		client, clientID, err := firstHaulClient(ctx, downloaderSvc)
 		if err != nil {
 			return nil, huma.Error503ServiceUnavailable(err.Error())
 		}
@@ -167,7 +171,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 		// (the directory) and name (the torrent name); their join
 		// is what the importer wants. For multi-file torrents the
 		// importer walks the directory anyway.
-		contentPath := filepath.Join(rec.SavePath, rec.Name)
+		contentPath := paths.Map(ctx, clientID, filepath.Join(rec.SavePath, rec.Name))
 
 		// Quality: the importer falls back to filename parsing when
 		// the grab carries an empty Quality, so passing zero-value
@@ -199,7 +203,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 			out.Body.Reason = "no_info_hash"
 			return out, nil
 		}
-		client, clientErr := firstHaulClient(ctx, downloaderSvc)
+		client, clientID, clientErr := firstHaulClient(ctx, downloaderSvc)
 		if clientErr != nil || client == nil {
 			out.Body.Exists = false
 			out.Body.Reason = "no_haul_client"
@@ -223,7 +227,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 		// the join. We stat the join — for multi-file torrents that's a
 		// dir, which still reports as Exists. UI distinguishes only on
 		// existence, not file vs dir.
-		path := filepath.Join(rec.SavePath, rec.Name)
+		path := paths.Map(ctx, clientID, filepath.Join(rec.SavePath, rec.Name))
 		out.Body.Path = path
 		fi, statErr := os.Stat(path)
 		if statErr != nil {
@@ -252,7 +256,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 			return nil, huma.Error409Conflict(msg)
 		}
 
-		client, err := firstHaulClient(ctx, downloaderSvc)
+		client, clientID, err := firstHaulClient(ctx, downloaderSvc)
 		if err != nil {
 			return nil, huma.Error503ServiceUnavailable(err.Error())
 		}
@@ -267,7 +271,7 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 			return nil, huma.Error404NotFound("info_hash not found in Haul history — the file may have been removed")
 		}
 
-		contentPath := filepath.Join(rec.SavePath, rec.Name)
+		contentPath := paths.Map(ctx, clientID, filepath.Join(rec.SavePath, rec.Name))
 		if err := importerSvc.ImportFromHaulRecord(ctx, grab.SeriesID, contentPath, plugin.Quality{}); err != nil {
 			return nil, huma.Error500InternalServerError("import failed: " + err.Error())
 		}
@@ -281,10 +285,10 @@ func RegisterHaulHistoryRoutes(api huma.API, q db.Querier, downloaderSvc *downlo
 // firstHaulClient finds and returns the first enabled Haul download
 // client. Returns (nil, nil) when no Haul client is configured —
 // callers treat that as "feature disabled" rather than an error.
-func firstHaulClient(ctx context.Context, downloaderSvc *downloader.Service) (*haul.Client, error) {
+func firstHaulClient(ctx context.Context, downloaderSvc *downloader.Service) (*haul.Client, string, error) {
 	configs, err := downloaderSvc.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("listing download clients: %w", err)
+		return nil, "", fmt.Errorf("listing download clients: %w", err)
 	}
 	for _, cfg := range configs {
 		if !cfg.Enabled || cfg.Kind != "haul" {
@@ -298,7 +302,7 @@ func firstHaulClient(ctx context.Context, downloaderSvc *downloader.Service) (*h
 		if !ok {
 			continue
 		}
-		return hc, nil
+		return hc, cfg.ID, nil
 	}
-	return nil, nil
+	return nil, "", nil
 }

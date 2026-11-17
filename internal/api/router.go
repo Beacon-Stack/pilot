@@ -31,6 +31,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
+	"github.com/beacon-stack/pilot/internal/core/remotepath"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stats"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
@@ -77,6 +78,7 @@ type RouterConfig struct {
 	WSHub                  *ws.Hub
 	Scheduler              *scheduler.Scheduler
 	HealthService          *health.Service
+	RemotePathService      *remotepath.Service
 	PulseSyncHandler       http.HandlerFunc
 }
 
@@ -186,7 +188,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// lookups), downloader (to find a Haul client), and importer
 	// (to run the import pipeline).
 	if cfg.Queries != nil && cfg.DownloaderService != nil && cfg.ImporterService != nil {
-		v1.RegisterHaulHistoryRoutes(humaAPI, cfg.Queries, cfg.DownloaderService, cfg.ImporterService)
+		v1.RegisterHaulHistoryRoutes(humaAPI, cfg.Queries, cfg.DownloaderService, cfg.ImporterService, cfg.RemotePathService)
 	}
 
 	if cfg.NotificationService != nil {
@@ -213,6 +215,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		v1.RegisterQueueRoutes(humaAPI, cfg.QueueService, cfg.BlocklistService)
 	}
 
+	if cfg.RemotePathService != nil {
+		v1.RegisterRemotePathMappingRoutes(humaAPI, cfg.RemotePathService)
+	}
 	if cfg.HealthService != nil {
 		v1.RegisterHealthRoutes(humaAPI, cfg.HealthService)
 	}
