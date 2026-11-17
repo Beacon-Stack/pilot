@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useContext, useEffect } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -27,7 +27,7 @@ import {
   LayoutDashboard,
   Tv,
 } from "lucide-react";
-import Shell, { type NavItem } from "@beacon-shared/Shell";
+import Shell, { SidebarStateContext, type NavItem } from "@beacon-shared/Shell";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
 import { useCommandPalette } from "@/components/command-palette/useCommandPalette";
@@ -96,6 +96,8 @@ function AppIcon() {
 // rather than via Shell's docsUrl so we keep parity with the previous
 // inline styling.
 function DocsLink() {
+  const { collapsed, isMobile } = useContext(SidebarStateContext);
+  const showLabel = isMobile || !collapsed;
   return (
     <a
       href="https://pilot.tv/docs"
@@ -104,6 +106,7 @@ function DocsLink() {
       style={{
         display: "flex",
         alignItems: "center",
+        justifyContent: showLabel ? "flex-start" : "center",
         gap: "8px",
         padding: "0 12px",
         height: "36px",
@@ -112,9 +115,10 @@ function DocsLink() {
         textDecoration: "none",
         borderRadius: "6px",
       }}
+      title={showLabel ? undefined : "Documentation"}
     >
       <BookOpen size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
-      <span>Docs</span>
+      {showLabel && <span>Docs</span>}
     </a>
   );
 }
