@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,10 +12,13 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
+	"github.com/beacon-stack/pilot/internal/core/decision"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
+	"github.com/beacon-stack/pilot/internal/core/quality"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // completedSkipWindow is how long a `completed` grab for an episode
@@ -29,12 +33,15 @@ const completedSkipWindow = 6 * time.Hour
 
 // RSSSync returns a Job that polls all enabled indexers for recent releases,
 // matches them against monitored series/episodes, and automatically grabs
-// wanted episodes. Runs every 15 minutes.
+// the best release each wanted episode's quality profile accepts: missing
+// episodes, upgrades below the cutoff, and PROPER/REPACK fixes. Runs every
+// 15 minutes.
 func RSSSync(
 	idxSvc *indexer.Service,
 	showQ db.Querier,
 	dlSvc *downloader.Service,
 	blocklistSvc *blocklist.Service,
+	profiles ProfileGetter,
 	logger *slog.Logger,
 ) scheduler.Job {
 	return scheduler.Job{
@@ -44,7 +51,7 @@ func RSSSync(
 			logger.Info("task started", "task", "rss_sync")
 			start := time.Now()
 
-			grabbed, err := runRSSSync(ctx, idxSvc, showQ, dlSvc, blocklistSvc, logger)
+			grabbed, err := runRSSSync(ctx, idxSvc, showQ, dlSvc, blocklistSvc, profiles, logger)
 			if err != nil {
 				logger.Warn("task failed",
 					"task", "rss_sync",
@@ -69,6 +76,7 @@ func runRSSSync(
 	q db.Querier,
 	dlSvc *downloader.Service,
 	blocklistSvc *blocklist.Service,
+	profiles ProfileGetter,
 	logger *slog.Logger,
 ) (int, error) {
 	// 1. Fetch recent releases from all enabled indexers.
@@ -135,62 +143,38 @@ func runRSSSync(
 		recentlyCompletedEpisodes = map[string]bool{}
 	}
 
-	// 5. Process each release.
-	var grabbed int
-	for _, rel := range releases {
-		// Parse the release title to extract show name and season/episode.
-		norm := normalizeRSSTitle(rel.Title)
-		sn, epNum, ok := extractEpisodeNumbers(rel.Title)
-		if !ok {
-			continue // no S##E## pattern found — skip
-		}
-
-		// Try to match the normalised show name prefix against a monitored series.
-		matched, ok := matchSeriesTitle(norm, seriesByTitle)
-		if !ok {
-			continue
-		}
-
-		// Load all episodes for the series and find the specific one.
-		// (Per-episode dedup needs the episode ID — series-level skip is gone.)
-		episodes, err := q.ListEpisodesBySeriesID(ctx, matched.ID)
-		if err != nil {
-			logger.Warn("rss_sync: could not list episodes",
-				"series_id", matched.ID,
-				"error", err,
-			)
-			continue
-		}
-
-		ep, found := findEpisode(episodes, sn, epNum)
-		if !found {
-			continue
-		}
-
-		// Only grab if episode is monitored and has no file.
-		if !ep.Monitored || ep.HasFile {
-			continue
-		}
-
-		// Per-episode guards (the dedup change). See cohort comment above.
-		if activeEpisodes[ep.ID] {
-			continue // already in flight for this exact episode
-		}
-		if recentlyCompletedEpisodes[ep.ID] {
-			continue // recently completed; importer is the right place to recover, not RSS
-		}
-
-		// Blocklist guard. Interactive/manual search always filtered on
-		// the blocklist; RSS never did — so a blocklisted fake (stalled
-		// or unimportable) could still be auto-grabbed forever. Matched
-		// by GUID (RSS releases don't carry an info hash pre-grab; the
-		// blocklist query's two-keyed match still catches hash-keyed
-		// entries whose GUID matches).
-		if blocklistSvc != nil {
-			if blocked, bErr := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, rel.GUID, ""); bErr == nil && blocked {
-				continue
+	// 5. Decide what to grab: per episode, the best release that the
+	//    quality profile accepts (including upgrades and PROPERs).
+	picks := selectRSSGrabs(ctx, releases, rssEnv{
+		seriesByTitle: seriesByTitle,
+		episodes:      q.ListEpisodesBySeriesID,
+		currentQuality: func(ctx context.Context, episodeID string) (*plugin.Quality, error) {
+			return currentFileQuality(ctx, q, episodeID)
+		},
+		profile:           profileLookup(profiles),
+		active:            activeEpisodes,
+		recentlyCompleted: recentlyCompletedEpisodes,
+		blocked: func(ctx context.Context, guid string) bool {
+			// Blocklist guard. Interactive/manual search always filtered on
+			// the blocklist; RSS never did — so a blocklisted fake (stalled
+			// or unimportable) could still be auto-grabbed forever. Matched
+			// by GUID (RSS releases don't carry an info hash pre-grab; the
+			// blocklist query's two-keyed match still catches hash-keyed
+			// entries whose GUID matches).
+			if blocklistSvc == nil {
+				return false
 			}
-		}
+			blocked, err := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, guid, "")
+			return err == nil && blocked
+		},
+		logger: logger,
+	})
+
+	// 6. Grab each pick.
+	var grabbed int
+	for _, pick := range picks {
+		rel, matched, ep := pick.Release, pick.Series, pick.Episode
+		sn, epNum := int(ep.SeasonNumber), int(ep.EpisodeNumber)
 
 		// Submit to a download client.
 		dcID, itemID, err := dlSvc.Add(ctx, rel.Release, nil)
@@ -249,14 +233,176 @@ func runRSSSync(
 			"season", sn,
 			"episode", epNum,
 			"release", rel.Title,
+			"quality", rel.Quality.Name,
+			"upgrade", pick.Upgrade,
 		)
 		grabbed++
-		// Mark this episode as in-flight so a later release in the same
-		// RSS batch doesn't double-grab.
-		activeEpisodes[ep.ID] = true
 	}
 
 	return grabbed, nil
+}
+
+// ProfileGetter loads a quality profile by ID. quality.Service satisfies it.
+type ProfileGetter interface {
+	Get(ctx context.Context, id string) (quality.Profile, error)
+}
+
+func profileLookup(p ProfileGetter) func(context.Context, string) (*quality.Profile, error) {
+	return func(ctx context.Context, id string) (*quality.Profile, error) {
+		if p == nil || id == "" {
+			return nil, nil
+		}
+		prof, err := p.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		return &prof, nil
+	}
+}
+
+// rssEnv is everything selectRSSGrabs needs, as plain values and lookup
+// functions so the decision logic can be tested without a database.
+type rssEnv struct {
+	seriesByTitle     map[string]db.Series
+	episodes          func(ctx context.Context, seriesID string) ([]db.Episode, error)
+	currentQuality    func(ctx context.Context, episodeID string) (*plugin.Quality, error)
+	profile           func(ctx context.Context, profileID string) (*quality.Profile, error)
+	active            map[string]bool
+	recentlyCompleted map[string]bool
+	blocked           func(ctx context.Context, guid string) bool
+	logger            *slog.Logger
+}
+
+// rssPick is one release chosen for one episode.
+type rssPick struct {
+	Release indexer.SearchResult
+	Series  db.Series
+	Episode db.Episode
+	Upgrade bool // the episode already had a file
+}
+
+// selectRSSGrabs decides which RSS releases to grab. For each monitored
+// episode it keeps only releases the quality profile accepts (see
+// decision.Evaluate: missing episodes, upgrades, PROPERs) and picks the
+// best of them with the same ranking search uses. Previously RSS took the
+// first matching release in feed order and never checked the profile, so
+// a 480p release could be grabbed for a 1080p profile, and episodes with
+// a file were never upgraded.
+func selectRSSGrabs(ctx context.Context, releases []indexer.SearchResult, env rssEnv) []rssPick {
+	best := make(map[string]rssPick)
+	var order []string
+	episodesBySeries := make(map[string][]db.Episode)
+	profiles := make(map[string]*quality.Profile)
+	profileFailed := make(map[string]bool)
+	current := make(map[string]*plugin.Quality)
+	currentLoaded := make(map[string]bool)
+
+	for _, rel := range releases {
+		sn, epNum, ok := extractEpisodeNumbers(rel.Title)
+		if !ok {
+			continue // no S##E## pattern found — skip
+		}
+		matched, ok := matchSeriesTitle(normalizeRSSTitle(rel.Title), env.seriesByTitle)
+		if !ok {
+			continue
+		}
+
+		eps, loaded := episodesBySeries[matched.ID]
+		if !loaded {
+			var err error
+			eps, err = env.episodes(ctx, matched.ID)
+			if err != nil {
+				env.logger.Warn("rss_sync: could not list episodes", "series_id", matched.ID, "error", err)
+			}
+			episodesBySeries[matched.ID] = eps
+		}
+		ep, found := findEpisode(eps, sn, epNum)
+		if !found || !ep.Monitored {
+			continue
+		}
+		// Per-episode guards. See the cohort comment in runRSSSync.
+		if env.active[ep.ID] || env.recentlyCompleted[ep.ID] {
+			continue
+		}
+		if env.blocked(ctx, rel.GUID) {
+			continue
+		}
+
+		var cur *plugin.Quality
+		if ep.HasFile {
+			if !currentLoaded[ep.ID] {
+				cq, err := env.currentQuality(ctx, ep.ID)
+				if err != nil {
+					env.logger.Warn("rss_sync: could not read current file quality", "episode_id", ep.ID, "error", err)
+				}
+				current[ep.ID], currentLoaded[ep.ID] = cq, true
+			}
+			cur = current[ep.ID]
+			if cur == nil {
+				// has_file is set but no file record is readable: don't
+				// guess. The file reconciler will sort the record out.
+				continue
+			}
+		}
+
+		if profileFailed[matched.QualityProfileID] {
+			continue
+		}
+		prof, loaded := profiles[matched.QualityProfileID]
+		if !loaded {
+			var err error
+			prof, err = env.profile(ctx, matched.QualityProfileID)
+			if err != nil {
+				env.logger.Warn("rss_sync: could not load quality profile; skipping series",
+					"series_id", matched.ID, "profile_id", matched.QualityProfileID, "error", err)
+				profileFailed[matched.QualityProfileID] = true
+				continue
+			}
+			profiles[matched.QualityProfileID] = prof
+		}
+
+		if ok, why := decision.Evaluate(rel.Quality, cur, prof); !ok {
+			env.logger.Debug("rss_sync: release rejected",
+				"release", rel.Title, "episode_id", ep.ID, "reason", why)
+			continue
+		}
+
+		pick := rssPick{Release: rel, Series: matched, Episode: ep, Upgrade: cur != nil}
+		prev, seen := best[ep.ID]
+		if !seen {
+			order = append(order, ep.ID)
+		} else if !indexer.RanksAbove(rel, prev.Release) {
+			continue
+		}
+		best[ep.ID] = pick
+	}
+
+	out := make([]rssPick, 0, len(order))
+	for _, id := range order {
+		out = append(out, best[id])
+	}
+	return out
+}
+
+// currentFileQuality returns the best quality among the episode's
+// recorded files, or nil when it has none. A file whose quality was never
+// recorded yields an empty Quality (Score 0).
+func currentFileQuality(ctx context.Context, q db.Querier, episodeID string) (*plugin.Quality, error) {
+	files, err := q.ListEpisodeFilesByEpisodeID(ctx, episodeID)
+	if err != nil {
+		return nil, err
+	}
+	var best *plugin.Quality
+	for _, f := range files {
+		var fq plugin.Quality
+		_ = json.Unmarshal([]byte(f.QualityJson), &fq)
+		if best == nil || fq.BetterThan(*best) ||
+			(fq.Score() == best.Score() && fq.EffectiveRevision() > best.EffectiveRevision()) {
+			c := fq
+			best = &c
+		}
+	}
+	return best, nil
 }
 
 // matchSeriesTitle finds the series whose normalised title appears as a
