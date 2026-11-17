@@ -282,7 +282,7 @@ func TestRetry_GivesUpAfterMaxAttempts(t *testing.T) {
 }
 
 // A retry of a pack whose files were already imported must neither fail on
-// the UNIQUE episode_files.path nor damage the (hardlinked) source files.
+// the UNIQUE episode_files.path nor damage the source files (which may share an inode with the library copy).
 func TestRetry_AlreadyImportedPackIsIdempotent(t *testing.T) {
 	f := newRetryFixture(t)
 	ctx := context.Background()
