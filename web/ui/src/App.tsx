@@ -33,6 +33,8 @@ import HistoryPage from "@/pages/history/HistoryPage";
 import ActivityPage from "@/pages/activity/ActivityPage";
 import StatsPage from "@/pages/stats/StatsPage";
 import DiscoverPage from "@/pages/discover/DiscoverPage";
+import DiscoverDetailPage from "@/pages/discover/DiscoverDetailPage";
+import PersonDetailPage from "@/pages/people/PersonDetailPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -49,6 +51,8 @@ export default function App() {
             {/* Main */}
             <Route index element={<Dashboard />} />
             <Route path="discover" element={<DiscoverPage />} />
+            <Route path="discover/:tmdbId" element={<DiscoverDetailPage />} />
+            <Route path="people/:id" element={<PersonDetailPage />} />
             <Route path="series/:id" element={<SeriesDetail />} />
             <Route path="series/:id/episodes/:episodeId" element={<EpisodeDetail />} />
 

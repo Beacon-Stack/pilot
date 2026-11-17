@@ -39,8 +39,8 @@ func (p *Plugin) Fetch(ctx context.Context) ([]plugin.ImportListItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("tmdb_popular_tv: %w", err)
 	}
-	items := make([]plugin.ImportListItem, 0, len(results))
-	for _, r := range results {
+	items := make([]plugin.ImportListItem, 0, len(results.Results))
+	for _, r := range results.Results {
 		items = append(items, plugin.ImportListItem{
 			TMDbID:     r.ID,
 			Title:      r.Title,

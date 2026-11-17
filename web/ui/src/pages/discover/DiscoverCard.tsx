@@ -1,19 +1,29 @@
-import { Check } from "lucide-react";
-import type { LookupResult } from "@/api/series";
+import { Check, Star } from "lucide-react";
+import { Link } from "react-router-dom";
 import { tmdbPosterURL } from "@/api/series";
 
-interface Props {
-  result: LookupResult;
-  isAdded: boolean;
-  onClick: () => void;
+// Minimal shape shared by search results (LookupResult) and browse-list
+// items (DiscoverListItem) — only the fields the card actually renders.
+interface DiscoverCardItem {
+  tmdb_id: number;
+  title: string;
+  year: number;
+  poster_path: string;
+  overview?: string;
+  rating?: number;
 }
 
-export default function DiscoverCard({ result, isAdded, onClick }: Props) {
+interface Props {
+  result: DiscoverCardItem;
+  isAdded: boolean;
+}
+
+export default function DiscoverCard({ result, isAdded }: Props) {
   const posterSrc = tmdbPosterURL(result.poster_path, "w342");
 
   return (
-    <button
-      onClick={onClick}
+    <Link
+      to={`/discover/${result.tmdb_id}`}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -22,6 +32,7 @@ export default function DiscoverCard({ result, isAdded, onClick }: Props) {
         background: isAdded ? "var(--color-bg-base)" : "var(--color-bg-surface)",
         cursor: "pointer",
         textAlign: "left",
+        textDecoration: "none",
         overflow: "hidden",
         transition: "border-color 120ms ease, box-shadow 120ms ease",
         opacity: isAdded ? 0.65 : 1,
@@ -39,7 +50,7 @@ export default function DiscoverCard({ result, isAdded, onClick }: Props) {
       }}
     >
       {/* Poster */}
-      <div style={{ aspectRatio: "2/3", background: "var(--color-bg-elevated)", overflow: "hidden" }}>
+      <div style={{ position: "relative", aspectRatio: "2/3", background: "var(--color-bg-elevated)", overflow: "hidden" }}>
         {posterSrc ? (
           <img
             src={posterSrc}
@@ -50,6 +61,28 @@ export default function DiscoverCard({ result, isAdded, onClick }: Props) {
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--color-text-muted)", fontSize: 12 }}>
             No Poster
+          </div>
+        )}
+        {result.rating != null && result.rating > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              top: 6,
+              right: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: 3,
+              padding: "2px 6px",
+              borderRadius: 4,
+              background: "rgba(0,0,0,0.7)",
+              backdropFilter: "blur(4px)",
+              fontSize: 11,
+              fontWeight: 600,
+              color: "#fbbf24",
+            }}
+          >
+            <Star size={10} fill="#fbbf24" stroke="none" />
+            {result.rating.toFixed(1)}
           </div>
         )}
       </div>
@@ -86,6 +119,6 @@ export default function DiscoverCard({ result, isAdded, onClick }: Props) {
           </p>
         )}
       </div>
-    </button>
+    </Link>
   );
 }

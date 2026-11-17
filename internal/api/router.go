@@ -175,6 +175,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.ShowService != nil {
 		v1.RegisterSeriesRoutes(humaAPI, cfg.ShowService)
+		v1.RegisterDiscoverRoutes(humaAPI, cfg.ShowService)
+		v1.RegisterPeopleRoutes(humaAPI, cfg.ShowService)
 		v1.RegisterEpisodeFileRoutes(humaAPI, cfg.ShowService, cfg.MediaManagementService)
 	}
 
