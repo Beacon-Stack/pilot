@@ -19,6 +19,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/activity"
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
+	"github.com/beacon-stack/pilot/internal/core/health"
 	"github.com/beacon-stack/pilot/internal/core/importer"
 	"github.com/beacon-stack/pilot/internal/core/importlist"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
@@ -75,6 +76,7 @@ type RouterConfig struct {
 	ReleaseProfileService  *releaseprofile.Service
 	WSHub                  *ws.Hub
 	Scheduler              *scheduler.Scheduler
+	HealthService          *health.Service
 	PulseSyncHandler       http.HandlerFunc
 }
 
@@ -211,6 +213,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		v1.RegisterQueueRoutes(humaAPI, cfg.QueueService, cfg.BlocklistService)
 	}
 
+	if cfg.HealthService != nil {
+		v1.RegisterHealthRoutes(humaAPI, cfg.HealthService)
+	}
 	if cfg.Scheduler != nil {
 		v1.RegisterTaskRoutes(humaAPI, cfg.Scheduler)
 	}

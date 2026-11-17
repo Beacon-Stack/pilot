@@ -30,6 +30,7 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/config"
+	"github.com/beacon-stack/pilot/internal/core/health"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	pilotdb "github.com/beacon-stack/pilot/internal/db"
 	dbgen "github.com/beacon-stack/pilot/internal/db/generated"
@@ -68,6 +69,7 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 		WSHub:                 ws.NewHub(logger),
 		ReleaseProfileService: releaseprofile.NewService(dbgen.New(db)),
 		Queries:               dbgen.New(db),
+		HealthService:         health.NewService(dbgen.New(db), nil, nil),
 		PulseSyncHandler: func(w http.ResponseWriter, _ *http.Request) {
 			pulseCalls.Add(1)
 			w.WriteHeader(http.StatusAccepted)
@@ -135,6 +137,8 @@ var protectedEndpoints = []struct{ method, path string }{
 	{"GET", "/api/v1/queue/pending"},
 	{"GET", "/api/v1/language-preference"},
 	{"PUT", "/api/v1/language-preference"},
+	{"GET", "/api/v1/system/health"},
+	{"POST", "/api/v1/system/health/check"},
 	{"POST", "/api/v1/release-profiles"},
 	{"GET", "/api/openapi.json"},
 }

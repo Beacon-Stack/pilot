@@ -62,6 +62,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/failedgrab"
+	"github.com/beacon-stack/pilot/internal/core/health"
 	"github.com/beacon-stack/pilot/internal/core/importer"
 	"github.com/beacon-stack/pilot/internal/core/importlist"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
@@ -338,6 +339,8 @@ func run() error {
 	sched.Add(jobs.ActivityPrune(activitySvc, logger))
 	sched.Add(jobs.FileExistenceReconciler(queries, bus, logger))
 	sched.Add(jobs.ImportRetry(importerSvc, logger))
+	healthSvc := health.NewService(queries, downloaderSvc, indexerSvc)
+	sched.Add(jobs.HealthCheck(healthSvc))
 
 	// ── Pulse integration (optional) ──────────────────────────────────────────
 	pulseIntegration, err := pulseint.New(cfg.Pulse, cfg.Server.Host, cfg.Server.Port, cfg.Auth.APIKey.Value(), logger)
@@ -383,6 +386,7 @@ func run() error {
 		ReleaseProfileService:  releaseprofile.NewService(queries),
 		WSHub:                  wsHub,
 		Scheduler:              sched,
+		HealthService:          healthSvc,
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),
 	})
 
