@@ -18,6 +18,7 @@ import {
   Timer,
   Languages,
   FolderSync,
+  FolderInput,
   Film,
   Gauge,
   History,
@@ -50,6 +51,7 @@ const mainNav: NavItem[] = [
   { to: "/stats", icon: BarChart2, label: "Statistics" },
   { to: "/queue", icon: Download, label: "Queue" },
   { to: "/history", icon: History, label: "History" },
+  { to: "/manual-import", icon: FolderInput, label: "Manual Import" },
 ];
 
 const settingsNav: NavItem[] = [
