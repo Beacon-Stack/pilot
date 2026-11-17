@@ -164,6 +164,8 @@ type MediaManagement struct {
 	ImportExtraFiles         bool   `json:"importExtraFiles"`
 	ExtraFileExtensions      string `json:"extraFileExtensions"`
 	UnmonitorDeletedEpisodes bool   `json:"unmonitorDeletedEpisodes"`
+	RecycleBinPath           string `json:"recycleBinPath"`
+	RecycleBinCleanupDays    int64  `json:"recycleBinCleanupDays"`
 }
 
 type MediaServerConfig struct {
