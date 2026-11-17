@@ -323,7 +323,7 @@ func TestTransferFile_DestAlreadyHardlinkedKeepsContent(t *testing.T) {
 	if err := os.Link(src, dst); err != nil {
 		t.Skipf("hardlinks unsupported here: %v", err)
 	}
-	if err := transferFile(src, dst); err != nil {
+	if err := transferFile(src, dst, 0); err != nil {
 		t.Fatalf("transferFile: %v", err)
 	}
 	for _, p := range []string{src, dst} {

@@ -24,6 +24,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/renamer"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
+	"github.com/beacon-stack/pilot/internal/diskspace"
 	"github.com/beacon-stack/pilot/internal/events"
 	releaseparser "github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -61,6 +62,18 @@ type AbsoluteEpisodeResolver interface {
 // failures that warrant blocklisting the release; transient errors
 // (full disk, DB hiccup) must not.
 var ErrUnimportableContent = errors.New("content can never import")
+
+// ErrInsufficientSpace means copying a file into the library would leave
+// less free space than the library's min_free_space_gb. It is a soft
+// failure: the import is retried later, once space may have been freed.
+var ErrInsufficientSpace = errors.New("not enough free space in the library")
+
+// freeSpace and linkFile are diskspace.Free and os.Link; tests replace
+// them to force the copy path and a full disk.
+var (
+	freeSpace = diskspace.Free
+	linkFile  = os.Link
+)
 
 // Service subscribes to TypeDownloadDone events and imports completed files
 // into the library directory tree.
@@ -440,6 +453,7 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 
 	// Compute destination path.
 	destPath := filePath
+	var minFree uint64
 	if mm.RenameEpisodes {
 		// Load series and episode info for the renamer.
 		series, seriesErr := s.q.GetSeries(ctx, seriesID)
@@ -464,6 +478,9 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 		seasonFolderFormat := mm.SeasonFolderFormat
 		if lib.FolderFormat != nil && *lib.FolderFormat != "" {
 			seriesFolderFormat = *lib.FolderFormat
+		}
+		if lib.MinFreeSpaceGb > 0 {
+			minFree = uint64(lib.MinFreeSpaceGb) * diskspace.GB
 		}
 
 		colon := renamer.ColonReplacement(mm.ColonReplacement)
@@ -536,7 +553,7 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 
 		// Transfer: hardlink with copy fallback.
 		if destPath != filePath {
-			if err := transferFile(filePath, destPath); err != nil {
+			if err := transferFile(filePath, destPath, minFree); err != nil {
 				return fmt.Errorf("transferring %q → %q: %w", filePath, destPath, err)
 			}
 		}
@@ -667,6 +684,27 @@ func pathWithin(root, p string) bool {
 	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
+func checkSpaceForCopy(src, dst string, minFree uint64) error {
+	if minFree == 0 {
+		return nil
+	}
+	si, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	avail, err := freeSpace(filepath.Dir(dst))
+	if err != nil {
+		return nil //nolint:nilerr // unknown free space: don't block the import
+	}
+	need := uint64(si.Size()) + minFree
+	if avail < need {
+		return fmt.Errorf("%w: copying %.1f GB would leave %.1f GB free, below the library minimum of %.0f GB",
+			ErrInsufficientSpace, float64(si.Size())/diskspace.GB,
+			(float64(avail)-float64(si.Size()))/diskspace.GB, float64(minFree)/diskspace.GB)
+	}
+	return nil
+}
+
 // qualityFromGrab reconstructs a plugin.Quality from the denormalized fields
 // stored in grab_history. Name must be filled in too: the renamer's
 // {Quality Full} token renders Name, and without it every imported
@@ -694,7 +732,12 @@ func qualityFromGrab(g db.GrabHistory) plugin.Quality {
 // written into dst in place. That matters on retries: if dst is already a
 // hardlink to src (an earlier attempt linked it), opening dst with
 // O_TRUNC would truncate the shared inode and destroy the download.
-func transferFile(src, dst string) error {
+//
+// A hardlink takes no space. Before falling back to a copy, the copy is
+// refused with ErrInsufficientSpace if it would leave less than minFree
+// bytes free where dst lives (0 = no minimum). If free space can't be
+// read, the copy goes ahead: an unknown must not block every import.
+func transferFile(src, dst string, minFree uint64) error {
 	if di, err := os.Stat(dst); err == nil {
 		if si, err := os.Stat(src); err == nil && os.SameFile(si, di) {
 			return nil // already linked by an earlier attempt
@@ -704,12 +747,16 @@ func transferFile(src, dst string) error {
 	tmp := dst + ".pilot-tmp"
 	_ = os.Remove(tmp) // leftover from an interrupted attempt
 
-	if err := os.Link(src, tmp); err == nil {
+	if err := linkFile(src, tmp); err == nil {
 		if err := os.Rename(tmp, dst); err != nil {
 			os.Remove(tmp)
 			return err
 		}
 		return nil
+	}
+
+	if err := checkSpaceForCopy(src, dst, minFree); err != nil {
+		return err
 	}
 
 	in, err := os.Open(src)
@@ -772,7 +819,7 @@ func copyExtraFiles(logger *slog.Logger, srcDir, destDir string, exts []string) 
 		}
 		src := filepath.Join(srcDir, name)
 		dst := filepath.Join(destDir, name)
-		if err := transferFile(src, dst); err != nil {
+		if err := transferFile(src, dst, 0); err != nil {
 			logger.Warn("extra files: transfer failed", "src", src, "dst", dst, "error", err)
 		}
 	}
