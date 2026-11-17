@@ -199,6 +199,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.Queries != nil && cfg.DownloaderService != nil && cfg.ImporterService != nil {
 		v1.RegisterHaulHistoryRoutes(humaAPI, cfg.Queries, cfg.DownloaderService, cfg.ImporterService, cfg.RemotePathService)
 	}
+	if cfg.ImporterService != nil {
+		v1.RegisterManualImportRoutes(humaAPI, cfg.ImporterService)
+	}
 
 	if cfg.NotificationService != nil {
 		v1.RegisterNotificationRoutes(humaAPI, cfg.NotificationService)
