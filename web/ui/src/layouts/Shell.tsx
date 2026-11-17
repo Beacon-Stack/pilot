@@ -25,11 +25,13 @@ import {
   Settings2,
   SlidersHorizontal,
   LayoutDashboard,
+  LogOut,
   Tv,
 } from "lucide-react";
 import Shell, { type NavItem } from "@beacon-shared/Shell";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
+import { logout } from "@/lib/auth";
 import { useCommandPalette } from "@/components/command-palette/useCommandPalette";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 
@@ -119,6 +121,33 @@ function DocsLink() {
   );
 }
 
+function LogoutButton() {
+  return (
+    <button
+      type="button"
+      onClick={() => void logout()}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "0 12px",
+        height: "36px",
+        width: "100%",
+        color: "var(--color-text-muted)",
+        fontSize: "12px",
+        background: "none",
+        border: "none",
+        borderRadius: "6px",
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <LogOut size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
+      <span>Log out</span>
+    </button>
+  );
+}
+
 export default function PilotShell() {
   useEffect(() => {
     applyTheme();
@@ -134,7 +163,12 @@ export default function PilotShell() {
       mainNav={mainNav}
       settingsNav={settingsNav}
       collapsedStorageKey="pilot-sidebar-collapsed"
-      sidebarFooterExtras={<DocsLink />}
+      sidebarFooterExtras={
+        <>
+          <DocsLink />
+          <LogoutButton />
+        </>
+      }
       overlay={
         commandPalette.isOpen && (
           <CommandPalette onClose={commandPalette.close} />
