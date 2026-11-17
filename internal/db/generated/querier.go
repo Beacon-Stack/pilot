@@ -48,6 +48,7 @@ type Querier interface {
 	CreateNotificationConfig(ctx context.Context, arg CreateNotificationConfigParams) (NotificationConfig, error)
 	CreateQualityProfile(ctx context.Context, arg CreateQualityProfileParams) (QualityProfile, error)
 	CreateReleaseProfile(ctx context.Context, arg CreateReleaseProfileParams) (ReleaseProfile, error)
+	CreateRemotePathMapping(ctx context.Context, arg CreateRemotePathMappingParams) (RemotePathMapping, error)
 	CreateSeason(ctx context.Context, arg CreateSeasonParams) (Season, error)
 	CreateSeries(ctx context.Context, arg CreateSeriesParams) (Series, error)
 	DeleteAnimeCourMonitoredBySeriesID(ctx context.Context, seriesID string) error
@@ -67,6 +68,7 @@ type Querier interface {
 	DeletePendingReleaseByEpisode(ctx context.Context, episodeID string) error
 	DeleteQualityProfile(ctx context.Context, id string) error
 	DeleteReleaseProfile(ctx context.Context, id string) error
+	DeleteRemotePathMapping(ctx context.Context, id string) error
 	DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error
 	DeleteSeries(ctx context.Context, id string) error
 	DeleteSetting(ctx context.Context, key string) error
@@ -88,6 +90,7 @@ type Querier interface {
 	GetNotificationConfig(ctx context.Context, id string) (NotificationConfig, error)
 	GetQualityProfile(ctx context.Context, id string) (QualityProfile, error)
 	GetReleaseProfile(ctx context.Context, id string) (ReleaseProfile, error)
+	GetRemotePathMapping(ctx context.Context, id string) (RemotePathMapping, error)
 	GetSeason(ctx context.Context, id string) (Season, error)
 	GetSeries(ctx context.Context, id string) (Series, error)
 	GetSeriesByTMDBID(ctx context.Context, tmdbID int64) (Series, error)
@@ -162,6 +165,7 @@ type Querier interface {
 	ListQualityDefinitions(ctx context.Context) ([]QualityDefinition, error)
 	ListQualityProfiles(ctx context.Context) ([]QualityProfile, error)
 	ListReleaseProfiles(ctx context.Context) ([]ReleaseProfile, error)
+	ListRemotePathMappings(ctx context.Context) ([]RemotePathMapping, error)
 	ListSeasonsBySeriesID(ctx context.Context, seriesID string) ([]Season, error)
 	ListSeries(ctx context.Context, arg ListSeriesParams) ([]Series, error)
 	ListSeriesByLibrary(ctx context.Context, arg ListSeriesByLibraryParams) ([]Series, error)
@@ -216,6 +220,7 @@ type Querier interface {
 	UpdateQualityDefinitionSizes(ctx context.Context, arg UpdateQualityDefinitionSizesParams) error
 	UpdateQualityProfile(ctx context.Context, arg UpdateQualityProfileParams) (QualityProfile, error)
 	UpdateReleaseProfile(ctx context.Context, arg UpdateReleaseProfileParams) (ReleaseProfile, error)
+	UpdateRemotePathMapping(ctx context.Context, arg UpdateRemotePathMappingParams) (RemotePathMapping, error)
 	UpdateSeasonMonitored(ctx context.Context, arg UpdateSeasonMonitoredParams) error
 	UpdateSeries(ctx context.Context, arg UpdateSeriesParams) (Series, error)
 	UpdateSeriesMetadata(ctx context.Context, arg UpdateSeriesMetadataParams) (Series, error)
