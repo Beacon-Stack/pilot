@@ -242,26 +242,16 @@ func RegisterWantedSearchRoutes(
 }
 
 // missingTargets lists aired, monitored, file-less episodes of monitored
-// series. (The missing-episodes query doesn't check the series' own
-// monitored flag, so it is applied here.)
+// series. (The missing-episodes query only returns monitored episodes of
+// monitored series.)
 func missingTargets(ctx context.Context, q db.Querier) ([]autoSearchParams, error) {
-	series, err := q.ListMonitoredSeries(ctx)
-	if err != nil {
-		return nil, err
-	}
-	monitored := make(map[string]bool, len(series))
-	for _, s := range series {
-		monitored[s.ID] = true
-	}
-	rows, err := q.ListMissingEpisodesWithSeries(ctx, db.ListMissingEpisodesWithSeriesParams{Limit: maxBulkSearch * 4, Offset: 0})
+	rows, err := q.ListMissingEpisodesWithSeries(ctx, db.ListMissingEpisodesWithSeriesParams{Limit: maxBulkSearch, Offset: 0})
 	if err != nil {
 		return nil, err
 	}
 	ts := make([]autoSearchParams, 0, len(rows))
 	for _, r := range rows {
-		if monitored[r.SeriesID] {
-			ts = append(ts, episodeTarget(r.SeriesID, r.ID, r.SeasonNumber, r.EpisodeNumber))
-		}
+		ts = append(ts, episodeTarget(r.SeriesID, r.ID, r.SeasonNumber, r.EpisodeNumber))
 	}
 	return capTargets(ts), nil
 }

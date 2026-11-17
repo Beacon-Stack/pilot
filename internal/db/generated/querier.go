@@ -22,6 +22,9 @@ type Querier interface {
 	CountEpisodesBySeriesID(ctx context.Context, seriesID string) (int64, error)
 	CountEpisodesWithFile(ctx context.Context) (int64, error)
 	CountEpisodesWithFileBySeriesID(ctx context.Context, seriesID string) (int64, error)
+	// Missing = aired, no file, and both the episode and its series are
+	// monitored (season monitoring cascades to episodes). An unmonitored
+	// series' episodes are not wanted, as in Sonarr.
 	CountMissingEpisodes(ctx context.Context) (int64, error)
 	CountMonitoredEpisodes(ctx context.Context) (int64, error)
 	// Circuit breaker for auto-re-search: how many stall- or download-failure
@@ -156,7 +159,6 @@ type Querier interface {
 	ListLibraries(ctx context.Context) ([]Library, error)
 	ListManagedQualityProfiles(ctx context.Context) ([]QualityProfile, error)
 	ListMediaServerConfigs(ctx context.Context) ([]MediaServerConfig, error)
-	ListMissingEpisodes(ctx context.Context, arg ListMissingEpisodesParams) ([]Episode, error)
 	ListMissingEpisodesWithSeries(ctx context.Context, arg ListMissingEpisodesWithSeriesParams) ([]ListMissingEpisodesWithSeriesRow, error)
 	ListMonitoredSeries(ctx context.Context) ([]Series, error)
 	ListNotificationConfigs(ctx context.Context) ([]NotificationConfig, error)

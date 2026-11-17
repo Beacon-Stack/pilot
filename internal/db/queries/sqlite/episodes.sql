@@ -65,12 +65,15 @@ FROM episodes
 WHERE series_id IN (sqlc.slice('series_ids'))
 GROUP BY series_id;
 
--- name: CountMissingEpisodes :one
-SELECT COUNT(*) FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= strftime('%Y-%m-%d', 'now');
+-- Missing = aired, no file, and both the episode and its series are
+-- monitored (season monitoring cascades to episodes). An unmonitored
+-- series' episodes are not wanted, as in Sonarr.
 
--- name: ListMissingEpisodes :many
-SELECT * FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= strftime('%Y-%m-%d', 'now')
-ORDER BY air_date DESC LIMIT ? OFFSET ?;
+-- name: CountMissingEpisodes :one
+SELECT COUNT(*) FROM episodes e
+JOIN series s ON s.id = e.series_id
+WHERE s.monitored = 1 AND e.monitored = 1 AND e.has_file = 0
+  AND e.air_date IS NOT NULL AND e.air_date <= strftime('%Y-%m-%d', 'now');
 
 -- name: DeleteEpisodesBySeriesID :exec
 DELETE FROM episodes WHERE series_id = ?;
@@ -86,6 +89,7 @@ ORDER BY e.air_date ASC, s.title ASC, e.episode_number ASC;
 SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e
 JOIN series s ON s.id = e.series_id
-WHERE e.monitored = 1 AND e.has_file = 0 AND e.air_date IS NOT NULL AND e.air_date <= strftime('%Y-%m-%d', 'now')
+WHERE s.monitored = 1 AND e.monitored = 1 AND e.has_file = 0
+  AND e.air_date IS NOT NULL AND e.air_date <= strftime('%Y-%m-%d', 'now')
 ORDER BY e.air_date DESC
 LIMIT ? OFFSET ?;
