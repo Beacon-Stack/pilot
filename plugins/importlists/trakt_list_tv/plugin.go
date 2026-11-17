@@ -29,6 +29,12 @@ func init() {
 		}
 		return &Plugin{cfg: cfg}, nil
 	})
+
+	// No secret settings: return them unchanged so the edit form can
+	// pre-fill. (The registry's fallback for unregistered kinds is "{}".)
+	registry.Default.RegisterImportListSanitizer("trakt_list_tv", func(settings json.RawMessage) json.RawMessage {
+		return settings
+	})
 }
 
 // Config holds the user-supplied settings.
