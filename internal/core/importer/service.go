@@ -461,22 +461,25 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 		return fmt.Errorf("loading media management settings: %w", err)
 	}
 
-	// Compute destination path.
-	destPath := filePath
+	// Compute the destination: the library's series and season folders,
+	// always. With renaming on, the file is named by the episode format;
+	// with it off, it keeps its original name (as in Sonarr). Before, with
+	// renaming off nothing was moved into the library at all: the
+	// download path itself was recorded as the library file.
+	var destPath string
 	var minFree uint64
-	if mm.RenameEpisodes {
-		// Load series and episode info for the renamer.
+	{
 		series, seriesErr := s.q.GetSeries(ctx, seriesID)
 		if seriesErr != nil {
-			return fmt.Errorf("loading series for rename: %w", seriesErr)
+			return fmt.Errorf("loading series for import: %w", seriesErr)
 		}
 		ep, epErr := s.q.GetEpisode(ctx, episodeID)
 		if epErr != nil {
-			return fmt.Errorf("loading episode for rename: %w", epErr)
+			return fmt.Errorf("loading episode for import: %w", epErr)
 		}
 		lib, libErr := s.q.GetLibrary(ctx, series.LibraryID)
 		if libErr != nil {
-			return fmt.Errorf("loading library for rename: %w", libErr)
+			return fmt.Errorf("loading library for import: %w", libErr)
 		}
 
 		// Use library-level format overrides if set, else global settings.
@@ -515,10 +518,14 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 			quality, colon,
 			filepath.Ext(filePath),
 		)
+		if !mm.RenameEpisodes {
+			destPath = filepath.Join(filepath.Dir(destPath), filepath.Base(filePath))
+		}
 
-		s.logger.Info("rename computed",
+		s.logger.Info("import destination computed",
 			"src", filePath,
 			"dest", destPath,
+			"renamed", mm.RenameEpisodes,
 		)
 	}
 
