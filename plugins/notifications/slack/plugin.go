@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/redact"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/safedialer"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -123,13 +124,13 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.cfg.WebhookURL, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("slack: building request: %w", err)
+		return fmt.Errorf("slack: building request: %w", redact.Error(err, n.cfg.WebhookURL))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("slack: sending request: %w", err)
+		return fmt.Errorf("slack: sending request: %w", redact.Error(err, n.cfg.WebhookURL))
 	}
 	defer resp.Body.Close()
 

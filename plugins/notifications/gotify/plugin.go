@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/redact"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/safedialer"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -89,13 +90,13 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 	url := fmt.Sprintf("%s/message?token=%s", n.cfg.URL, n.cfg.Token)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("gotify: building request: %w", err)
+		return fmt.Errorf("gotify: building request: %w", redact.Error(err, n.cfg.Token))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("gotify: sending request: %w", err)
+		return fmt.Errorf("gotify: sending request: %w", redact.Error(err, n.cfg.Token))
 	}
 	defer resp.Body.Close()
 
@@ -122,13 +123,13 @@ func (n *Notifier) Test(ctx context.Context) error {
 	url := fmt.Sprintf("%s/message?token=%s", n.cfg.URL, n.cfg.Token)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("gotify: building test request: %w", err)
+		return fmt.Errorf("gotify: building test request: %w", redact.Error(err, n.cfg.Token))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("gotify: test request: %w", err)
+		return fmt.Errorf("gotify: test request: %w", redact.Error(err, n.cfg.Token))
 	}
 	defer resp.Body.Close()
 

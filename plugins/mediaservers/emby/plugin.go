@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/redact"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/safedialer"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -78,12 +79,12 @@ func (s *Server) RefreshLibrary(ctx context.Context, _ string) error {
 	url := fmt.Sprintf("%s/Library/Refresh?api_key=%s", s.cfg.URL, s.cfg.APIKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
-		return fmt.Errorf("emby: building refresh request: %w", err)
+		return fmt.Errorf("emby: building refresh request: %w", redact.Error(err, s.cfg.APIKey))
 	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("emby: refresh request: %w", err)
+		return fmt.Errorf("emby: refresh request: %w", redact.Error(err, s.cfg.APIKey))
 	}
 	defer resp.Body.Close()
 
@@ -99,12 +100,12 @@ func (s *Server) Test(ctx context.Context) error {
 	url := fmt.Sprintf("%s/System/Info?api_key=%s", s.cfg.URL, s.cfg.APIKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("emby: building test request: %w", err)
+		return fmt.Errorf("emby: building test request: %w", redact.Error(err, s.cfg.APIKey))
 	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("emby: test request: %w", err)
+		return fmt.Errorf("emby: test request: %w", redact.Error(err, s.cfg.APIKey))
 	}
 	defer resp.Body.Close()
 
@@ -130,12 +131,12 @@ func (s *Server) WatchHistory(ctx context.Context, since time.Time) ([]plugin.Wa
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("emby: building watch-history request: %w", err)
+		return nil, fmt.Errorf("emby: building watch-history request: %w", redact.Error(err, s.cfg.APIKey))
 	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("emby: watch-history request: %w", err)
+		return nil, fmt.Errorf("emby: watch-history request: %w", redact.Error(err, s.cfg.APIKey))
 	}
 	defer resp.Body.Close()
 
@@ -193,12 +194,12 @@ func (s *Server) getFirstUserID(ctx context.Context) (string, error) {
 	reqURL := fmt.Sprintf("%s/Users?api_key=%s", s.cfg.URL, s.cfg.APIKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("emby: building users request: %w", err)
+		return "", fmt.Errorf("emby: building users request: %w", redact.Error(err, s.cfg.APIKey))
 	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("emby: users request: %w", err)
+		return "", fmt.Errorf("emby: users request: %w", redact.Error(err, s.cfg.APIKey))
 	}
 	defer resp.Body.Close()
 

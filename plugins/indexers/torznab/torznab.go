@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/redact"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/safedialer"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -228,9 +229,14 @@ func (idx *Indexer) buildURL(t string, params url.Values) string {
 func (idx *Indexer) get(ctx context.Context, rawURL string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("torznab: building request: %w", err)
+		return nil, fmt.Errorf("torznab: building request: %w", redact.Error(err, idx.cfg.APIKey))
 	}
-	return idx.client.Do(req)
+	resp, err := idx.client.Do(req)
+	if err != nil {
+		// *url.Error includes the full URL, apikey and all.
+		return nil, redact.Error(err, idx.cfg.APIKey)
+	}
+	return resp, nil
 }
 
 // maxResponseBytes caps how much of a response body decodeXML will read.

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/redact"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/safedialer"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -206,11 +207,11 @@ func (c *Client) Remove(ctx context.Context, clientItemID string, deleteFiles bo
 func (c *Client) getJSON(ctx context.Context, rawURL string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return err
+		return redact.Error(err, c.cfg.APIKey)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return redact.Error(err, c.cfg.APIKey)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
