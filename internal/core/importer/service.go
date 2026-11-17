@@ -63,6 +63,11 @@ type AbsoluteEpisodeResolver interface {
 // (full disk, DB hiccup) must not.
 var ErrUnimportableContent = errors.New("content can never import")
 
+// missingPathHint is added to the error when a download's path doesn't
+// exist for Pilot, the usual sign of a client in a container or on
+// another machine.
+const missingPathHint = "if the download client runs in a container or on another machine, it reports paths as it sees them: add a remote path mapping in Settings > Remote Path Mappings"
+
 // ErrInsufficientSpace means copying a file into the library would leave
 // less free space than the library's min_free_space_gb. It is a soft
 // failure: the import is retried later, once space may have been freed.
@@ -274,6 +279,9 @@ func (s *Service) importIntoSeries(
 
 	info, statErr := os.Stat(contentPath)
 	if statErr != nil {
+		if errors.Is(statErr, fs.ErrNotExist) {
+			return fmt.Errorf("stat content path %q: %w (%s)", contentPath, statErr, missingPathHint)
+		}
 		return fmt.Errorf("stat content path %q: %w", contentPath, statErr)
 	}
 

@@ -289,6 +289,51 @@ func TestPollAndUpdate_CompletedFiresDownloadDoneEvent(t *testing.T) {
 	}
 }
 
+type prefixMapper struct{ gotClient string }
+
+func (m *prefixMapper) Map(_ context.Context, clientID, path string) string {
+	m.gotClient = clientID
+	return "/mnt/media" + path
+}
+
+// A download client in a container reports its own paths; the remote
+// path mapping must be applied before the importer sees the path.
+func TestPollAndUpdate_CompletedAppliesRemotePathMapping(t *testing.T) {
+	q := &mockQuerier{
+		activeGrabs: []db.GrabHistory{activeGrab("g1", "item-1", "downloading")},
+	}
+	dl := &mockDownloader{
+		client: &mockClient{statusByItemID: map[string]plugin.QueueItem{
+			"item-1": {ClientItemID: "item-1", Status: plugin.StatusCompleted, ContentPath: "/downloads/test.mkv"},
+		}},
+	}
+	bus := events.New(discardLogger())
+	var got atomic.Pointer[events.Event]
+	bus.Subscribe(func(_ context.Context, e events.Event) {
+		if e.Type == events.TypeDownloadDone {
+			ev := e
+			got.Store(&ev)
+		}
+	})
+	svc := NewService(q, dl, bus, discardLogger())
+	m := &prefixMapper{}
+	svc.SetPathMapper(m)
+	if err := svc.PollAndUpdate(context.Background()); err != nil {
+		t.Fatalf("PollAndUpdate: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	ev := got.Load()
+	if ev == nil {
+		t.Fatal("no TypeDownloadDone event")
+	}
+	if cp, _ := ev.Data["content_path"].(string); cp != "/mnt/media/downloads/test.mkv" {
+		t.Errorf("content_path = %v, want the mapped path", ev.Data["content_path"])
+	}
+	if m.gotClient != *activeGrab("g1", "item-1", "downloading").DownloadClientID {
+		t.Errorf("mapper got client %q, want the grab's client", m.gotClient)
+	}
+}
+
 // Failed transitions must NOT fire TypeDownloadDone — the importer
 // would otherwise try to import a failed download (probably 0 bytes
 // or partial) and produce a corrupted library entry.
