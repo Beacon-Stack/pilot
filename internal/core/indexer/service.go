@@ -30,6 +30,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
+	releaseparser "github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/internal/ratelimit"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -418,6 +419,71 @@ func classifyRelease(title string) (PackType, int) {
 	return PackTypeUnknown, 0
 }
 
+// newSearchResult builds the SearchResult for one release returned by an
+// indexer. Indexer plugins don't parse quality, so it is parsed here from
+// the title. Before this, every release kept an empty Quality: the
+// "quality first" sort tier compared zeros, ranking fell through to seeds
+// and age, and grabs recorded no quality.
+func newSearchResult(r plugin.Release, indexerID, indexerName string) SearchResult {
+	if r.Indexer == "" {
+		r.Indexer = indexerName
+	}
+	r.Quality = withParsedQuality(r.Title, r.Quality)
+	pt, count := classifyRelease(r.Title)
+	return SearchResult{
+		Release:      r,
+		IndexerID:    indexerID,
+		IndexerName:  indexerName,
+		QualityScore: r.Quality.Score(),
+		PackType:     pt,
+		EpisodeCount: count,
+	}
+}
+
+// withParsedQuality fills q from the release title when the indexer gave
+// no quality, and always fills the revision (PROPER/REPACK) if missing.
+func withParsedQuality(title string, q plugin.Quality) plugin.Quality {
+	parsed := releaseparser.Parse(title).Quality()
+	if q.Resolution == "" && q.Source == "" {
+		return parsed
+	}
+	if q.Revision == 0 {
+		q.Revision = parsed.Revision
+	}
+	return q
+}
+
+// searchResultLess is the ranking comparator for search results. Tiers, in
+// order:
+//  1. Quality score   (1080p > 720p > 480p). Quality trumps all.
+//  2. Revision        (PROPER/REPACK beats the original of the same quality)
+//  3. Episode count   (season pack > multi-episode > single episode)
+//  4. Seed weight     (age-aware log10 bucket; resists stale seed inflation)
+//  5. Age             (newer wins when everything else is equal)
+//
+// The Episode Count tier matches Sonarr's DownloadDecisionComparer and is
+// the reason season packs surface above individual episodes within the
+// same quality tier in interactive season searches. Revision sits right
+// after quality because Sonarr treats it as part of quality. See
+// seedWeight() and effectiveEpisodeCount() for the other tiers.
+func searchResultLess(a, b SearchResult) bool {
+	if a.QualityScore != b.QualityScore {
+		return a.QualityScore > b.QualityScore
+	}
+	if ra, rb := a.Quality.EffectiveRevision(), b.Quality.EffectiveRevision(); ra != rb {
+		return ra > rb
+	}
+	if ea, eb := effectiveEpisodeCount(a), effectiveEpisodeCount(b); ea != eb {
+		return ea > eb
+	}
+	if wa, wb := seedWeight(a.Seeds, a.AgeDays), seedWeight(b.Seeds, b.AgeDays); wa != wb {
+		return wa > wb
+	}
+	// Final tiebreaker: prefer newer releases. For same-quality same-seed-bucket
+	// candidates, newer is more likely to have live peers.
+	return a.AgeDays < b.AgeDays
+}
+
 // effectiveEpisodeCount returns a comparable number for the sort comparator.
 // Season packs return a large sentinel so any full pack outranks a partial
 // pack of the same quality. Multi-episode releases return their actual count.
@@ -601,48 +667,12 @@ func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) 
 			Results:     len(res.releases),
 		})
 		for _, r := range res.releases {
-			if r.Indexer == "" {
-				r.Indexer = res.indexerName
-			}
-			pt, count := classifyRelease(r.Title)
-			allResults = append(allResults, SearchResult{
-				Release:      r,
-				IndexerID:    res.indexerID,
-				IndexerName:  res.indexerName,
-				QualityScore: r.Quality.Score(),
-				PackType:     pt,
-				EpisodeCount: count,
-			})
+			allResults = append(allResults, newSearchResult(r, res.indexerID, res.indexerName))
 		}
 	}
 
-	// Sort tiers, in order:
-	//   1. Quality score   (1080p > 720p > 480p). Quality trumps all.
-	//   2. Episode count   (season pack > multi-episode > single episode)
-	//   3. Seed weight     (age-aware log10 bucket; resists stale seed inflation)
-	//   4. Age             (newer wins when everything else is equal)
-	//
-	// The Episode Count tier matches Sonarr's DownloadDecisionComparer and is
-	// the reason season packs surface above individual episodes within the
-	// same quality tier in interactive season searches. See seedWeight() and
-	// effectiveEpisodeCount() for the individual tier rationales.
 	sort.Slice(allResults, func(i, j int) bool {
-		si, sj := allResults[i].QualityScore, allResults[j].QualityScore
-		if si != sj {
-			return si > sj
-		}
-		ei, ej := effectiveEpisodeCount(allResults[i]), effectiveEpisodeCount(allResults[j])
-		if ei != ej {
-			return ei > ej
-		}
-		wi := seedWeight(allResults[i].Seeds, allResults[i].AgeDays)
-		wj := seedWeight(allResults[j].Seeds, allResults[j].AgeDays)
-		if wi != wj {
-			return wi > wj
-		}
-		// Final tiebreaker: prefer newer releases. For same-quality same-seed-bucket
-		// candidates, newer is more likely to have live peers.
-		return allResults[i].AgeDays < allResults[j].AgeDays
+		return searchResultLess(allResults[i], allResults[j])
 	})
 
 	// Build per-indexer min_seeders lookup from the rows we already fetched.
@@ -747,18 +777,7 @@ func (s *Service) GetRecent(ctx context.Context) ([]SearchResult, error) {
 			continue
 		}
 		for _, r := range res.releases {
-			if r.Indexer == "" {
-				r.Indexer = res.indexerName
-			}
-			pt, count := classifyRelease(r.Title)
-			allResults = append(allResults, SearchResult{
-				Release:      r,
-				IndexerID:    res.indexerID,
-				IndexerName:  res.indexerName,
-				QualityScore: r.Quality.Score(),
-				PackType:     pt,
-				EpisodeCount: count,
-			})
+			allResults = append(allResults, newSearchResult(r, res.indexerID, res.indexerName))
 		}
 	}
 
