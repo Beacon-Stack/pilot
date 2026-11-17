@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
+	"github.com/beacon-stack/pilot/internal/core/language"
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
@@ -93,6 +94,9 @@ type SearchResult struct {
 	// ranking comparator prefers full packs over partial packs within the
 	// same quality tier.
 	EpisodeCount int
+	// Languages are the audio languages tagged in the title (parser
+	// names, e.g. "french"). Empty when the title has no language tag.
+	Languages []string
 	// FilterReasons lists all the reasons this release was filtered out
 	// of the "active" set. If non-empty, the UI should render the row
 	// grayed with the reasons shown and an "override" button. Empty means
@@ -372,6 +376,38 @@ func (s *Service) applyReleaseProfiles(ctx context.Context, results []SearchResu
 	applyReleaseProfiles(results, m)
 }
 
+// applyLanguagePreference tags results in no wanted language (see
+// internal/core/language). Like release profiles: tagged, not dropped,
+// and a load failure tags nothing.
+func (s *Service) applyLanguagePreference(ctx context.Context, results []SearchResult) {
+	if s.q == nil || len(results) == 0 {
+		return
+	}
+	pref, err := language.NewStore(s.q).Get(ctx)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("could not load the language preference; not applying it", "error", err)
+		}
+		return
+	}
+	applyLanguagePreference(results, pref)
+}
+
+func applyLanguagePreference(results []SearchResult, pref language.Preference) {
+	if len(pref.Languages) == 0 {
+		return
+	}
+	for i := range results {
+		langs := make([]releaseparser.Language, 0, len(results[i].Languages))
+		for _, l := range results[i].Languages {
+			langs = append(langs, releaseparser.Language(l))
+		}
+		if !pref.Accepts(langs) {
+			results[i].FilterReasons = append(results[i].FilterReasons, language.FilterReason)
+		}
+	}
+}
+
 func applyReleaseProfiles(results []SearchResult, m *releaseprofile.Matcher) {
 	for i := range results {
 		if ok, _ := m.Check(results[i].Title, results[i].IndexerID); !ok {
@@ -457,8 +493,13 @@ func newSearchResult(r plugin.Release, indexerID, indexerName string) SearchResu
 	if r.Indexer == "" {
 		r.Indexer = indexerName
 	}
-	r.Quality = withParsedQuality(r.Title, r.Quality)
+	parsed := releaseparser.Parse(r.Title)
+	r.Quality = withParsedQuality(parsed, r.Quality)
 	pt, count := classifyRelease(r.Title)
+	langs := make([]string, 0, len(parsed.Languages))
+	for _, l := range parsed.Languages {
+		langs = append(langs, string(l))
+	}
 	return SearchResult{
 		Release:      r,
 		IndexerID:    indexerID,
@@ -466,13 +507,14 @@ func newSearchResult(r plugin.Release, indexerID, indexerName string) SearchResu
 		QualityScore: r.Quality.Score(),
 		PackType:     pt,
 		EpisodeCount: count,
+		Languages:    langs,
 	}
 }
 
 // withParsedQuality fills q from the release title when the indexer gave
 // no quality, and always fills the revision (PROPER/REPACK) if missing.
-func withParsedQuality(title string, q plugin.Quality) plugin.Quality {
-	parsed := releaseparser.Parse(title).Quality()
+func withParsedQuality(rp releaseparser.ParsedRelease, q plugin.Quality) plugin.Quality {
+	parsed := rp.Quality()
 	if q.Resolution == "" && q.Source == "" {
 		return parsed
 	}
@@ -715,6 +757,7 @@ func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) 
 	}
 	applyMinSeedersFilter(allResults, minByIndexer)
 	s.applyReleaseProfiles(ctx, allResults)
+	s.applyLanguagePreference(ctx, allResults)
 
 	var combinedErr error
 	if len(errs) > 0 {
@@ -825,6 +868,7 @@ func (s *Service) GetRecent(ctx context.Context) ([]SearchResult, error) {
 	}
 
 	s.applyReleaseProfiles(ctx, allResults)
+	s.applyLanguagePreference(ctx, allResults)
 
 	return allResults, combinedErr
 }
