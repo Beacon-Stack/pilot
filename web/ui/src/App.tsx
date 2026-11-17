@@ -30,6 +30,7 @@ import CalendarPage from "@/pages/calendar/CalendarPage";
 import WantedPage from "@/pages/wanted/WantedPage";
 import HistoryPage from "@/pages/history/HistoryPage";
 import ActivityPage from "@/pages/activity/ActivityPage";
+import ManualImportPage from "@/pages/manual-import/ManualImportPage";
 import StatsPage from "@/pages/stats/StatsPage";
 import DiscoverPage from "@/pages/discover/DiscoverPage";
 import LoginPage from "@/pages/login/LoginPage";
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="stats" element={<StatsPage />} />
             <Route path="queue" element={<Queue />} />
             <Route path="history" element={<HistoryPage />} />
+            <Route path="manual-import" element={<ManualImportPage />} />
 
             {/* Settings — flat, no nested layout (matches Pilot) */}
             <Route path="settings/libraries" element={<LibraryList />} />
