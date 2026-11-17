@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useMediaManagement, useUpdateMediaManagement } from "@/api/media-management";
+import { useEmptyRecycleBin, useMediaManagement, useUpdateMediaManagement } from "@/api/media-management";
+import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import PageHeader from "@/components/PageHeader";
 import { DOCS_URLS } from "@/lib/docsUrls";
 import type { MediaManagement } from "@/types";
@@ -171,6 +172,18 @@ function FormatField({
 export default function MediaManagementPage() {
   const { data, isLoading } = useMediaManagement();
   const update = useUpdateMediaManagement();
+  const emptyBin = useEmptyRecycleBin();
+  const confirm = useConfirm();
+
+  async function onEmptyRecycleBin() {
+    const ok = await confirm({
+      title: "Empty recycle bin",
+      message: "Permanently delete every file in the recycle bin?",
+      confirmLabel: "Empty",
+      danger: true,
+    });
+    if (ok) emptyBin.mutate();
+  }
 
   const [form, setForm] = useState<MediaManagement | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -359,6 +372,63 @@ export default function MediaManagementPage() {
           checked={form.unmonitor_deleted_episodes}
           onChange={(v) => set("unmonitor_deleted_episodes", v)}
         />
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label htmlFor="mm-recycle-path" style={labelStyle}>Recycle Bin</label>
+          <input
+            id="mm-recycle-path"
+            style={{ ...inputStyle, fontFamily: "var(--font-family-mono)" }}
+            value={form.recycle_bin_path}
+            onChange={(e) => set("recycle_bin_path", e.currentTarget.value)}
+            onFocus={onInputFocus}
+            onBlur={onInputBlur}
+            placeholder="/data/recycle-bin"
+          />
+          <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+            Files replaced by an upgrade or deleted from disk are moved here instead of being deleted. Leave empty to delete
+            them permanently. Must be outside your libraries.
+          </div>
+        </div>
+
+        <div style={form.recycle_bin_path.trim() === "" ? { opacity: 0.4, pointerEvents: "none" } : {}}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label htmlFor="mm-recycle-days" style={labelStyle}>Recycle Bin Cleanup (days)</label>
+            <input
+              id="mm-recycle-days"
+              type="number"
+              min={0}
+              max={3650}
+              style={{ ...inputStyle, width: 120 }}
+              value={form.recycle_bin_cleanup_days}
+              onChange={(e) => set("recycle_bin_cleanup_days", Number(e.currentTarget.value))}
+              onFocus={onInputFocus}
+              onBlur={onInputBlur}
+            />
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+              Files in the recycle bin longer than this are deleted for good. 0 keeps them forever.
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => void onEmptyRecycleBin()}
+                disabled={emptyBin.isPending || dirty}
+                title={dirty ? "Save your changes first" : undefined}
+                style={{
+                  marginTop: 4,
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  border: "1px solid var(--color-border-default)",
+                  background: "var(--color-bg-elevated)",
+                  color: "var(--color-danger)",
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                {emptyBin.isPending ? "Emptying…" : "Empty recycle bin"}
+              </button>
+            </div>
+          </div>
+        </div>
       </SectionCard>
 
       {/* Token reference */}

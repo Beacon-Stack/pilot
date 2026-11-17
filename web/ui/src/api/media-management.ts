@@ -10,6 +10,14 @@ export function useMediaManagement() {
   });
 }
 
+export function useEmptyRecycleBin() {
+  return useMutation({
+    mutationFn: () => apiFetch<{ deleted: number }>("/recycle-bin/empty", { method: "POST" }),
+    onSuccess: (r) => toast.success(r.deleted === 1 ? "Deleted 1 file from the recycle bin" : `Deleted ${r.deleted} files from the recycle bin`),
+    onError: (err) => toast.error((err as Error).message),
+  });
+}
+
 export function useUpdateMediaManagement() {
   const qc = useQueryClient();
   return useMutation({
