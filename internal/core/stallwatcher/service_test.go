@@ -556,6 +556,52 @@ func TestTick_AutoSearchTriggersRetry(t *testing.T) {
 	}
 }
 
+// TestTick_SeasonPackRetryCarriesSeason: a stalled season-pack grab has
+// no episode_id. Without the season on the retry event, the retry
+// handler had nothing to search for and stalled season packs were never
+// re-searched.
+func TestTick_SeasonPackRetryCarriesSeason(t *testing.T) {
+	rig := newRig(t)
+	season := int64(2)
+	rig.mock.grabByInfoHash["deadbeef00"] = db.GrabHistory{
+		ID:             "grab-1",
+		SeriesID:       "series-1",
+		SeasonNumber:   &season,
+		ReleaseGuid:    "guid-1",
+		ReleaseTitle:   "Show.S02.1080p.WEB-DL-GRP",
+		Protocol:       "torrent",
+		DownloadStatus: "queued",
+		Source:         "auto_search",
+		InfoHash:       ptr("deadbeef00"),
+	}
+	rig.haul.setStalls([]map[string]any{
+		{"info_hash": "deadbeef00", "reason": "no_peers_ever", "level": 4},
+	})
+
+	var got atomic.Pointer[events.Event]
+	rig.bus.Subscribe(func(_ context.Context, e events.Event) {
+		if e.Type == events.TypeAutoSearchRetry {
+			ev := e
+			got.Store(&ev)
+		}
+	})
+	if err := rig.stall.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	ev := got.Load()
+	if ev == nil {
+		t.Fatal("no TypeAutoSearchRetry for a stalled season pack")
+	}
+	if s, _ := ev.Data["season"].(int64); s != 2 {
+		t.Errorf("retry event season = %v, want 2 (a season pack has no episode to search)", ev.Data["season"])
+	}
+	if ev.Data["episode_id"] != "" {
+		t.Errorf("episode_id = %v, want empty for a season pack", ev.Data["episode_id"])
+	}
+}
+
 // TestTick_InteractiveDoesNotAutoRetry confirms that interactive grabs
 // do NOT trigger auto-re-search on stall — the user picked that release
 // deliberately, they own the decision.
