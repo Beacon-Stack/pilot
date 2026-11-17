@@ -332,18 +332,19 @@ func (s *Service) handleStall(ctx context.Context, st haul.StalledTorrent, inGra
 			})
 			return nil
 		}
-		// NB: the actual re-search is triggered by publishing a specific
-		// event that the scheduler subscribes to. Plumbing that live is
-		// part of Step 5 (scheduler wiring). For now, we publish the
-		// event and trust the subscriber will exist.
-		s.bus.Publish(ctx, events.Event{
-			Type: events.TypeAutoSearchRetry,
-			Data: map[string]any{
-				"series_id":   grab.SeriesID,
-				"episode_id":  dbutil.NullStringValue(grab.EpisodeID),
-				"retry_count": recentStalls + 1,
-			},
-		})
+		// The re-search is run by apiv1.NewAutoSearchRetryHandler. A
+		// season-pack grab has no episode_id, so the season must be on
+		// the event too, or the handler has nothing to search for (the
+		// same payload failedgrab sends).
+		data := map[string]any{
+			"series_id":   grab.SeriesID,
+			"episode_id":  dbutil.NullStringValue(grab.EpisodeID),
+			"retry_count": recentStalls + 1,
+		}
+		if grab.SeasonNumber != nil {
+			data["season"] = *grab.SeasonNumber
+		}
+		s.bus.Publish(ctx, events.Event{Type: events.TypeAutoSearchRetry, ShowID: grab.SeriesID, Data: data})
 	}
 
 	return nil

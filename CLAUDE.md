@@ -107,6 +107,9 @@ tags, no `-short` gating.
   retry loops when every release for an episode is dead.
 - `TestTick_AutoSearchTriggersRetry` — the positive case: below the
   circuit breaker threshold, `TypeAutoSearchRetry` fires.
+- `TestTick_SeasonPackRetryCarriesSeason` — a stalled season-pack grab
+  has no episode_id, so the retry event must carry the season or the
+  retry handler has nothing to search for.
 - `TestTick_InteractiveDoesNotAutoRetry` — interactive grabs only toast
   on stall, never auto-re-search. User owns the decision.
 - `TestTick_NoHaulConfigured` / `TestTick_HaulUnreachable` — graceful
