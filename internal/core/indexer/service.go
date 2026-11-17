@@ -28,6 +28,7 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/parser"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 	releaseparser "github.com/beacon-stack/pilot/internal/parser"
@@ -351,6 +352,34 @@ func (s *Service) Test(ctx context.Context, id string) error {
 // fall back to a sensible default of 5 — this matters for edge cases where
 // an indexer exists in search results but not in the rows list (shouldn't
 // happen in production, but tests may construct such cases).
+// applyReleaseProfiles tags results that an enabled release profile
+// rejects (a must-not-contain term, or none of the must-contain terms).
+// Tagged rather than dropped, like min_seeders: interactive search shows
+// them grayed with an override, auto-search and RSS skip them. If the
+// profiles can't be loaded, nothing is tagged: a database hiccup must
+// not empty every search.
+func (s *Service) applyReleaseProfiles(ctx context.Context, results []SearchResult) {
+	if s.q == nil || len(results) == 0 {
+		return
+	}
+	m, err := releaseprofile.LoadMatcher(ctx, s.q)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("could not load release profiles; not applying them", "error", err)
+		}
+		return
+	}
+	applyReleaseProfiles(results, m)
+}
+
+func applyReleaseProfiles(results []SearchResult, m *releaseprofile.Matcher) {
+	for i := range results {
+		if ok, _ := m.Check(results[i].Title, results[i].IndexerID); !ok {
+			results[i].FilterReasons = append(results[i].FilterReasons, releaseprofile.FilterReason)
+		}
+	}
+}
+
 func applyMinSeedersFilter(results []SearchResult, minByIndexer map[string]int) {
 	titleIndexers := make(map[string]map[string]bool)
 	for _, r := range results {
@@ -685,6 +714,7 @@ func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) 
 		minByIndexer[r.ID] = int(r.MinSeeders)
 	}
 	applyMinSeedersFilter(allResults, minByIndexer)
+	s.applyReleaseProfiles(ctx, allResults)
 
 	var combinedErr error
 	if len(errs) > 0 {
@@ -793,6 +823,8 @@ func (s *Service) GetRecent(ctx context.Context) ([]SearchResult, error) {
 		}
 		combinedErr = fmt.Errorf("%d indexer(s) failed: %v", len(errs), msgs)
 	}
+
+	s.applyReleaseProfiles(ctx, allResults)
 
 	return allResults, combinedErr
 }

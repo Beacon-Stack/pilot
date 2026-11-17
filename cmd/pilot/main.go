@@ -72,6 +72,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stallwatcher"
 	"github.com/beacon-stack/pilot/internal/core/stats"
@@ -379,6 +380,7 @@ func run() error {
 		ImportListService:      importListSvc,
 		SonarrImportService:    sonarrImportSvc,
 		ProviderResolver:       providerResolver,
+		ReleaseProfileService:  releaseprofile.NewService(queries),
 		WSHub:                  wsHub,
 		Scheduler:              sched,
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),

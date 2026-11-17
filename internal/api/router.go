@@ -29,6 +29,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stats"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
@@ -71,6 +72,7 @@ type RouterConfig struct {
 	ImportListService      *importlist.Service
 	SonarrImportService    *sonarrimport.Service
 	ProviderResolver       *provider.Resolver
+	ReleaseProfileService  *releaseprofile.Service
 	WSHub                  *ws.Hub
 	Scheduler              *scheduler.Scheduler
 	PulseSyncHandler       http.HandlerFunc
@@ -243,6 +245,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.SonarrImportService != nil {
 		v1.RegisterImportRoutes(humaAPI, cfg.SonarrImportService)
+	}
+
+	if cfg.ReleaseProfileService != nil {
+		v1.RegisterReleaseProfileRoutes(humaAPI, cfg.ReleaseProfileService)
 	}
 
 	if cfg.ProviderResolver != nil {

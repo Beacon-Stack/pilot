@@ -15,6 +15,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	"github.com/beacon-stack/pilot/internal/core/quality"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
@@ -327,6 +328,9 @@ func selectRSSGrabs(ctx context.Context, releases []indexer.SearchResult, env rs
 		if env.blocked(ctx, rel.GUID) {
 			continue
 		}
+		if hasFilterReason(rel.FilterReasons, releaseprofile.FilterReason) {
+			continue // rejected by a release profile (tagged in GetRecent)
+		}
 
 		var cur *plugin.Quality
 		if ep.HasFile {
@@ -382,6 +386,15 @@ func selectRSSGrabs(ctx context.Context, releases []indexer.SearchResult, env rs
 		out = append(out, best[id])
 	}
 	return out
+}
+
+func hasFilterReason(reasons []string, want string) bool {
+	for _, r := range reasons {
+		if r == want {
+			return true
+		}
+	}
+	return false
 }
 
 // currentFileQuality returns the best quality among the episode's
