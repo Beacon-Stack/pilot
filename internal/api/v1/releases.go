@@ -59,6 +59,9 @@ type releaseBody struct {
 	// grab anyway" button. The release can still be grabbed via the
 	// normal grab endpoint if the user overrides.
 	FilterReasons []string `json:"filter_reasons,omitempty"`
+	// Languages are the audio languages tagged in the title. Empty when
+	// the title has none (treated as English by the language preference).
+	Languages []string `json:"languages,omitempty"`
 	// AlreadyGrabbedAt, when set, means a grab_history row exists for
 	// this release's GUID. The UI badges the row "already grabbed" and
 	// asks for confirmation before grabbing again. The other AlreadyGrabbed*
@@ -227,6 +230,7 @@ func indexerResultToReleaseBody(r indexer.SearchResult) *releaseBody {
 		PackType:      string(r.PackType),
 		EpisodeCount:  r.EpisodeCount,
 		FilterReasons: append([]string(nil), r.FilterReasons...),
+		Languages:     r.Languages,
 	}
 }
 
