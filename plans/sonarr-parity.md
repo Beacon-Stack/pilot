@@ -10,10 +10,25 @@ download-correctness bugs first, then quality rules, then operations.
 
 | # | Section | Branch | Status |
 |---|---------|--------|--------|
-| A1 | Hide the Custom Formats page (calls endpoints that don't exist) | `chore/hide-custom-formats` | |
-| A2 | Failed-download handling for every client: blocklist + re-search | `feat/failed-download-handling` | |
-| A3 | Upgrades replace the old episode file | `fix/upgrade-replaces-old-file` | |
-| A4 | Prefer and upgrade to PROPER/REPACK releases | `feat/propers-repacks` | |
+| A1 | Hide the Custom Formats page (calls endpoints that don't exist) | `chore/hide-custom-formats` | Done, #39 |
+| A2 | Failed-download handling for every client: blocklist + re-search | `feat/failed-download-handling` | Done, #40 |
+| A3 | Upgrades replace the old episode file | `fix/upgrade-replaces-old-file` | Done, #41 |
+| A4a | Parse release quality at ingestion; rank PROPER/REPACK above originals | `fix/release-quality-parsing` | Done, #42 |
+| A4b | RSS sync applies the quality profile, picks the best release, upgrades and PROPERs | `feat/rss-quality-decisions` | Done, #43 |
+| A5 | "Search all missing" / "Search all cutoff unmet" on the Wanted page (RSS only sees new releases; Sonarr also has no scheduled backlog search) | `feat/wanted-search-all` | |
+
+### Found while doing Phase A
+
+- **A2:** the stall watcher's `TypeAutoSearchRetry` event had no subscriber, so Haul stall re-search never ran. Fixed in A2.
+- **A3:** `qualityFromGrab` never set `Quality.Name`, so `{Quality Full}` rendered empty in every imported filename. Fixed in A3.
+- **A4a:** indexer plugins return no quality, so every search result scored 0 and ranking fell through to seeds. Fixed in A4a.
+- **A4b:** RSS sync never checked the quality profile and never upgraded. Fixed in A4b.
+- Still open:
+  - `quality.Profile.WantRelease`/`RejectReason` are unused, use the strict quality match, and accept an *equal* quality below the cutoff (a re-grab loop if ever wired up). Replace or delete them in B1.
+  - The stall watcher's retry event carries no season, so stalled **season packs** aren't re-searched (failed-download retries do carry it).
+  - With renaming off, `AttachFile` records the download path as the library file; nothing is moved into the library.
+  - Notifications and media servers don't preserve masked `"***"` secrets on update (indexers, clients and import lists do).
+  - `internal/dbutil` is an unused duplicate of `internal/core/dbutil`.
 
 ## Phase B: release and quality rules
 
@@ -38,7 +53,7 @@ download-correctness bugs first, then quality rules, then operations.
 - Scene numbering / alternate episode orders (TheXEM)
 - Manual import from any folder; reviewable library import
 - Custom formats backend (then restore the page from A1)
-- Series bulk editor, "search all missing/cutoff unmet"
+- Series bulk editor
 - More download clients, notification services and import lists
 
 ## Rules for every section
