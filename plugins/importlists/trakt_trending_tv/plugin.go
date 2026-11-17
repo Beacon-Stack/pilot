@@ -16,6 +16,12 @@ func init() {
 	registry.Default.RegisterImportList("trakt_trending_tv", func(_ json.RawMessage) (plugin.ImportList, error) {
 		return &Plugin{}, nil
 	})
+
+	// No secret settings: return them unchanged so the edit form can
+	// pre-fill. (The registry's fallback for unregistered kinds is "{}".)
+	registry.Default.RegisterImportListSanitizer("trakt_trending_tv", func(settings json.RawMessage) json.RawMessage {
+		return settings
+	})
 }
 
 // Plugin implements plugin.ImportList for Trakt Trending TV.
