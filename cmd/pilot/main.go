@@ -74,6 +74,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
+	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/remotepath"
 	"github.com/beacon-stack/pilot/internal/core/show"
@@ -297,6 +298,8 @@ func run() error {
 	mediaServerSvc := mediaserver.NewService(queries, registry.Default)
 	blocklistSvc := blocklist.NewService(queries)
 	mediaManagementSvc := mediamanagement.NewService(queries)
+	recycleSvc := recyclebin.New(mediaManagementSvc, logger)
+	showSvc.SetRecycler(recycleSvc)
 	qualityDefSvc := quality.NewDefinitionService(queries)
 	queueSvc := queue.NewService(queries, downloaderSvc, bus, logger)
 	// Failed downloads: blocklist + request a re-search (all clients).
@@ -347,6 +350,7 @@ func run() error {
 		sched.Add(jobs.ScheduledBackup(backupSvc, logger))
 	}
 	sched.Add(jobs.HealthCheck(healthSvc))
+	sched.Add(jobs.RecycleBinCleanup(recycleSvc, logger))
 
 	// ── Pulse integration (optional) ──────────────────────────────────────────
 	pulseIntegration, err := pulseint.New(cfg.Pulse, cfg.Server.Host, cfg.Server.Port, cfg.Auth.APIKey.Value(), logger)
@@ -395,6 +399,7 @@ func run() error {
 		Scheduler:              sched,
 		HealthService:          healthSvc,
 		BackupService:          backupSvc,
+		RecycleBinService:      recycleSvc,
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),
 	})
 

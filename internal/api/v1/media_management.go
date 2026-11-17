@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -23,6 +24,10 @@ type mediaManagementBody struct {
 	ImportExtraFiles         bool   `json:"import_extra_files"         doc:"Copy extra files (subtitles, NFOs) alongside the video"`
 	ExtraFileExtensions      string `json:"extra_file_extensions"      doc:"Comma-separated list of extra file extensions to import"`
 	UnmonitorDeletedEpisodes bool   `json:"unmonitor_deleted_episodes" doc:"Unmonitor episodes whose files are deleted from disk"`
+	// Optional on update: omitted keeps the current value, so older
+	// clients don't turn the recycle bin off.
+	RecycleBinPath        *string `json:"recycle_bin_path,omitempty"         doc:"Folder replaced and deleted episode files are moved to; empty deletes them permanently"`
+	RecycleBinCleanupDays *int    `json:"recycle_bin_cleanup_days,omitempty" doc:"Delete files from the recycle bin after this many days; 0 = never"`
 }
 
 type mediaManagementOutput struct {
@@ -47,10 +52,14 @@ func settingsToBody(s mediamanagement.Settings) *mediaManagementBody {
 		ImportExtraFiles:         s.ImportExtraFiles,
 		ExtraFileExtensions:      strings.Join(s.ExtraFileExtensions, ","),
 		UnmonitorDeletedEpisodes: s.UnmonitorDeletedEpisodes,
+		RecycleBinPath:           &s.RecycleBinPath,
+		RecycleBinCleanupDays:    &s.RecycleBinCleanupDays,
 	}
 }
 
-func bodyToSettings(b *mediaManagementBody) mediamanagement.Settings {
+// bodyToSettings converts an update body; current supplies the recycle
+// bin fields the body omits.
+func bodyToSettings(b *mediaManagementBody, current mediamanagement.Settings) mediamanagement.Settings {
 	exts := []string{}
 	for _, e := range strings.Split(b.ExtraFileExtensions, ",") {
 		e = strings.TrimSpace(e)
@@ -58,7 +67,9 @@ func bodyToSettings(b *mediaManagementBody) mediamanagement.Settings {
 			exts = append(exts, e)
 		}
 	}
-	return mediamanagement.Settings{
+	st := mediamanagement.Settings{
+		RecycleBinPath:           current.RecycleBinPath,
+		RecycleBinCleanupDays:    current.RecycleBinCleanupDays,
 		RenameEpisodes:           b.RenameEpisodes,
 		StandardEpisodeFormat:    b.StandardEpisodeFormat,
 		DailyEpisodeFormat:       b.DailyEpisodeFormat,
@@ -70,6 +81,13 @@ func bodyToSettings(b *mediaManagementBody) mediamanagement.Settings {
 		ExtraFileExtensions:      exts,
 		UnmonitorDeletedEpisodes: b.UnmonitorDeletedEpisodes,
 	}
+	if b.RecycleBinPath != nil {
+		st.RecycleBinPath = *b.RecycleBinPath
+	}
+	if b.RecycleBinCleanupDays != nil {
+		st.RecycleBinCleanupDays = *b.RecycleBinCleanupDays
+	}
+	return st
 }
 
 // ── Route registration ────────────────────────────────────────────────────────
@@ -99,7 +117,15 @@ func RegisterMediaManagementRoutes(api huma.API, svc *mediamanagement.Service) {
 		Summary:     "Update media management settings",
 		Tags:        []string{"Media Management"},
 	}, func(ctx context.Context, input *mediaManagementInput) (*mediaManagementOutput, error) {
-		updated, err := svc.Update(ctx, bodyToSettings(input.Body))
+		current, err := svc.Get(ctx)
+		if err != nil {
+			return nil, huma.NewError(http.StatusInternalServerError, "failed to get media management settings", err)
+		}
+		updated, err := svc.Update(ctx, bodyToSettings(input.Body, current))
+		var verr *mediamanagement.ValidationError
+		if errors.As(err, &verr) {
+			return nil, huma.Error422UnprocessableEntity(verr.Msg)
+		}
 		if err != nil {
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to update media management settings", err)
 		}
