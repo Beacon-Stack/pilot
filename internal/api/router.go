@@ -34,6 +34,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/remotepath"
+	"github.com/beacon-stack/pilot/internal/core/seriesbulk"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stats"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
@@ -83,6 +84,7 @@ type RouterConfig struct {
 	RemotePathService      *remotepath.Service
 	BackupService          *backup.Service
 	RecycleBinService      *recyclebin.Service
+	SeriesBulkService      *seriesbulk.Service
 	PulseSyncHandler       http.HandlerFunc
 }
 
@@ -227,6 +229,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.RecycleBinService != nil {
 		v1.RegisterRecycleBinRoutes(humaAPI, cfg.RecycleBinService)
+	}
+	if cfg.SeriesBulkService != nil {
+		v1.RegisterSeriesBulkRoutes(humaAPI, cfg.SeriesBulkService)
 	}
 	if cfg.RemotePathService != nil {
 		v1.RegisterRemotePathMappingRoutes(humaAPI, cfg.RemotePathService)

@@ -77,6 +77,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/remotepath"
+	"github.com/beacon-stack/pilot/internal/core/seriesbulk"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stallwatcher"
 	"github.com/beacon-stack/pilot/internal/core/stats"
@@ -400,6 +401,7 @@ func run() error {
 		HealthService:          healthSvc,
 		BackupService:          backupSvc,
 		RecycleBinService:      recycleSvc,
+		SeriesBulkService:      seriesbulk.New(database.SQL, recycleSvc, bus, logger),
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),
 	})
 

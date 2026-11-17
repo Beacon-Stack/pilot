@@ -36,6 +36,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/remotepath"
+	"github.com/beacon-stack/pilot/internal/core/seriesbulk"
 	pilotdb "github.com/beacon-stack/pilot/internal/db"
 	dbgen "github.com/beacon-stack/pilot/internal/db/generated"
 )
@@ -78,6 +79,7 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 		BackupService:          backup.NewService(db, dbgen.New(db), dbPath),
 		MediaManagementService: mediamanagement.NewService(dbgen.New(db)),
 		RecycleBinService:      recyclebin.New(mediamanagement.NewService(dbgen.New(db)), logger),
+		SeriesBulkService:      seriesbulk.New(db, nil, nil, logger),
 		PulseSyncHandler: func(w http.ResponseWriter, _ *http.Request) {
 			pulseCalls.Add(1)
 			w.WriteHeader(http.StatusAccepted)
@@ -149,6 +151,8 @@ var protectedEndpoints = []struct{ method, path string }{
 	{"GET", "/api/v1/remote-path-mappings"},
 	{"GET", "/api/v1/system/backups"},
 	{"POST", "/api/v1/recycle-bin/empty"},
+	{"PUT", "/api/v1/series/bulk"},
+	{"POST", "/api/v1/series/bulk/delete"},
 	{"PUT", "/api/v1/media-management"},
 	{"POST", "/api/v1/system/backups"},
 	{"GET", "/api/v1/system/backups/pilot-manual-20260101-000000.db/download"},
