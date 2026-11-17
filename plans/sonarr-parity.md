@@ -29,13 +29,13 @@ download-correctness bugs first, then quality rules, then operations.
 - **C1:** each library's `min_free_space_gb` was stored and shown but never read, so imports could fill the disk. Enforced in C1 when an import copies (hardlinks take no space).
 - **C3:** restoring a backup left the old database's `-wal`/`-shm` files beside the restored one (WAL mode), so an unclean shutdown could replay the old log onto it. Fixed in C3. The backup download also broke on a data folder with a `'` in its name; fixed.
 - **C3:** the Download Clients page has "Download Handling" and "Remote Path Mappings" sections that call `/download-handling/...` endpoints that don't exist (same class as A1). Fixed in #60.
-- Still open:
-  - The Wanted > Missing list includes episodes of unmonitored series (the search-all action skips them).
-  - `quality.Profile.WantRelease`/`RejectReason` are unused, use the strict quality match, and accept an *equal* quality below the cutoff (a re-grab loop if ever wired up). Replace or delete them in B1.
-  - The stall watcher's retry event carries no season, so stalled **season packs** aren't re-searched (failed-download retries do carry it).
-  - With renaming off, `AttachFile` records the download path as the library file; nothing is moved into the library.
-  - Notifications and media servers don't preserve masked `"***"` secrets on update (indexers, clients and import lists do).
-  - `internal/dbutil` is an unused duplicate of `internal/core/dbutil`.
+- Follow-up fixes (all done):
+  - The Wanted > Missing list included episodes of unmonitored series. Fixed in #65.
+  - `quality.Profile.WantRelease`/`RejectReason` were unused and wrong. Removed in #67.
+  - The stall watcher's retry event carried no season, so stalled **season packs** weren't re-searched. Fixed in #64.
+  - With renaming off, `AttachFile` recorded the download path as the library file; nothing was moved into the library. Fixed in #66.
+  - Notifications and media servers didn't preserve masked `"***"` secrets on update. Fixed in #63.
+  - `internal/dbutil` was an unused duplicate of `internal/core/dbutil`. Removed in #67.
 
 ## Phase B: release and quality rules
 
