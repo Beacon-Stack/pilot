@@ -42,7 +42,7 @@ download-correctness bugs first, then quality rules, then operations.
 | B1b | Quality profile editor in the UI (profiles can only come from Pulse or the Sonarr import today) | `feat/quality-profile-editor` | Done, #49 |
 | B2 | Release profiles: required / ignored terms | `feat/release-profiles` | Done, #47 |
 | B3 | Delay profiles: preferred protocol + grab delay | `feat/delay-profiles` | Done, #50 (backend), #51 (UI) |
-| B4 | Language preference | `feat/language-preference` | In progress |
+| B4 | Language preference | `feat/language-preference` | Done, #52 (backend), #53 (UI) |
 
 ## Phase C: operations
 

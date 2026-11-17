@@ -183,6 +183,8 @@ export interface ReleaseResult {
   // safety filter (below min_seeders, previously stalled, ...). The UI
   // renders such rows grayed at the bottom with an "override" button.
   filter_reasons?: string[];
+  // Audio languages tagged in the title. Absent when untagged.
+  languages?: string[];
   // already_grabbed_at, when set, means the user has previously grabbed
   // this exact release (by GUID match in grab_history). The UI badges
   // the row and asks for confirmation before re-grabbing.
@@ -569,6 +571,13 @@ export interface ReleaseProfileRequest {
 }
 
 // Matches delayProfileBody in internal/api/v1/delay_profile.go.
+export interface LanguagePreference {
+  /** Wanted audio languages; empty means any language. */
+  languages: string[];
+  /** Languages that can be chosen (GET only). */
+  available: string[];
+}
+
 export interface DelayProfile {
   usenet_enabled: boolean;
   torrent_enabled: boolean;

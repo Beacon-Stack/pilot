@@ -5,6 +5,7 @@ import { useSearchReleases, useGrabRelease } from "@/api/releases";
 import Modal from "@beacon-shared/Modal";
 import { useConfirm } from "@/shared/ConfirmDialog";
 import type { ReleaseResult } from "@/types";
+import { filterReasonLabel } from "@/api/language";
 
 type SortField = "seeds" | "size" | "quality";
 type SortDir = "asc" | "desc";
@@ -317,7 +318,7 @@ function ReleaseRow({ release, onGrab, isGrabbing }: ReleaseRowProps) {
                 fontSize: 10,
               }}
             >
-              <AlertTriangle size={9} /> {reason}
+              <AlertTriangle size={9} /> {filterReasonLabel(reason, release)}
             </span>
           ))}
         </div>
