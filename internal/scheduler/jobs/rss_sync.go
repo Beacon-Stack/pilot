@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,6 +15,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	"github.com/beacon-stack/pilot/internal/core/quality"
+	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -385,24 +385,13 @@ func selectRSSGrabs(ctx context.Context, releases []indexer.SearchResult, env rs
 }
 
 // currentFileQuality returns the best quality among the episode's
-// recorded files, or nil when it has none. A file whose quality was never
-// recorded yields an empty Quality (Score 0).
+// recorded files, or nil when it has none.
 func currentFileQuality(ctx context.Context, q db.Querier, episodeID string) (*plugin.Quality, error) {
 	files, err := q.ListEpisodeFilesByEpisodeID(ctx, episodeID)
 	if err != nil {
 		return nil, err
 	}
-	var best *plugin.Quality
-	for _, f := range files {
-		var fq plugin.Quality
-		_ = json.Unmarshal([]byte(f.QualityJson), &fq)
-		if best == nil || fq.BetterThan(*best) ||
-			(fq.Score() == best.Score() && fq.EffectiveRevision() > best.EffectiveRevision()) {
-			c := fq
-			best = &c
-		}
-	}
-	return best, nil
+	return wanted.BestFileQuality(files, episodeID), nil
 }
 
 // matchSeriesTitle finds the series whose normalised title appears as a

@@ -31,6 +31,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/queue"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stats"
+	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
@@ -214,7 +215,17 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.Queries != nil {
 		v1.RegisterCalendarRoutes(humaAPI, cfg.Queries)
-		v1.RegisterWantedRoutes(humaAPI, cfg.Queries)
+		// Pass the profile getter only when set: a nil *quality.Service in
+		// a non-nil interface would panic on use.
+		var profiles wanted.ProfileGetter
+		if cfg.QualityService != nil {
+			profiles = cfg.QualityService
+		}
+		v1.RegisterWantedRoutes(humaAPI, cfg.Queries, profiles)
+		if cfg.ShowService != nil && cfg.IndexerService != nil && cfg.DownloaderService != nil {
+			v1.RegisterWantedSearchRoutes(humaAPI, cfg.Queries, cfg.ShowService, cfg.IndexerService,
+				cfg.DownloaderService, cfg.BlocklistService, cfg.QualityService, cfg.Logger)
+		}
 		v1.RegisterHistoryRoutes(humaAPI, cfg.Queries)
 	}
 

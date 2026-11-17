@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/show"
+	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
@@ -331,8 +333,7 @@ func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries 
 	}
 	wg.Wait()
 
-	seen := make(map[string]struct{})
-	var merged []indexer.SearchResult
+	var perQuery [][]indexer.SearchResult
 	var errs []string
 	// Per-indexer outcomes merged across query variants: results are
 	// summed; an error in ANY variant marks the indexer as failed (the
@@ -357,14 +358,9 @@ func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries 
 			}
 			existing.Pending = existing.Pending || oc.Pending
 		}
-		for _, r := range qr.results {
-			if _, ok := seen[r.GUID]; ok {
-				continue
-			}
-			seen[r.GUID] = struct{}{}
-			merged = append(merged, r)
-		}
+		perQuery = append(perQuery, qr.results)
 	}
+	merged := mergeQueryResults(perQuery)
 	outcomes := make([]indexer.Outcome, 0, len(outcomeOrder))
 	for _, id := range outcomeOrder {
 		outcomes = append(outcomes, *outcomeByID[id])
@@ -706,6 +702,57 @@ type autoSearchParams struct {
 	Source    string
 }
 
+// mergeQueryResults merges the results of several query variations,
+// keeping the first occurrence of each GUID, and re-ranks the whole list.
+// Each query's results arrive ranked, but concatenating them is not: a
+// better release found only by a later variation would sit below the
+// first query's results, and auto-search (which takes the top viable
+// result) would never pick it.
+func mergeQueryResults(perQuery [][]indexer.SearchResult) []indexer.SearchResult {
+	seen := make(map[string]struct{})
+	var merged []indexer.SearchResult
+	for _, results := range perQuery {
+		for _, r := range results {
+			if _, ok := seen[r.GUID]; ok {
+				continue
+			}
+			seen[r.GUID] = struct{}{}
+			merged = append(merged, r)
+		}
+	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		return indexer.RanksAbove(merged[i], merged[j])
+	})
+	return merged
+}
+
+// pickBestViable returns the release to grab from viable, which is in
+// ranking order. Among releases of the top quality and revision, it
+// prefers one listed by several indexers (more confidence its seed count
+// is real). That preference used to look across all qualities, so a 720p
+// on two indexers could beat a 2160p on one.
+func pickBestViable(viable []indexer.SearchResult) indexer.SearchResult {
+	best := viable[0]
+	sameTier := func(r indexer.SearchResult) bool {
+		return r.QualityScore == best.QualityScore && r.Quality.EffectiveRevision() == best.Quality.EffectiveRevision()
+	}
+	titleCounts := make(map[string]int)
+	for _, r := range viable {
+		if sameTier(r) {
+			titleCounts[r.Title]++
+		}
+	}
+	for _, r := range viable {
+		if !sameTier(r) {
+			break // viable is ranked; nothing later is in the top tier
+		}
+		if titleCounts[r.Title] > 1 && titleCounts[r.Title] > titleCounts[best.Title] {
+			return r
+		}
+	}
+	return best
+}
+
 // autoSearchResultBody is shared between the public auto-search
 // handler and the research handler.
 type autoSearchResultBody struct {
@@ -761,9 +808,25 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 	// Tag releases outside the series' quality profile. For auto-search
 	// these tags also gate the viable set further down, so the auto-grab
 	// never picks a release rejected by the profile.
+	var profile *quality.Profile
 	if qualitySvc != nil && series.QualityProfileID != "" {
-		if profile, err := qualitySvc.Get(ctx, series.QualityProfileID); err == nil {
-			applyQualityProfile(results, &profile)
+		if prof, err := qualitySvc.Get(ctx, series.QualityProfileID); err == nil {
+			profile = &prof
+			applyQualityProfile(results, profile)
+		}
+	}
+
+	// When the episode already has a file of known quality, only real
+	// upgrades (or a PROPER of the same quality) are viable. Without this
+	// an auto-search for an episode on disk grabbed the top result even if
+	// it was worse than the file. A file of unknown quality doesn't gate:
+	// the user asked for this search explicitly.
+	var current *plugin.Quality
+	if p.EpisodeID != "" && p.Episode > 0 {
+		if files, err := showSvc.ListFiles(ctx, p.SeriesID); err == nil {
+			if cur := wanted.BestFileQuality(files, p.EpisodeID); cur != nil && cur.Score() > 0 {
+				current = cur
+			}
 		}
 	}
 
@@ -787,6 +850,11 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 		if len(r.FilterReasons) > 0 {
 			continue
 		}
+		if current != nil {
+			if ok, _ := decision.Evaluate(r.Quality, current, profile); !ok {
+				continue
+			}
+		}
 		if blocklistSvc != nil {
 			ok, bErr := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, r.GUID, "")
 			if bErr == nil && ok {
@@ -797,27 +865,17 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 	}
 
 	if len(viable) == 0 {
+		reason := fmt.Sprintf("found %d results but all were filtered (below min_seeders or on blocklist)", len(results))
+		if current != nil {
+			reason = fmt.Sprintf("found %d results but none is an upgrade over the current %s file", len(results), current.Name)
+		}
 		return &autoSearchResultBody{
 			Result: "no_match",
-			Reason: fmt.Sprintf("found %d results but all were filtered (below min_seeders or on blocklist)", len(results)),
+			Reason: reason,
 		}, nil
 	}
 
-	// Prefer results that appear on multiple indexers (higher confidence
-	// that the seed count is accurate).
-	best := viable[0]
-	if len(viable) > 1 {
-		titleCounts := make(map[string]int)
-		for _, r := range viable {
-			titleCounts[r.Title]++
-		}
-		for _, r := range viable {
-			if titleCounts[r.Title] > 1 && titleCounts[r.Title] > titleCounts[best.Title] {
-				best = r
-				break
-			}
-		}
-	}
+	best := pickBestViable(viable)
 
 	// Look up series for TMDB id + title (used by Haul's history
 	// index and rename-on-complete). Best-effort; fall back to
