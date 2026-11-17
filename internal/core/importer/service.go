@@ -5,10 +5,12 @@ package importer
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -93,7 +95,7 @@ func (s *Service) Subscribe() {
 			return
 		}
 		err := s.ImportFile(ctx, grabID, contentPath)
-		s.recordImportOutcome(ctx, grabID, err)
+		s.recordImportOutcome(ctx, grabID, contentPath, err)
 		if err != nil {
 			s.logger.Error("import failed",
 				"grab_id", grabID,
@@ -125,8 +127,24 @@ func (s *Service) Subscribe() {
 // recordImportOutcome persists the import result on the grab row, and on
 // a HARD failure (content that can never import — fake uploads)
 // blocklists the release so search and RSS never grab it again.
-func (s *Service) recordImportOutcome(ctx context.Context, grabID string, importErr error) {
+//
+// It also notes the attempt (content path, attempt count, time) so
+// RetryFailedImports can re-run soft failures later. Hard failures spend
+// the whole retry budget at once: retrying a .exe never helps.
+func (s *Service) recordImportOutcome(ctx context.Context, grabID, contentPath string, importErr error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+	minAttempts := int64(0)
+	if errors.Is(importErr, ErrUnimportableContent) {
+		minAttempts = MaxImportAttempts
+	}
+	if err := s.q.NoteGrabImportAttempt(ctx, db.NoteGrabImportAttemptParams{
+		ContentPath: contentPath,
+		MinAttempts: minAttempts,
+		AttemptedAt: now,
+		ID:          grabID,
+	}); err != nil {
+		s.logger.Warn("import: failed to note import attempt", "grab_id", grabID, "error", err)
+	}
 	if importErr == nil {
 		if err := s.q.SetGrabImportState(ctx, db.SetGrabImportStateParams{
 			ImportStatus: "imported",
@@ -191,7 +209,6 @@ func (s *Service) ImportFile(ctx context.Context, grabID, contentPath string) er
 	if err != nil {
 		return fmt.Errorf("loading grab %q: %w", grabID, err)
 	}
-
 	return s.importIntoSeries(ctx, grab, qualityFromGrab(grab), contentPath, grabID)
 }
 
@@ -477,41 +494,72 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 		)
 	}
 
-	// Create destination directory.
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return fmt.Errorf("creating destination directory: %w", err)
-	}
-
-	// Transfer: hardlink with copy fallback.
-	if destPath != filePath {
-		if err := transferFile(filePath, destPath); err != nil {
-			return fmt.Errorf("transferring %q → %q: %w", filePath, destPath, err)
+	// A retried (or manually re-run) import of a season pack that partly
+	// succeeded earlier reaches files that are already recorded at
+	// destPath. episode_files.path is UNIQUE, so re-inserting would fail
+	// the whole retry, and re-copying would waste time on a cross-device
+	// library. An existing row for this episode whose file is still on
+	// disk means this file is done.
+	alreadyRecorded := false
+	existing, err := s.q.GetEpisodeFileByPath(ctx, destPath)
+	switch {
+	case err == nil && existing.EpisodeID != episodeID:
+		return fmt.Errorf("destination %q is already recorded for a different episode (%s)", destPath, existing.EpisodeID)
+	case err == nil:
+		if _, statErr := os.Stat(destPath); statErr == nil {
+			alreadyRecorded = true
+		} else {
+			// Row survived but the file is gone; drop the stale row and
+			// import normally.
+			if dErr := s.q.DeleteEpisodeFile(ctx, existing.ID); dErr != nil {
+				return fmt.Errorf("removing stale episode_file record: %w", dErr)
+			}
 		}
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return fmt.Errorf("checking existing episode_file record: %w", err)
 	}
 
-	// Copy extra files (subtitles, NFOs, etc.) when configured.
-	if mm.ImportExtraFiles && len(mm.ExtraFileExtensions) > 0 {
-		copyExtraFiles(s.logger, filepath.Dir(filePath), filepath.Dir(destPath), mm.ExtraFileExtensions)
-	}
+	if !alreadyRecorded {
+		// Create destination directory.
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			if errors.Is(err, fs.ErrPermission) {
+				return fmt.Errorf("creating destination directory: %w (the library folder is not writable by Pilot's user, uid %d; fix its ownership and the import will be retried automatically)", err, os.Getuid())
+			}
+			return fmt.Errorf("creating destination directory: %w", err)
+		}
 
-	qualityJSON, err := json.Marshal(quality)
-	if err != nil {
-		return fmt.Errorf("marshaling quality: %w", err)
-	}
+		// Transfer: hardlink with copy fallback.
+		if destPath != filePath {
+			if err := transferFile(filePath, destPath); err != nil {
+				return fmt.Errorf("transferring %q → %q: %w", filePath, destPath, err)
+			}
+		}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+		// Copy extra files (subtitles, NFOs, etc.) when configured.
+		if mm.ImportExtraFiles && len(mm.ExtraFileExtensions) > 0 {
+			copyExtraFiles(s.logger, filepath.Dir(filePath), filepath.Dir(destPath), mm.ExtraFileExtensions)
+		}
 
-	if _, err := s.q.CreateEpisodeFile(ctx, db.CreateEpisodeFileParams{
-		ID:          uuid.New().String(),
-		EpisodeID:   episodeID,
-		SeriesID:    seriesID,
-		Path:        destPath,
-		SizeBytes:   sizeBytes,
-		QualityJson: string(qualityJSON),
-		ImportedAt:  now,
-		IndexedAt:   now,
-	}); err != nil {
-		return fmt.Errorf("creating episode_file record: %w", err)
+		qualityJSON, err := json.Marshal(quality)
+		if err != nil {
+			return fmt.Errorf("marshaling quality: %w", err)
+		}
+
+		now := time.Now().UTC().Format(time.RFC3339)
+
+		if _, err := s.q.CreateEpisodeFile(ctx, db.CreateEpisodeFileParams{
+			ID:          uuid.New().String(),
+			EpisodeID:   episodeID,
+			SeriesID:    seriesID,
+			Path:        destPath,
+			SizeBytes:   sizeBytes,
+			QualityJson: string(qualityJSON),
+			ImportedAt:  now,
+			IndexedAt:   now,
+		}); err != nil {
+			return fmt.Errorf("creating episode_file record: %w", err)
+		}
 	}
 
 	// Mark the episode as having a file.  Fetch current values first so we
@@ -554,8 +602,26 @@ func qualityFromGrab(g db.GrabHistory) plugin.Quality {
 // transferFile copies src to dst using hardlink first, falling back to
 // io.Copy. The source is intentionally NOT deleted — the download client's
 // seed lifecycle handles cleanup.
+//
+// The new file is staged at a temp path and renamed over dst, never
+// written into dst in place. That matters on retries: if dst is already a
+// hardlink to src (an earlier attempt linked it), opening dst with
+// O_TRUNC would truncate the shared inode and destroy the download.
 func transferFile(src, dst string) error {
-	if err := os.Link(src, dst); err == nil {
+	if di, err := os.Stat(dst); err == nil {
+		if si, err := os.Stat(src); err == nil && os.SameFile(si, di) {
+			return nil // already linked by an earlier attempt
+		}
+	}
+
+	tmp := dst + ".pilot-tmp"
+	_ = os.Remove(tmp) // leftover from an interrupted attempt
+
+	if err := os.Link(src, tmp); err == nil {
+		if err := os.Rename(tmp, dst); err != nil {
+			os.Remove(tmp)
+			return err
+		}
 		return nil
 	}
 
@@ -565,22 +631,30 @@ func transferFile(src, dst string) error {
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	out, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
 
 	if _, err := io.Copy(out, in); err != nil {
 		out.Close()
-		os.Remove(dst)
+		os.Remove(tmp)
 		return err
 	}
 	if err := out.Sync(); err != nil {
 		out.Close()
-		os.Remove(dst)
+		os.Remove(tmp)
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // copyExtraFiles walks srcDir and transfers any file whose extension matches

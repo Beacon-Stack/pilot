@@ -75,30 +75,33 @@ type EpisodeFile struct {
 }
 
 type GrabHistory struct {
-	ID                string  `json:"id"`
-	SeriesID          string  `json:"seriesId"`
-	EpisodeID         *string `json:"episodeId"`
-	SeasonNumber      *int64  `json:"seasonNumber"`
-	IndexerID         *string `json:"indexerId"`
-	ReleaseGuid       string  `json:"releaseGuid"`
-	ReleaseTitle      string  `json:"releaseTitle"`
-	ReleaseSource     string  `json:"releaseSource"`
-	ReleaseResolution string  `json:"releaseResolution"`
-	ReleaseCodec      string  `json:"releaseCodec"`
-	ReleaseHdr        string  `json:"releaseHdr"`
-	Protocol          string  `json:"protocol"`
-	Size              int64   `json:"size"`
-	DownloadClientID  *string `json:"downloadClientId"`
-	ClientItemID      *string `json:"clientItemId"`
-	DownloadStatus    string  `json:"downloadStatus"`
-	DownloadedBytes   int64   `json:"downloadedBytes"`
-	ScoreBreakdown    *string `json:"scoreBreakdown"`
-	GrabbedAt         string  `json:"grabbedAt"`
-	Source            string  `json:"source"`
-	InfoHash          *string `json:"infoHash"`
-	ImportStatus      string  `json:"importStatus"`
-	ImportedAt        string  `json:"importedAt"`
-	ImportError       string  `json:"importError"`
+	ID                  string  `json:"id"`
+	SeriesID            string  `json:"seriesId"`
+	EpisodeID           *string `json:"episodeId"`
+	SeasonNumber        *int64  `json:"seasonNumber"`
+	IndexerID           *string `json:"indexerId"`
+	ReleaseGuid         string  `json:"releaseGuid"`
+	ReleaseTitle        string  `json:"releaseTitle"`
+	ReleaseSource       string  `json:"releaseSource"`
+	ReleaseResolution   string  `json:"releaseResolution"`
+	ReleaseCodec        string  `json:"releaseCodec"`
+	ReleaseHdr          string  `json:"releaseHdr"`
+	Protocol            string  `json:"protocol"`
+	Size                int64   `json:"size"`
+	DownloadClientID    *string `json:"downloadClientId"`
+	ClientItemID        *string `json:"clientItemId"`
+	DownloadStatus      string  `json:"downloadStatus"`
+	DownloadedBytes     int64   `json:"downloadedBytes"`
+	ScoreBreakdown      *string `json:"scoreBreakdown"`
+	GrabbedAt           string  `json:"grabbedAt"`
+	Source              string  `json:"source"`
+	InfoHash            *string `json:"infoHash"`
+	ImportStatus        string  `json:"importStatus"`
+	ImportedAt          string  `json:"importedAt"`
+	ImportError         string  `json:"importError"`
+	ContentPath         string  `json:"contentPath"`
+	ImportAttempts      int64   `json:"importAttempts"`
+	ImportLastAttemptAt string  `json:"importLastAttemptAt"`
 }
 
 type ImportExclusion struct {
