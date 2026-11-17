@@ -435,6 +435,12 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			MediaTitle:   series.Title,
 			MediaYear:    series.Year,
 			SeasonNumber: input.Body.SeasonNumber,
+			// Forward arr-side identity to history-aware download
+			// clients (Haul) so the next "have I downloaded this?"
+			// lookup can match by Pilot's own UUIDs.
+			TMDBID:    int(series.TMDBID),
+			SeriesID:  input.SeriesID,
+			EpisodeID: input.Body.EpisodeID,
 		}
 
 		// Override flow: if the user clicked "grab anyway" on a grayed
@@ -622,13 +628,33 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			}
 		}
 
+		// Look up series for TMDB id + title (used by Haul's history
+		// index and rename-on-complete). Best-effort; fall back to
+		// whatever we already had if the lookup fails.
+		var seriesTitle string
+		var seriesYear int
+		var seriesTMDBID int
+		if s, sErr := showSvc.Get(ctx, input.SeriesID); sErr == nil {
+			seriesTitle = s.Title
+			seriesYear = s.Year
+			seriesTMDBID = int(s.TMDBID)
+		}
+
 		release := plugin.Release{
-			GUID:        best.GUID,
-			Title:       best.Title,
-			Protocol:    best.Protocol,
-			DownloadURL: best.DownloadURL,
-			Size:        best.Size,
-			Quality:     best.Quality,
+			GUID:         best.GUID,
+			Title:        best.Title,
+			Protocol:     best.Protocol,
+			DownloadURL:  best.DownloadURL,
+			Size:         best.Size,
+			Quality:      best.Quality,
+			MediaType:    "tv",
+			MediaTitle:   seriesTitle,
+			MediaYear:    seriesYear,
+			SeasonNumber: input.Body.Season,
+			// Arr-side identity for Haul's history lookup.
+			TMDBID:    seriesTMDBID,
+			SeriesID:  input.SeriesID,
+			EpisodeID: input.Body.EpisodeID,
 		}
 
 		// Record the grab. Source is "auto_search" so stall watcher is

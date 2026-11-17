@@ -53,11 +53,11 @@ type AbsoluteEpisodeResolver interface {
 // Service subscribes to TypeDownloadDone events and imports completed files
 // into the library directory tree.
 type Service struct {
-	q       db.Querier
-	bus     *events.Bus
-	logger  *slog.Logger
-	mm      *mediamanagement.Service
-	animeR  AbsoluteEpisodeResolver
+	q      db.Querier
+	bus    *events.Bus
+	logger *slog.Logger
+	mm     *mediamanagement.Service
+	animeR AbsoluteEpisodeResolver
 }
 
 // NewService creates a new Service. Pass nil for animelist when the
