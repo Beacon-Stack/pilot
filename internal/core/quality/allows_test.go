@@ -23,6 +23,8 @@ func TestProfileAllows(t *testing.T) {
 		qual(plugin.Resolution1080p, plugin.SourceWEBDL, ""),
 		qual(plugin.Resolution1080p, plugin.SourceWEBRip, ""),
 	}}
+	// Sonarr's "WEBDL-480p" is imported as resolution sd.
+	sdWeb := &quality.Profile{Qualities: []plugin.Quality{qual(plugin.ResolutionSD, plugin.SourceWEBDL, "")}}
 	cases := []struct {
 		name string
 		p    *quality.Profile
@@ -41,6 +43,9 @@ func TestProfileAllows(t *testing.T) {
 		{"nothing known is not allowed", webWithFallback, plugin.Quality{}, false},
 		{"explicit unknown values count as unknown", webWithFallback, qual(plugin.Resolution1080p, plugin.SourceUnknown, ""), true},
 		{"empty list allows everything", &quality.Profile{}, qual(plugin.Resolution480p, plugin.SourceHDTV, ""), true},
+		{"480p release matches an SD quality", sdWeb, qual(plugin.Resolution480p, plugin.SourceWEBDL, ""), true},
+		{"576p release matches an SD quality", sdWeb, qual(plugin.Resolution576p, plugin.SourceWEBDL, ""), true},
+		{"SD quality doesn't match 720p", sdWeb, qual(plugin.Resolution720p, plugin.SourceWEBDL, ""), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
