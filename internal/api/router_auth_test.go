@@ -30,6 +30,7 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/config"
+	"github.com/beacon-stack/pilot/internal/core/backup"
 	"github.com/beacon-stack/pilot/internal/core/health"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/remotepath"
@@ -72,6 +73,7 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 		Queries:               dbgen.New(db),
 		HealthService:         health.NewService(dbgen.New(db), nil, nil),
 		RemotePathService:     remotepath.NewService(dbgen.New(db)),
+		BackupService:         backup.NewService(db, dbgen.New(db), dbPath),
 		PulseSyncHandler: func(w http.ResponseWriter, _ *http.Request) {
 			pulseCalls.Add(1)
 			w.WriteHeader(http.StatusAccepted)
@@ -141,6 +143,13 @@ var protectedEndpoints = []struct{ method, path string }{
 	{"PUT", "/api/v1/language-preference"},
 	{"GET", "/api/v1/system/health"},
 	{"GET", "/api/v1/remote-path-mappings"},
+	{"GET", "/api/v1/system/backups"},
+	{"POST", "/api/v1/system/backups"},
+	{"GET", "/api/v1/system/backups/pilot-manual-20260101-000000.db/download"},
+	{"POST", "/api/v1/system/backups/pilot-manual-20260101-000000.db/restore"},
+	{"DELETE", "/api/v1/system/backups/pilot-manual-20260101-000000.db"},
+	{"GET", "/api/v1/system/backup-settings"},
+	{"PUT", "/api/v1/system/backup-settings"},
 	{"POST", "/api/v1/remote-path-mappings"},
 	{"DELETE", "/api/v1/remote-path-mappings/x"},
 	{"POST", "/api/v1/system/health/check"},

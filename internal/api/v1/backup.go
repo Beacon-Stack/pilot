@@ -30,7 +30,9 @@ func BackupHandler(db *sql.DB, dbPath string, logger *slog.Logger) http.HandlerF
 		_ = os.Remove(tmpPath) // VACUUM INTO needs the path not to exist
 		defer os.Remove(tmpPath)
 
-		if _, err := db.Exec(fmt.Sprintf(`VACUUM INTO '%s'`, tmpPath)); err != nil {
+		// The path is a bound parameter, so a data folder with a quote in
+		// its name still works.
+		if _, err := db.Exec("VACUUM INTO ?", tmpPath); err != nil {
 			http.Error(w, `{"status":500,"title":"VACUUM INTO failed"}`, http.StatusInternalServerError)
 			logger.Warn("backup: VACUUM INTO", "error", err)
 			return
