@@ -260,16 +260,26 @@ func (p *Profile) Allows(q plugin.Quality) bool {
 		return false
 	}
 	for _, a := range p.Qualities {
-		if (res == "" || res == a.Resolution) && (src == "" || src == a.Source) {
+		if (res == "" || res == knownResolution(a.Resolution)) && (src == "" || src == a.Source) {
 			return true
 		}
 	}
 	return false
 }
 
+// knownResolution normalizes r for matching: unknown becomes "", and the
+// standard-definition resolutions (sd, 480p, 576p) become one value.
+// Sonarr's SD qualities ("WEBDL-480p", "DVD", "SDTV") are stored as sd,
+// while the parser reports a 480p release as 480p; without this they
+// never matched.
 func knownResolution(r plugin.Resolution) plugin.Resolution {
-	if r == plugin.ResolutionUnknown {
+	switch r {
+	case plugin.ResolutionUnknown:
 		return ""
+	case plugin.Resolution480p, plugin.Resolution576p:
+		return plugin.ResolutionSD
+	case plugin.ResolutionSD, plugin.Resolution720p, plugin.Resolution1080p, plugin.Resolution2160p:
+		return r
 	}
 	return r
 }

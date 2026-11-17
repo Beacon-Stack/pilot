@@ -1,101 +1,11 @@
 import { useState } from "react";
-import { Plus, Trash2, Pencil, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Pencil, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import { useQualityProfiles, useDeleteQualityProfile } from "@/api/quality";
 import PageHeader from "@/components/PageHeader";
-import Modal from "@beacon-shared/Modal";
+import QualityProfileEditor from "./QualityProfileEditor";
 import type { QualityProfile } from "@/types";
-
-// ── Quality profile detail modal ──────────────────────────────────────────────
-
-function ProfileDetailModal({ profile, onClose }: { profile: QualityProfile; onClose: () => void }) {
-  return (
-    <Modal onClose={onClose} width={520}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "18px 20px",
-          borderBottom: "1px solid var(--color-border-subtle)",
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--color-text-primary)" }}>
-          {profile.name}
-        </h2>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "var(--color-text-muted)",
-            display: "flex",
-            padding: 4,
-          }}
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      <div style={{ padding: 20, overflowY: "auto" }}>
-        <div style={{ display: "flex", gap: 24, marginBottom: 20 }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-              Cutoff
-            </div>
-            <div style={{ fontSize: 14, color: "var(--color-text-primary)" }}>
-              {profile.cutoff.name}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-              Upgrades
-            </div>
-            <div style={{ fontSize: 14, color: "var(--color-text-primary)" }}>
-              {profile.upgrade_allowed ? "Allowed" : "Not allowed"}
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: "var(--color-text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            marginBottom: 10,
-          }}
-        >
-          Qualities ({profile.qualities.length})
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {profile.qualities.map((q, idx) => (
-            <div
-              key={idx}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 12px",
-                background: "var(--color-bg-elevated)",
-                borderRadius: 6,
-                fontSize: 13,
-              }}
-            >
-              <span style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{q.name}</span>
-              <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-                {q.resolution} · {q.source}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 // ── Profile card ──────────────────────────────────────────────────────────────
 
@@ -257,7 +167,8 @@ function ProfileCard({
 export default function QualityProfileList() {
   const { data: profiles, isLoading } = useQualityProfiles();
   const deleteProfile = useDeleteQualityProfile();
-  const [viewing, setViewing] = useState<QualityProfile | null>(null);
+  // undefined = closed, null = new profile
+  const [editing, setEditing] = useState<QualityProfile | null | undefined>(undefined);
 
   const confirm = useConfirm();
 
@@ -276,7 +187,7 @@ export default function QualityProfileList() {
         description="Define which quality tiers Pilot should download and when to upgrade."
         action={
           <button
-            onClick={() => toast.info("Quality profile editor coming soon")}
+            onClick={() => setEditing(null)}
             style={{
               display: "flex",
               alignItems: "center",
@@ -327,15 +238,15 @@ export default function QualityProfileList() {
             <ProfileCard
               key={profile.id}
               profile={profile}
-              onEdit={() => setViewing(profile)}
+              onEdit={() => setEditing(profile)}
               onDelete={() => handleDelete(profile)}
             />
           ))}
         </div>
       )}
 
-      {viewing && (
-        <ProfileDetailModal profile={viewing} onClose={() => setViewing(null)} />
+      {editing !== undefined && (
+        <QualityProfileEditor profile={editing} onClose={() => setEditing(undefined)} />
       )}
     </div>
   );
