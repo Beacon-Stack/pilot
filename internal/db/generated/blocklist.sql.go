@@ -33,7 +33,7 @@ const countRecentStallsForEpisode = `-- name: CountRecentStallsForEpisode :one
 SELECT COUNT(*) FROM blocklist
 WHERE series_id = ?
   AND episode_id IS ?
-  AND reason LIKE 'stall_%'
+  AND (reason LIKE 'stall_%' OR reason = 'download_failed')
   AND added_at > strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-24 hours')
 `
 
