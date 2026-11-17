@@ -25,6 +25,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/renamer"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
+	releaseparser "github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -498,19 +499,23 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 	// succeeded earlier reaches files that are already recorded at
 	// destPath. episode_files.path is UNIQUE, so re-inserting would fail
 	// the whole retry, and re-copying would waste time on a cross-device
-	// library. An existing row for this episode whose file is still on
-	// disk means this file is done.
+	// library. An existing row whose file on disk IS this source file
+	// (same inode, or same size for a cross-device copy) means this file
+	// is done.
+	//
+	// Anything else at destPath is an older file with the same name, e.g.
+	// an upgrade when the naming format has no quality token. Treating
+	// that as "done" silently kept the old file, so drop the row and let
+	// the transfer replace the file.
 	alreadyRecorded := false
 	existing, err := s.q.GetEpisodeFileByPath(ctx, destPath)
 	switch {
 	case err == nil && existing.EpisodeID != episodeID:
 		return fmt.Errorf("destination %q is already recorded for a different episode (%s)", destPath, existing.EpisodeID)
 	case err == nil:
-		if _, statErr := os.Stat(destPath); statErr == nil {
+		if sameImportedFile(filePath, destPath, sizeBytes) {
 			alreadyRecorded = true
 		} else {
-			// Row survived but the file is gone; drop the stale row and
-			// import normally.
 			if dErr := s.q.DeleteEpisodeFile(ctx, existing.ID); dErr != nil {
 				return fmt.Errorf("removing stale episode_file record: %w", dErr)
 			}
@@ -560,6 +565,10 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 		}); err != nil {
 			return fmt.Errorf("creating episode_file record: %w", err)
 		}
+
+		// The new file is in place and recorded: retire any other file
+		// this episode had (an upgrade to a different filename).
+		s.removeReplacedFiles(ctx, episodeID, seriesID, destPath)
 	}
 
 	// Mark the episode as having a file.  Fetch current values first so we
@@ -588,15 +597,89 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 	return nil
 }
 
+// sameImportedFile reports whether dest already holds the file being
+// imported: the same inode (linked there by an earlier attempt), or, for a
+// cross-device copy, the same size.
+func sameImportedFile(src, dest string, srcSize int64) bool {
+	di, err := os.Stat(dest)
+	if err != nil {
+		return false
+	}
+	if si, err := os.Stat(src); err == nil && os.SameFile(si, di) {
+		return true
+	}
+	return di.Size() == srcSize
+}
+
+// removeReplacedFiles deletes the episode's other files after a new one
+// was imported at keepPath. Only files inside the series' library root
+// are removed from disk; a recorded file anywhere else (a download
+// folder, another mount) keeps its bytes and only loses its record.
+// Failures are logged, not returned: the new file is already imported.
+func (s *Service) removeReplacedFiles(ctx context.Context, episodeID, seriesID, keepPath string) {
+	files, err := s.q.ListEpisodeFilesByEpisodeID(ctx, episodeID)
+	if err != nil {
+		s.logger.Warn("import: listing episode files for replacement", "episode_id", episodeID, "error", err)
+		return
+	}
+	root := s.libraryRoot(ctx, seriesID)
+	for _, f := range files {
+		if f.Path == keepPath {
+			continue
+		}
+		if root != "" && pathWithin(root, f.Path) {
+			if err := os.Remove(f.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				s.logger.Warn("import: could not delete replaced file; keeping its record",
+					"episode_id", episodeID, "path", f.Path, "error", err)
+				continue
+			}
+			s.logger.Info("import: deleted replaced file", "episode_id", episodeID, "path", f.Path, "replaced_by", keepPath)
+		} else {
+			s.logger.Info("import: replaced file is outside the library; leaving it on disk",
+				"episode_id", episodeID, "path", f.Path)
+		}
+		if err := s.q.DeleteEpisodeFile(ctx, f.ID); err != nil {
+			s.logger.Warn("import: removing replaced file record", "episode_file_id", f.ID, "error", err)
+		}
+	}
+}
+
+// libraryRoot returns the root folder of the series' library, or "" when
+// it can't be determined (then nothing is deleted from disk).
+func (s *Service) libraryRoot(ctx context.Context, seriesID string) string {
+	series, err := s.q.GetSeries(ctx, seriesID)
+	if err != nil {
+		return ""
+	}
+	lib, err := s.q.GetLibrary(ctx, series.LibraryID)
+	if err != nil {
+		return ""
+	}
+	return lib.RootPath
+}
+
+// pathWithin reports whether p is strictly inside root.
+func pathWithin(root, p string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(p))
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
 // qualityFromGrab reconstructs a plugin.Quality from the denormalized fields
-// stored in grab_history.
+// stored in grab_history. Name must be filled in too: the renamer's
+// {Quality Full} token renders Name, and without it every imported
+// filename lost its quality (and upgrades collided on one filename).
 func qualityFromGrab(g db.GrabHistory) plugin.Quality {
-	return plugin.Quality{
+	q := plugin.Quality{
 		Resolution: plugin.Resolution(g.ReleaseResolution),
 		Source:     plugin.Source(g.ReleaseSource),
 		Codec:      plugin.Codec(g.ReleaseCodec),
 		HDR:        plugin.HDRFormat(g.ReleaseHdr),
 	}
+	q.Name = releaseparser.QualityName(q)
+	return q
 }
 
 // transferFile copies src to dst using hardlink first, falling back to

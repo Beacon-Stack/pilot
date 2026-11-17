@@ -216,6 +216,13 @@ func parseCodec(norm string) plugin.Codec {
 	}
 }
 
+// QualityName returns the human-readable label for q, the same one the
+// parser gives a release title (e.g. "Bluray-1080p x265 HDR10"). Used
+// where a Quality is rebuilt from stored fields and has no Name yet.
+func QualityName(q plugin.Quality) string {
+	return buildQualityName(q.Resolution, q.Source, q.Codec, q.HDR)
+}
+
 // buildQualityName produces the human-readable quality label.
 func buildQualityName(res plugin.Resolution, src plugin.Source, codec plugin.Codec, hdr plugin.HDRFormat) string {
 	srcLabel := sourceLabel(src)
