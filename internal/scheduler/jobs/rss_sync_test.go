@@ -42,6 +42,27 @@ func (m *mockQuerier) ListGrabHistoryByStatusSince(ctx context.Context, arg db.L
 	return nil, nil
 }
 
+// The query binds Limit to SQL `LIMIT ?`. The zero value means LIMIT 0 —
+// zero rows, silently — which made this entire guard a production no-op:
+// the recently-completed map was always empty and RSS re-grabbed the
+// same fake release every 15 minutes, forever. The original mock ignored
+// arg.Limit, hiding exactly this bug.
+func TestBuildRecentlyCompletedEpisodes_SetsPositiveLimit(t *testing.T) {
+	var gotLimit int64
+	q := &mockQuerier{
+		listGrabHistoryByStatusSinceFn: func(_ context.Context, arg db.ListGrabHistoryByStatusSinceParams) ([]db.GrabHistory, error) {
+			gotLimit = arg.Limit
+			return nil, nil
+		},
+	}
+	if _, err := buildRecentlyCompletedEpisodes(context.Background(), q, time.Now().Add(-6*time.Hour)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotLimit <= 0 {
+		t.Fatalf("ListGrabHistoryByStatusSince called with Limit=%d — that is SQL `LIMIT %d`, the guard returns zero rows", gotLimit, gotLimit)
+	}
+}
+
 // TestBuildRecentlyCompletedEpisodes_ReturnsMapByEpisodeID — happy path:
 // completed grabs with valid episode_ids show up in the map.
 func TestBuildRecentlyCompletedEpisodes_ReturnsMapByEpisodeID(t *testing.T) {

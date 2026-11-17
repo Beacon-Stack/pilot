@@ -67,8 +67,40 @@ type releaseBody struct {
 	AlreadyGrabbedStatus string `json:"already_grabbed_status,omitempty"`
 }
 
+// indexerOutcomeBody is the per-indexer search breakdown: how many
+// results each enabled indexer contributed, or why it failed.
+type indexerOutcomeBody struct {
+	IndexerID   string `json:"indexer_id"`
+	IndexerName string `json:"indexer_name"`
+	Results     int    `json:"results"`
+	Error       string `json:"error,omitempty"`
+	// Pending: the indexer's scrape is still running server-side and will
+	// be cached — re-searching shortly returns its results. Rendered as
+	// "still searching", never as a failure.
+	Pending bool `json:"pending,omitempty"`
+}
+
+type releaseListBody struct {
+	Releases []*releaseBody       `json:"releases"`
+	Indexers []indexerOutcomeBody `json:"indexers,omitempty"`
+}
+
 type releaseListOutput struct {
-	Body []*releaseBody
+	Body releaseListBody
+}
+
+func outcomesToBodies(outcomes []indexer.Outcome) []indexerOutcomeBody {
+	out := make([]indexerOutcomeBody, len(outcomes))
+	for i, oc := range outcomes {
+		out[i] = indexerOutcomeBody{
+			IndexerID:   oc.IndexerID,
+			IndexerName: oc.IndexerName,
+			Results:     oc.Results,
+			Error:       oc.Error,
+			Pending:     oc.Pending,
+		}
+	}
+	return out
 }
 
 // episodeReleasesInput describes the path and optional query parameters for
@@ -284,10 +316,11 @@ func applyQualityProfile(results []indexer.SearchResult, profile *quality.Profil
 // the number of query variations. Season searches typically issue 3+
 // variations ("Show", "Show S01", "Show Season 1"), so the serial
 // loop turned a 30s worst case into 90s+.
-func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries []string, season, episode int) ([]indexer.SearchResult, error) {
+func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries []string, season, episode int) ([]indexer.SearchResult, []indexer.Outcome, error) {
 	type queryResult struct {
-		results []indexer.SearchResult
-		err     error
+		results  []indexer.SearchResult
+		outcomes []indexer.Outcome
+		err      error
 	}
 	out := make([]queryResult, len(queries))
 	var wg sync.WaitGroup
@@ -297,8 +330,8 @@ func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries 
 		go func() {
 			defer wg.Done()
 			sq := plugin.SearchQuery{Query: query, Season: season, Episode: episode}
-			res, err := indexerSvc.Search(ctx, sq)
-			out[i] = queryResult{results: res, err: err}
+			res, outcomes, err := indexerSvc.SearchWithOutcomes(ctx, sq)
+			out[i] = queryResult{results: res, outcomes: outcomes, err: err}
 		}()
 	}
 	wg.Wait()
@@ -306,9 +339,28 @@ func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries 
 	seen := make(map[string]struct{})
 	var merged []indexer.SearchResult
 	var errs []string
+	// Per-indexer outcomes merged across query variants: results are
+	// summed; an error in ANY variant marks the indexer as failed (the
+	// error string from the first failing variant wins).
+	outcomeByID := make(map[string]*indexer.Outcome)
+	var outcomeOrder []string
 	for _, qr := range out {
 		if qr.err != nil {
 			errs = append(errs, qr.err.Error())
+		}
+		for _, oc := range qr.outcomes {
+			existing, ok := outcomeByID[oc.IndexerID]
+			if !ok {
+				copied := oc
+				outcomeByID[oc.IndexerID] = &copied
+				outcomeOrder = append(outcomeOrder, oc.IndexerID)
+				continue
+			}
+			existing.Results += oc.Results
+			if existing.Error == "" {
+				existing.Error = oc.Error
+			}
+			existing.Pending = existing.Pending || oc.Pending
 		}
 		for _, r := range qr.results {
 			if _, ok := seen[r.GUID]; ok {
@@ -318,11 +370,15 @@ func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries 
 			merged = append(merged, r)
 		}
 	}
+	outcomes := make([]indexer.Outcome, 0, len(outcomeOrder))
+	for _, id := range outcomeOrder {
+		outcomes = append(outcomes, *outcomeByID[id])
+	}
 	var combined error
 	if len(errs) > 0 {
 		combined = fmt.Errorf("%d search(es) failed: %v", len(errs), errs)
 	}
-	return merged, combined
+	return merged, outcomes, combined
 }
 
 // ── Route registration ───────────────────────────────────────────────────────
@@ -365,17 +421,20 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		}
 		queries := buildEpisodeQueries(series.Title, input.Season, input.Episode, absoluteEp, isAnime)
 
-		// Hard interactive-search cut-off. A single dead/walled indexer
-		// can otherwise hold the search at the per-indexer client timeout
-		// (~30s). Empirically healthy indexers come back in 0.2–10s
-		// (Cloudflare-walled torznab providers tend to be the slow tail);
-		// 12s leaves room for those while killing genuinely dead ones
-		// quickly. Stragglers show up in pilot logs as `indexer search
-		// failed duration_ms=12000+ error=context deadline exceeded`.
-		searchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+		// Hard interactive-search cut-off. This was 12s when half the
+		// fleet failed instantly (masked HTTP 400s) and dead indexers were
+		// the thing to kill quickly. With the 2026-08-17 engine fixes all
+		// indexers genuinely scrape — 2 query variants × N indexers queue
+		// behind the global semaphore and Pulse's per-site rate limiting,
+		// so a cold-cache season search legitimately needs 20s+. Failures
+		// are now fast and honest (torznab <error> docs, no hangs), so the
+		// budget matches the 25s per-indexer timeout plus queue headroom.
+		// Stragglers show up in pilot logs as `indexer search failed
+		// duration_ms=30000+ error=context deadline exceeded`.
+		searchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
-		results, searchErr := searchAllQueries(searchCtx, indexerSvc, queries, input.Season, input.Episode)
+		results, outcomes, searchErr := searchAllQueries(searchCtx, indexerSvc, queries, input.Season, input.Episode)
 
 		// Filter results to only include the requested series and season/episode.
 		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Season, input.Episode, absoluteEp, tvdbToAbs)
@@ -437,11 +496,15 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			bodies[i] = b
 		}
 
-		if len(bodies) == 0 && searchErr != nil {
-			return nil, huma.NewError(http.StatusBadGateway, searchErr.Error())
-		}
-
-		return &releaseListOutput{Body: bodies}, nil
+		// Indexer failures no longer fail the request or vanish: the
+		// per-indexer breakdown ships in the envelope so the UI can render
+		// "3 of 10 indexers failed" instead of a bare "No releases found."
+		// (searchErr is redundant with the outcomes' Error fields.)
+		_ = searchErr
+		return &releaseListOutput{Body: releaseListBody{
+			Releases: bodies,
+			Indexers: outcomesToBodies(outcomes),
+		}}, nil
 	})
 
 	// GET /api/v1/series/{id}/grab-history
@@ -695,7 +758,7 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 		}
 	}
 	queries := buildEpisodeQueries(series.Title, p.Season, p.Episode, absoluteEp, isAnime)
-	results, searchErr := searchAllQueries(ctx, indexerSvc, queries, p.Season, p.Episode)
+	results, _, searchErr := searchAllQueries(ctx, indexerSvc, queries, p.Season, p.Episode)
 
 	// Filter results to only include the requested series and season/episode.
 	results = filterByEpisode(results, series.Title, series.AlternateTitles, p.Season, p.Episode, absoluteEp, tvdbToAbs)

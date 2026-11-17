@@ -23,6 +23,67 @@ func TestNormalizeTitle(t *testing.T) {
 	}
 }
 
+// Regression guards from the 2026-08-17 search audit: the ASCII-only
+// normalizer deleted non-ASCII letters, so "Pokémon" ≠ "Pokemon", CJK
+// titles normalized to "" (every comparison failed), and "&"-titled
+// shows never matched their ".and." release forms.
+func TestNormalizeTitle_Unicode(t *testing.T) {
+	if NormalizeTitle("Pokémon") != NormalizeTitle("Pokemon") {
+		t.Errorf("accent folding: %q vs %q", NormalizeTitle("Pokémon"), NormalizeTitle("Pokemon"))
+	}
+	if NormalizeTitle("Rick & Morty") != NormalizeTitle("Rick.and.Morty") {
+		t.Errorf("ampersand folding: %q vs %q", NormalizeTitle("Rick & Morty"), NormalizeTitle("Rick.and.Morty"))
+	}
+	if NormalizeTitle("進撃の巨人") == "" {
+		t.Error("non-Latin title normalized to empty string — every comparison would fail")
+	}
+}
+
+// Pilot deliberately issues a "<Title> Season N" query variant, but the
+// season-pack regex only matched the compact S02 form — every word-form
+// release the variant found was parsed as title-only and dropped by the
+// title gate. Self-defeating; lock down the word form.
+func TestParse_SeasonWordForm(t *testing.T) {
+	cases := []struct {
+		in     string
+		season int
+		title  string
+	}{
+		{"Breaking Bad Season 1 1080p WEB-DL", 1, "Breaking Bad"},
+		{"Breaking.Bad.Season.2.COMPLETE.720p", 2, "Breaking Bad"},
+		{"Andor Season 12 2160p", 12, "Andor"},
+	}
+	for _, tc := range cases {
+		got := Parse(tc.in)
+		if !got.EpisodeInfo.IsSeasonPack || got.EpisodeInfo.Season != tc.season {
+			t.Errorf("Parse(%q) = season %d pack=%v, want season %d pack=true",
+				tc.in, got.EpisodeInfo.Season, got.EpisodeInfo.IsSeasonPack, tc.season)
+		}
+		if !TitleMatches(tc.title, got.ShowTitle) {
+			t.Errorf("Parse(%q).ShowTitle = %q, want to match %q", tc.in, got.ShowTitle, tc.title)
+		}
+	}
+}
+
+// The unconditional last-dot "extension strip" ran on release titles and
+// truncated "S.W.A.T. S05E01 …" to "S.W.A.T" before any regex ran,
+// destroying the episode token. Only known file extensions are stripped.
+func TestParse_ShortDotTokensSurvive(t *testing.T) {
+	got := Parse("S.W.A.T. S05E01 1080p HEVC H.264")
+	if got.EpisodeInfo.Season != 5 || len(got.EpisodeInfo.Episodes) != 1 || got.EpisodeInfo.Episodes[0] != 1 {
+		t.Fatalf("Parse lost the episode token: %+v", got.EpisodeInfo)
+	}
+	if !TitleMatches("S.W.A.T.", got.ShowTitle) {
+		t.Errorf("ShowTitle = %q, want to match S.W.A.T.", got.ShowTitle)
+	}
+
+	// Real file extensions still strip.
+	file := Parse("Show.S01E01.1080p.mkv")
+	if file.EpisodeInfo.Season != 1 {
+		t.Errorf("mkv filename: %+v", file.EpisodeInfo)
+	}
+}
+
 func TestTitleMatches_ExactAndPunctuation(t *testing.T) {
 	accept := []struct{ series, release string }{
 		{"Breaking Bad", "Breaking Bad"},

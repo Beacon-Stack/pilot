@@ -43,8 +43,13 @@ func (i *Integration) SyncIndexers(ctx context.Context, indexerSvc *indexer.Serv
 		settings := buildSettings(r)
 
 		if existing, ok := localByName[r.Name]; ok {
-			// Check if the URL changed (e.g., rewritten to proxy URL).
-			if string(existing.Settings) != string(settings) {
+			// Update when anything Pulse controls changed. Comparing only
+			// the settings JSON made enabled/priority toggles in Pulse a
+			// local no-op: a disabled indexer kept being searched, and a
+			// re-enabled one kept being skipped.
+			if string(existing.Settings) != string(settings) ||
+				existing.Enabled != r.Enabled ||
+				existing.Priority != r.Priority {
 				_, err := indexerSvc.Update(ctx, existing.ID, indexer.UpdateRequest{
 					Name:     r.Name,
 					Kind:     r.Kind,

@@ -74,3 +74,27 @@ WHERE download_status = sqlc.arg('status')
   AND grabbed_at > sqlc.arg('since')
 ORDER BY grabbed_at DESC
 LIMIT sqlc.arg('limit');
+
+-- name: SetGrabImportState :exec
+UPDATE grab_history SET
+    import_status = ?,
+    imported_at   = ?,
+    import_error  = ?
+WHERE id = ?;
+
+-- name: ListCleanupCandidateGrabs :many
+-- Grabs still present on a download client whose import outcome is known --
+-- the download_cleanup job removes them (with data) once the seed target
+-- is met (imported) or immediately (failed + blocklisted garbage).
+SELECT * FROM grab_history
+WHERE download_status = 'completed'
+  AND import_status != ''
+  AND client_item_id IS NOT NULL
+ORDER BY grabbed_at ASC
+LIMIT ?;
+
+-- name: ClearGrabClientItem :exec
+-- Detaches a grab from its download-client item after seed-target
+-- cleanup removed the torrent. download_status stays 'completed' --
+-- the grab did succeed; only the client-side artifact is gone.
+UPDATE grab_history SET client_item_id = NULL WHERE id = ?;

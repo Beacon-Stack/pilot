@@ -121,7 +121,17 @@ type GrabRequest struct {
 // cap the outbound concurrency was queries×indexers — a thundering herd
 // against providers and the local FD table. The semaphore is shared so the
 // bound holds across concurrent Search/GetRecent calls, not just within one.
-const maxConcurrentIndexerSearches = 8
+// 16 slots: a season search issues 2 query variants × ~10 indexers = 20
+// tasks; at 8 slots the tail waited a full scrape-round before starting
+// and blew the interactive budget. Pulse rate-limits per site anyway, so
+// the extra concurrency doesn't hammer providers.
+const maxConcurrentIndexerSearches = 16
+
+// errSearchTimedOut replaces a raw context.DeadlineExceeded in
+// user-facing per-indexer outcomes. Slow (Cloudflare-protected)
+// indexers finish their scrape server-side after we disconnect and the
+// result is cached — retrying is the fix, and the message should say so.
+var errSearchTimedOut = errors.New("timed out — slow (Cloudflare-protected) indexers finish in the background; search again shortly for cached results")
 
 // perIndexerSearchTimeout bounds how long a single indexer call may run (and
 // thus hold a semaphore slot). It inherits any earlier deadline on the parent
@@ -439,18 +449,41 @@ func seedWeight(seeds int, ageDays float64) int {
 	return bucket
 }
 
+// Outcome summarizes one indexer's contribution to a search —
+// the raw material for the per-indexer breakdown the UI shows instead of
+// a bare "No releases found." This data was previously computed and
+// thrown away, which made "half the fleet is broken" indistinguishable
+// from "nothing matched".
+type Outcome struct {
+	IndexerID   string
+	IndexerName string
+	Results     int
+	Error       string // empty on success
+	// Pending means the indexer hit our deadline but its scrape continues
+	// server-side (Pulse detaches Cloudflare-walled scrapes and caches
+	// the result) — a retry shortly will be served from cache. NOT a
+	// failure; the UI shows "still searching", not an error.
+	Pending bool
+}
+
 // Search queries all enabled indexers with the given search query and returns
 // results sorted by quality score, then an age-aware log10 seed weight, then
 // release age. Errors from individual indexers are collected; a combined error
 // is returned alongside any results that were gathered.
 func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchResult, error) {
+	results, _, err := s.SearchWithOutcomes(ctx, q)
+	return results, err
+}
+
+// SearchWithOutcomes is Search plus the per-indexer outcome list.
+func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) ([]SearchResult, []Outcome, error) {
 	rows, err := s.q.ListEnabledIndexers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("listing enabled indexers: %w", err)
+		return nil, nil, fmt.Errorf("listing enabled indexers: %w", err)
 	}
 
 	if len(rows) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	type indexerResult struct {
@@ -517,6 +550,13 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 					"duration_ms", elapsed.Milliseconds(),
 					"results", len(releases))
 			}
+			// A deadline hit is almost always a Cloudflare-walled indexer
+			// mid-solve: Pulse keeps scraping after we hang up and caches
+			// the result, so a retry shortly succeeds instantly. Say that
+			// instead of a bare "context deadline exceeded".
+			if err != nil && errors.Is(err, context.DeadlineExceeded) {
+				err = errSearchTimedOut
+			}
 			resultsCh <- indexerResult{
 				indexerID:   cfg.ID,
 				indexerName: cfg.Name,
@@ -531,12 +571,35 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 
 	var allResults []SearchResult
 	var errs []error
+	var outcomes []Outcome
 
 	for res := range resultsCh {
 		if res.err != nil {
+			// Deadline hits are "pending", not failures: the scrape
+			// continues server-side and its result will be cached. Only
+			// genuine errors (torznab <error> docs, connection failures)
+			// count as failed.
+			if errors.Is(res.err, errSearchTimedOut) {
+				outcomes = append(outcomes, Outcome{
+					IndexerID:   res.indexerID,
+					IndexerName: res.indexerName,
+					Pending:     true,
+				})
+				continue
+			}
 			errs = append(errs, fmt.Errorf("indexer %q: %w", res.indexerName, res.err))
+			outcomes = append(outcomes, Outcome{
+				IndexerID:   res.indexerID,
+				IndexerName: res.indexerName,
+				Error:       res.err.Error(),
+			})
 			continue
 		}
+		outcomes = append(outcomes, Outcome{
+			IndexerID:   res.indexerID,
+			IndexerName: res.indexerName,
+			Results:     len(res.releases),
+		})
 		for _, r := range res.releases {
 			if r.Indexer == "" {
 				r.Indexer = res.indexerName
@@ -598,7 +661,7 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 		combinedErr = fmt.Errorf("%d indexer(s) failed: %v", len(errs), msgs)
 	}
 
-	return allResults, combinedErr
+	return allResults, outcomes, combinedErr
 }
 
 // GetRecent fetches the most recent releases from all enabled indexers via
@@ -656,6 +719,13 @@ func (s *Service) GetRecent(ctx context.Context) ([]SearchResult, error) {
 				return
 			}
 			releases, err := idx.GetRecent(sctx)
+			// A deadline hit is almost always a Cloudflare-walled indexer
+			// mid-solve: Pulse keeps scraping after we hang up and caches
+			// the result, so a retry shortly succeeds instantly. Say that
+			// instead of a bare "context deadline exceeded".
+			if err != nil && errors.Is(err, context.DeadlineExceeded) {
+				err = errSearchTimedOut
+			}
 			resultsCh <- indexerResult{
 				indexerID:   cfg.ID,
 				indexerName: cfg.Name,

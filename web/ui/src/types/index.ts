@@ -191,6 +191,25 @@ export interface ReleaseResult {
   already_grabbed_status?: string;
 }
 
+// Per-indexer search breakdown: how many results each enabled indexer
+// contributed, or why it failed. Lets the UI distinguish "nothing
+// matched" from "half the indexers are broken".
+export interface IndexerSearchOutcome {
+  indexer_id: string;
+  indexer_name: string;
+  results: number;
+  error?: string;
+  // The indexer's scrape is still running server-side (Cloudflare
+  // solving) and will be cached — re-searching shortly returns its
+  // results. Rendered as "still searching", never as a failure.
+  pending?: boolean;
+}
+
+export interface ReleaseSearchResponse {
+  releases: ReleaseResult[];
+  indexers?: IndexerSearchOutcome[];
+}
+
 // ── Download Clients ────────────────────────────────────────────────────────
 
 export interface DownloadClientConfig {

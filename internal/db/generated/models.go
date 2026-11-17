@@ -96,6 +96,9 @@ type GrabHistory struct {
 	GrabbedAt         string  `json:"grabbedAt"`
 	Source            string  `json:"source"`
 	InfoHash          *string `json:"infoHash"`
+	ImportStatus      string  `json:"importStatus"`
+	ImportedAt        string  `json:"importedAt"`
+	ImportError       string  `json:"importError"`
 }
 
 type ImportExclusion struct {

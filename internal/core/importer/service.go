@@ -6,6 +6,7 @@ package importer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/renamer"
@@ -50,22 +52,31 @@ type AbsoluteEpisodeResolver interface {
 	AbsoluteToTMDBEpisode(tmdbID, abs int) (season, episode int, ok bool)
 }
 
+// ErrUnimportableContent wraps import failures that can never succeed on
+// retry with the same content — fake uploads delivering a .exe/.scr, or
+// a "season pack" containing no video files at all. These are the only
+// failures that warrant blocklisting the release; transient errors
+// (full disk, DB hiccup) must not.
+var ErrUnimportableContent = errors.New("content can never import")
+
 // Service subscribes to TypeDownloadDone events and imports completed files
 // into the library directory tree.
 type Service struct {
-	q      db.Querier
-	bus    *events.Bus
-	logger *slog.Logger
-	mm     *mediamanagement.Service
-	animeR AbsoluteEpisodeResolver
+	q         db.Querier
+	bus       *events.Bus
+	logger    *slog.Logger
+	mm        *mediamanagement.Service
+	animeR    AbsoluteEpisodeResolver
+	blocklist *blocklist.Service // nil-able; hard failures blocklist the release
 }
 
 // NewService creates a new Service. Pass nil for animelist when the
 // caller doesn't have one wired up; the importer just won't resolve
 // anime absolute-numbered files in that case (same as before this
-// dependency existed).
-func NewService(q db.Querier, bus *events.Bus, logger *slog.Logger, mm *mediamanagement.Service, animeR AbsoluteEpisodeResolver) *Service {
-	return &Service{q: q, bus: bus, logger: logger, mm: mm, animeR: animeR}
+// dependency existed). blocklistSvc may be nil (tests); hard import
+// failures then simply skip the blocklist step.
+func NewService(q db.Querier, bus *events.Bus, logger *slog.Logger, mm *mediamanagement.Service, animeR AbsoluteEpisodeResolver, blocklistSvc *blocklist.Service) *Service {
+	return &Service{q: q, bus: bus, logger: logger, mm: mm, animeR: animeR, blocklist: blocklistSvc}
 }
 
 // Subscribe registers the import handler on the event bus.
@@ -81,7 +92,9 @@ func (s *Service) Subscribe() {
 			s.logger.Warn("import: TypeDownloadDone event missing grab_id")
 			return
 		}
-		if err := s.ImportFile(ctx, grabID, contentPath); err != nil {
+		err := s.ImportFile(ctx, grabID, contentPath)
+		s.recordImportOutcome(ctx, grabID, err)
+		if err != nil {
 			s.logger.Error("import failed",
 				"grab_id", grabID,
 				"content_path", contentPath,
@@ -107,6 +120,66 @@ func (s *Service) Subscribe() {
 			})
 		}
 	})
+}
+
+// recordImportOutcome persists the import result on the grab row, and on
+// a HARD failure (content that can never import — fake uploads)
+// blocklists the release so search and RSS never grab it again.
+func (s *Service) recordImportOutcome(ctx context.Context, grabID string, importErr error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	if importErr == nil {
+		if err := s.q.SetGrabImportState(ctx, db.SetGrabImportStateParams{
+			ImportStatus: "imported",
+			ImportedAt:   now,
+			ImportError:  "",
+			ID:           grabID,
+		}); err != nil {
+			s.logger.Warn("import: failed to record import success", "grab_id", grabID, "error", err)
+		}
+		return
+	}
+
+	if err := s.q.SetGrabImportState(ctx, db.SetGrabImportStateParams{
+		ImportStatus: "failed",
+		ImportedAt:   "",
+		ImportError:  importErr.Error(),
+		ID:           grabID,
+	}); err != nil {
+		s.logger.Warn("import: failed to record import failure", "grab_id", grabID, "error", err)
+	}
+
+	if !errors.Is(importErr, ErrUnimportableContent) || s.blocklist == nil {
+		return
+	}
+	grab, err := s.q.GetGrabByID(ctx, grabID)
+	if err != nil {
+		s.logger.Warn("import: cannot blocklist, grab lookup failed", "grab_id", grabID, "error", err)
+		return
+	}
+	entry := blocklist.StallEntry{
+		SeriesID:     grab.SeriesID,
+		ReleaseGUID:  grab.ReleaseGuid,
+		ReleaseTitle: grab.ReleaseTitle,
+		Protocol:     grab.Protocol,
+		Size:         grab.Size,
+		Notes:        "import failed: " + importErr.Error(),
+	}
+	if grab.EpisodeID != nil {
+		entry.EpisodeID = *grab.EpisodeID
+	}
+	if grab.IndexerID != nil {
+		entry.IndexerID = *grab.IndexerID
+	}
+	if grab.InfoHash != nil {
+		entry.InfoHash = *grab.InfoHash
+	}
+	if err := s.blocklist.AddFromImportFailure(ctx, entry); err != nil && !errors.Is(err, blocklist.ErrAlreadyBlocklisted) {
+		s.logger.Warn("import: failed to blocklist unimportable release",
+			"grab_id", grabID, "release", grab.ReleaseTitle, "error", err)
+		return
+	}
+	s.logger.Info("import: blocklisted unimportable release",
+		"release", grab.ReleaseTitle, "reason", importErr.Error())
 }
 
 // ImportFile performs the full import pipeline for a completed download.
@@ -175,7 +248,7 @@ func (s *Service) importIntoSeries(
 
 	if !info.IsDir() {
 		if !videoExtensions[filepath.Ext(contentPath)] {
-			return fmt.Errorf("not a recognised video extension: %q", filepath.Ext(contentPath))
+			return fmt.Errorf("%w: not a recognised video extension: %q", ErrUnimportableContent, filepath.Ext(contentPath))
 		}
 		if err := s.importSingleFile(ctx, contentPath, grab, epIndex, quality); err != nil {
 			return err
@@ -183,6 +256,7 @@ func (s *Service) importIntoSeries(
 	} else {
 		// Directory: season pack — walk and import each video file individually.
 		var importErr error
+		videoCount := 0
 		walkErr := filepath.WalkDir(contentPath, func(path string, d os.DirEntry, werr error) error {
 			if werr != nil || d.IsDir() {
 				return werr
@@ -190,6 +264,7 @@ func (s *Service) importIntoSeries(
 			if !videoExtensions[filepath.Ext(path)] {
 				return nil
 			}
+			videoCount++
 			if err := s.importSingleFile(ctx, path, grab, epIndex, quality); err != nil {
 				s.logger.Warn("import: failed to import file from season pack",
 					"path", path,
@@ -201,6 +276,11 @@ func (s *Service) importIntoSeries(
 		})
 		if walkErr != nil {
 			return fmt.Errorf("walking content directory %q: %w", contentPath, walkErr)
+		}
+		if videoCount == 0 {
+			// A "season pack" with zero video files is a fake upload —
+			// same class as the single-file .exe case.
+			return fmt.Errorf("%w: directory contains no video files", ErrUnimportableContent)
 		}
 		if importErr != nil {
 			// At least one file failed; surface it so the caller can log/emit an event.

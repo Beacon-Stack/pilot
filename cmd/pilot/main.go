@@ -298,7 +298,7 @@ func run() error {
 	queueSvc := queue.NewService(queries, downloaderSvc, bus, logger)
 	stallWatcher := stallwatcher.NewService(queries, blocklistSvc, downloaderSvc, bus, logger)
 
-	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc, animeListSvc)
+	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc, animeListSvc, blocklistSvc)
 	importerSvc.Subscribe()
 
 	activitySvc := activity.NewService(queries, logger)
@@ -322,7 +322,8 @@ func run() error {
 	sched := scheduler.New(logger)
 	sched.Add(jobs.QueuePoll(queueSvc, 30*time.Second, logger))
 	sched.Add(jobs.LibraryScan(librarySvc, showSvc, queries, logger))
-	sched.Add(jobs.RSSSync(indexerSvc, queries, downloaderSvc, logger))
+	sched.Add(jobs.RSSSync(indexerSvc, queries, downloaderSvc, blocklistSvc, logger))
+	sched.Add(jobs.DownloadCleanup(queries, downloaderSvc, blocklistSvc, logger))
 	sched.Add(jobs.RefreshMetadata(showSvc, logger))
 	sched.Add(jobs.StatsSnapshot(statsSvc, logger))
 	sched.Add(jobs.ImportListSync(importListSvc, logger))
