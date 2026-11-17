@@ -22,6 +22,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/parser"
+	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/renamer"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/diskspace"
@@ -89,6 +90,7 @@ type Service struct {
 	mm        *mediamanagement.Service
 	animeR    AbsoluteEpisodeResolver
 	blocklist *blocklist.Service // nil-able; hard failures blocklist the release
+	recycle   *recyclebin.Service
 }
 
 // NewService creates a new Service. Pass nil for animelist when the
@@ -97,7 +99,7 @@ type Service struct {
 // dependency existed). blocklistSvc may be nil (tests); hard import
 // failures then simply skip the blocklist step.
 func NewService(q db.Querier, bus *events.Bus, logger *slog.Logger, mm *mediamanagement.Service, animeR AbsoluteEpisodeResolver, blocklistSvc *blocklist.Service) *Service {
-	return &Service{q: q, bus: bus, logger: logger, mm: mm, animeR: animeR, blocklist: blocklistSvc}
+	return &Service{q: q, bus: bus, logger: logger, mm: mm, animeR: animeR, blocklist: blocklistSvc, recycle: recyclebin.New(mm, logger)}
 }
 
 // Subscribe registers the import handler on the event bus.
@@ -561,7 +563,20 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 
 		// Transfer: hardlink with copy fallback.
 		if destPath != filePath {
-			if err := transferFile(filePath, destPath, minFree); err != nil {
+			// A different file already at destPath (an upgrade whose
+			// filename didn't change) is about to be overwritten. Once the
+			// new file is fully staged, move the old one to the recycle
+			// bin (if set); if that fails, the old file stays.
+			beforeReplace := func() error {
+				if _, statErr := os.Lstat(destPath); errors.Is(statErr, fs.ErrNotExist) || sameImportedFile(filePath, destPath, sizeBytes) {
+					return nil // nothing there, or it is this same file
+				}
+				if _, err := s.recycle.Preserve(ctx, destPath, s.libraryRoot(ctx, seriesID)); err != nil {
+					return fmt.Errorf("recycling the file being replaced: %w", err)
+				}
+				return nil
+			}
+			if err := transferFileReplacing(filePath, destPath, minFree, beforeReplace); err != nil {
 				return fmt.Errorf("transferring %q → %q: %w", filePath, destPath, err)
 			}
 		}
@@ -653,12 +668,14 @@ func (s *Service) removeReplacedFiles(ctx context.Context, episodeID, seriesID, 
 			continue
 		}
 		if root != "" && pathWithin(root, f.Path) {
-			if err := os.Remove(f.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			recycledTo, err := s.recycle.Delete(ctx, f.Path, root)
+			if err != nil {
 				s.logger.Warn("import: could not delete replaced file; keeping its record",
 					"episode_id", episodeID, "path", f.Path, "error", err)
 				continue
 			}
-			s.logger.Info("import: deleted replaced file", "episode_id", episodeID, "path", f.Path, "replaced_by", keepPath)
+			s.logger.Info("import: removed replaced file", "episode_id", episodeID, "path", f.Path,
+				"replaced_by", keepPath, "recycled_to", recycledTo)
 		} else {
 			s.logger.Info("import: replaced file is outside the library; leaving it on disk",
 				"episode_id", episodeID, "path", f.Path)
@@ -746,6 +763,14 @@ func qualityFromGrab(g db.GrabHistory) plugin.Quality {
 // bytes free where dst lives (0 = no minimum). If free space can't be
 // read, the copy goes ahead: an unknown must not block every import.
 func transferFile(src, dst string, minFree uint64) error {
+	return transferFileReplacing(src, dst, minFree, nil)
+}
+
+// transferFileReplacing is transferFile, calling beforeReplace (when not
+// nil) after the new file is staged and just before it is renamed over
+// dst. An error from beforeReplace aborts the transfer and leaves dst as
+// it was.
+func transferFileReplacing(src, dst string, minFree uint64, beforeReplace func() error) error {
 	if di, err := os.Stat(dst); err == nil {
 		if si, err := os.Stat(src); err == nil && os.SameFile(si, di) {
 			return nil // already linked by an earlier attempt
@@ -756,6 +781,12 @@ func transferFile(src, dst string, minFree uint64) error {
 	_ = os.Remove(tmp) // leftover from an interrupted attempt
 
 	if err := linkFile(src, tmp); err == nil {
+		if beforeReplace != nil {
+			if err := beforeReplace(); err != nil {
+				os.Remove(tmp)
+				return err
+			}
+		}
 		if err := os.Rename(tmp, dst); err != nil {
 			os.Remove(tmp)
 			return err
@@ -791,6 +822,12 @@ func transferFile(src, dst string, minFree uint64) error {
 	if err := out.Close(); err != nil {
 		os.Remove(tmp)
 		return err
+	}
+	if beforeReplace != nil {
+		if err := beforeReplace(); err != nil {
+			os.Remove(tmp)
+			return err
+		}
 	}
 	if err := os.Rename(tmp, dst); err != nil {
 		os.Remove(tmp)

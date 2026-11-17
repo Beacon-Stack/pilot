@@ -10,7 +10,7 @@ import (
 )
 
 const getMediaManagement = `-- name: GetMediaManagement :one
-SELECT id, rename_episodes, standard_episode_format, daily_episode_format, anime_episode_format, series_folder_format, season_folder_format, colon_replacement, import_extra_files, extra_file_extensions, unmonitor_deleted_episodes FROM media_management WHERE id = 1
+SELECT id, rename_episodes, standard_episode_format, daily_episode_format, anime_episode_format, series_folder_format, season_folder_format, colon_replacement, import_extra_files, extra_file_extensions, unmonitor_deleted_episodes, recycle_bin_path, recycle_bin_cleanup_days FROM media_management WHERE id = 1
 `
 
 func (q *Queries) GetMediaManagement(ctx context.Context) (MediaManagement, error) {
@@ -28,6 +28,8 @@ func (q *Queries) GetMediaManagement(ctx context.Context) (MediaManagement, erro
 		&i.ImportExtraFiles,
 		&i.ExtraFileExtensions,
 		&i.UnmonitorDeletedEpisodes,
+		&i.RecycleBinPath,
+		&i.RecycleBinCleanupDays,
 	)
 	return i, err
 }
@@ -43,9 +45,11 @@ SET rename_episodes            = ?,
     colon_replacement          = ?,
     import_extra_files         = ?,
     extra_file_extensions      = ?,
-    unmonitor_deleted_episodes = ?
+    unmonitor_deleted_episodes = ?,
+    recycle_bin_path           = ?,
+    recycle_bin_cleanup_days   = ?
 WHERE id = 1
-RETURNING id, rename_episodes, standard_episode_format, daily_episode_format, anime_episode_format, series_folder_format, season_folder_format, colon_replacement, import_extra_files, extra_file_extensions, unmonitor_deleted_episodes
+RETURNING id, rename_episodes, standard_episode_format, daily_episode_format, anime_episode_format, series_folder_format, season_folder_format, colon_replacement, import_extra_files, extra_file_extensions, unmonitor_deleted_episodes, recycle_bin_path, recycle_bin_cleanup_days
 `
 
 type UpdateMediaManagementParams struct {
@@ -59,6 +63,8 @@ type UpdateMediaManagementParams struct {
 	ImportExtraFiles         bool   `json:"importExtraFiles"`
 	ExtraFileExtensions      string `json:"extraFileExtensions"`
 	UnmonitorDeletedEpisodes bool   `json:"unmonitorDeletedEpisodes"`
+	RecycleBinPath           string `json:"recycleBinPath"`
+	RecycleBinCleanupDays    int64  `json:"recycleBinCleanupDays"`
 }
 
 func (q *Queries) UpdateMediaManagement(ctx context.Context, arg UpdateMediaManagementParams) (MediaManagement, error) {
@@ -73,6 +79,8 @@ func (q *Queries) UpdateMediaManagement(ctx context.Context, arg UpdateMediaMana
 		arg.ImportExtraFiles,
 		arg.ExtraFileExtensions,
 		arg.UnmonitorDeletedEpisodes,
+		arg.RecycleBinPath,
+		arg.RecycleBinCleanupDays,
 	)
 	var i MediaManagement
 	err := row.Scan(
@@ -87,6 +95,8 @@ func (q *Queries) UpdateMediaManagement(ctx context.Context, arg UpdateMediaMana
 		&i.ImportExtraFiles,
 		&i.ExtraFileExtensions,
 		&i.UnmonitorDeletedEpisodes,
+		&i.RecycleBinPath,
+		&i.RecycleBinCleanupDays,
 	)
 	return i, err
 }

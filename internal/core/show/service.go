@@ -207,12 +207,23 @@ type seasonEntry struct {
 
 // Service manages TV series, seasons, and episodes.
 type Service struct {
-	q      db.Querier
-	meta   MetadataProvider
-	anime  AnimeLookup
-	bus    *events.Bus
-	logger *slog.Logger
+	q       db.Querier
+	meta    MetadataProvider
+	anime   AnimeLookup
+	bus     *events.Bus
+	logger  *slog.Logger
+	recycle Recycler
 }
+
+// Recycler removes a file, into the recycle bin when one is set.
+// Implemented by recyclebin.Service.
+type Recycler interface {
+	Delete(ctx context.Context, path, libraryRoot string) (recycledTo string, err error)
+}
+
+// SetRecycler installs the recycle bin used when a file is deleted from
+// disk. Without one, files are deleted permanently.
+func (s *Service) SetRecycler(r Recycler) { s.recycle = r }
 
 // NewService creates a new Service. meta may be nil; methods that require it
 // will return ErrMetadataNotConfigured. anime may be nil; when nil, no anime
@@ -1324,6 +1335,19 @@ func toNullString(s string) *string {
 
 // ── Episode file methods ──────────────────────────────────────────────────────
 
+// libraryRootFor returns the root folder of the series' library, or "".
+func (s *Service) libraryRootFor(ctx context.Context, seriesID string) string {
+	series, err := s.q.GetSeries(ctx, seriesID)
+	if err != nil {
+		return ""
+	}
+	lib, err := s.q.GetLibrary(ctx, series.LibraryID)
+	if err != nil {
+		return ""
+	}
+	return lib.RootPath
+}
+
 // ListFiles returns all episode files associated with the given series ID.
 func (s *Service) ListFiles(ctx context.Context, seriesID string) ([]db.EpisodeFile, error) {
 	files, err := s.q.ListEpisodeFilesBySeriesID(ctx, seriesID)
@@ -1346,7 +1370,11 @@ func (s *Service) DeleteFile(ctx context.Context, fileID string, deleteFromDisk 
 	}
 
 	if deleteFromDisk {
-		if rmErr := os.Remove(f.Path); rmErr != nil && !os.IsNotExist(rmErr) {
+		if s.recycle != nil {
+			if _, rmErr := s.recycle.Delete(ctx, f.Path, s.libraryRootFor(ctx, f.SeriesID)); rmErr != nil {
+				return fmt.Errorf("remove file from disk %q: %w", f.Path, rmErr)
+			}
+		} else if rmErr := os.Remove(f.Path); rmErr != nil && !os.IsNotExist(rmErr) {
 			return fmt.Errorf("remove file from disk %q: %w", f.Path, rmErr)
 		}
 	}

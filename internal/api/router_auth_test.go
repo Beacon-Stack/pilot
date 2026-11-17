@@ -32,6 +32,8 @@ import (
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/backup"
 	"github.com/beacon-stack/pilot/internal/core/health"
+	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
+	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/remotepath"
 	pilotdb "github.com/beacon-stack/pilot/internal/db"
@@ -62,18 +64,20 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	var pulseCalls atomic.Int32
 	h := NewRouter(RouterConfig{
-		Auth:                  config.Secret(apiKey),
-		Logger:                logger,
-		StartTime:             time.Now(),
-		DB:                    db,
-		DBType:                "sqlite",
-		DBPath:                dbPath,
-		WSHub:                 ws.NewHub(logger),
-		ReleaseProfileService: releaseprofile.NewService(dbgen.New(db)),
-		Queries:               dbgen.New(db),
-		HealthService:         health.NewService(dbgen.New(db), nil, nil),
-		RemotePathService:     remotepath.NewService(dbgen.New(db)),
-		BackupService:         backup.NewService(db, dbgen.New(db), dbPath),
+		Auth:                   config.Secret(apiKey),
+		Logger:                 logger,
+		StartTime:              time.Now(),
+		DB:                     db,
+		DBType:                 "sqlite",
+		DBPath:                 dbPath,
+		WSHub:                  ws.NewHub(logger),
+		ReleaseProfileService:  releaseprofile.NewService(dbgen.New(db)),
+		Queries:                dbgen.New(db),
+		HealthService:          health.NewService(dbgen.New(db), nil, nil),
+		RemotePathService:      remotepath.NewService(dbgen.New(db)),
+		BackupService:          backup.NewService(db, dbgen.New(db), dbPath),
+		MediaManagementService: mediamanagement.NewService(dbgen.New(db)),
+		RecycleBinService:      recyclebin.New(mediamanagement.NewService(dbgen.New(db)), logger),
 		PulseSyncHandler: func(w http.ResponseWriter, _ *http.Request) {
 			pulseCalls.Add(1)
 			w.WriteHeader(http.StatusAccepted)
@@ -144,6 +148,8 @@ var protectedEndpoints = []struct{ method, path string }{
 	{"GET", "/api/v1/system/health"},
 	{"GET", "/api/v1/remote-path-mappings"},
 	{"GET", "/api/v1/system/backups"},
+	{"POST", "/api/v1/recycle-bin/empty"},
+	{"PUT", "/api/v1/media-management"},
 	{"POST", "/api/v1/system/backups"},
 	{"GET", "/api/v1/system/backups/pilot-manual-20260101-000000.db/download"},
 	{"POST", "/api/v1/system/backups/pilot-manual-20260101-000000.db/restore"},
