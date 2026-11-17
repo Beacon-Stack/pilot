@@ -2,7 +2,7 @@
 
 ## Quality System
 
-- [x] **Quality groups in the profile gate** — done in plans/sonarr-parity.md B1. A profile's allowed list is now the rule, matched on resolution + source (`quality.Profile.Allows`, used by `decision.MeetsProfileMinimum`), so "Bluray only" rejects WEB-DL and "accept WEBRip as a fallback" means listing WEBRip. Still open: an editor in the UI for the allowed list (profiles currently come from Pulse or the Sonarr import).
+- [x] **Quality groups in the profile gate** — done in plans/sonarr-parity.md B1. A profile's allowed list is now the rule, matched on resolution + source (`quality.Profile.Allows`, used by `decision.MeetsProfileMinimum`), so "Bluray only" rejects WEB-DL and "accept WEBRip as a fallback" means listing WEBRip. The editor is in Settings > Quality Profiles (B1b).
 
 ## Release Search & Ranking
 
