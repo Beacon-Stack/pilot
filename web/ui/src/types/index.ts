@@ -390,16 +390,25 @@ export interface CalendarEpisode {
 
 // ── Wanted ────────────────────────────────────────────────────────────────────
 
+// Matches wantedEpisodeBody in internal/api/v1/wanted.go.
 export interface WantedEpisode {
-  id: string;
+  episode_id: string;
   series_id: string;
   series_title: string;
   season_number: number;
   episode_number: number;
-  title: string;
+  episode_title: string;
   air_date?: string;
   has_file: boolean;
   monitored: boolean;
+  /** Cutoff-unmet list only. */
+  current_quality?: string;
+  cutoff_quality?: string;
+}
+
+export interface WantedSearchResult {
+  queued: number;
+  message: string;
 }
 
 export interface WantedResponse {
