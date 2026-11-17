@@ -32,6 +32,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/backup"
 	"github.com/beacon-stack/pilot/internal/core/health"
+	"github.com/beacon-stack/pilot/internal/core/importer"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
@@ -80,6 +81,7 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 		MediaManagementService: mediamanagement.NewService(dbgen.New(db)),
 		RecycleBinService:      recyclebin.New(mediamanagement.NewService(dbgen.New(db)), logger),
 		SeriesBulkService:      seriesbulk.New(db, nil, nil, logger),
+		ImporterService:        importer.NewService(dbgen.New(db), nil, logger, mediamanagement.NewService(dbgen.New(db)), nil, nil),
 		PulseSyncHandler: func(w http.ResponseWriter, _ *http.Request) {
 			pulseCalls.Add(1)
 			w.WriteHeader(http.StatusAccepted)
@@ -153,6 +155,8 @@ var protectedEndpoints = []struct{ method, path string }{
 	{"POST", "/api/v1/recycle-bin/empty"},
 	{"PUT", "/api/v1/series/bulk"},
 	{"POST", "/api/v1/series/bulk/delete"},
+	{"POST", "/api/v1/manual-import/scan"},
+	{"POST", "/api/v1/manual-import"},
 	{"PUT", "/api/v1/media-management"},
 	{"POST", "/api/v1/system/backups"},
 	{"GET", "/api/v1/system/backups/pilot-manual-20260101-000000.db/download"},
