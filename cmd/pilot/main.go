@@ -81,6 +81,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stallwatcher"
 	"github.com/beacon-stack/pilot/internal/core/stats"
+	"github.com/beacon-stack/pilot/internal/core/unmapped"
 	"github.com/beacon-stack/pilot/internal/db"
 	dbgen "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
@@ -335,7 +336,8 @@ func run() error {
 	// ── Scheduler ─────────────────────────────────────────────────────────────
 	sched := scheduler.New(logger)
 	sched.Add(jobs.QueuePoll(queueSvc, 30*time.Second, logger))
-	sched.Add(jobs.LibraryScan(librarySvc, showSvc, queries, logger))
+	unmappedSvc := unmapped.New(queries, showSvc)
+	sched.Add(jobs.LibraryScan(librarySvc, showSvc, unmappedSvc, queries, logger))
 	sched.Add(jobs.RSSSync(indexerSvc, queries, downloaderSvc, blocklistSvc, qualitySvc, logger))
 	sched.Add(jobs.DownloadCleanup(queries, downloaderSvc, blocklistSvc, logger))
 	sched.Add(jobs.RefreshMetadata(showSvc, logger))
@@ -402,6 +404,7 @@ func run() error {
 		BackupService:          backupSvc,
 		RecycleBinService:      recycleSvc,
 		SeriesBulkService:      seriesbulk.New(database.SQL, recycleSvc, bus, logger),
+		UnmappedService:        unmappedSvc,
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),
 	})
 

@@ -299,3 +299,16 @@ type StatsSnapshot struct {
 	TotalSizeBytes    int64  `json:"totalSizeBytes"`
 	SnapshotAt        string `json:"snapshotAt"`
 }
+
+type UnmappedFolder struct {
+	ID              string `json:"id"`
+	LibraryID       string `json:"libraryId"`
+	Path            string `json:"path"`
+	Name            string `json:"name"`
+	GuessTmdbID     int64  `json:"guessTmdbId"`
+	GuessTitle      string `json:"guessTitle"`
+	GuessYear       int64  `json:"guessYear"`
+	GuessPosterPath string `json:"guessPosterPath"`
+	Ignored         bool   `json:"ignored"`
+	FirstSeenAt     string `json:"firstSeenAt"`
+}

@@ -3,7 +3,6 @@ package jobs
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -17,6 +16,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/library"
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/show"
+	"github.com/beacon-stack/pilot/internal/core/unmapped"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -48,10 +48,11 @@ var yearSuffixRe = regexp.MustCompile(`[\s.(]+(?:19|20)\d{2}[\s.)]*$`)
 // releaseTagsRe strips common release tags from folder names.
 var releaseTagsRe = regexp.MustCompile(`(?i)[\s.\[(-]*(720p|1080p|2160p|4k|bluray|brrip|webrip|web-dl|hdtv|dvdrip|x264|x265|h\.?264|h\.?265|aac|dts|atmos|proper|repack|complete|season|s\d{1,2}).*$`)
 
-// LibraryScan returns a Job that walks all library root directories, discovers
-// new shows from folder names (auto-adding via TMDB), then matches video files
-// to known series/episodes and creates episode_file records.
-func LibraryScan(libSvc *library.Service, showSvc *show.Service, q db.Querier, logger *slog.Logger) scheduler.Job {
+// LibraryScan returns a Job that walks all library root directories, records
+// folders no series claims for review (they are not added automatically; see
+// internal/core/unmapped), then matches video files to known series/episodes
+// and creates episode_file records.
+func LibraryScan(libSvc *library.Service, showSvc *show.Service, um *unmapped.Service, q db.Querier, logger *slog.Logger) scheduler.Job {
 	return scheduler.Job{
 		Name:     "library_scan",
 		Interval: libraryScanInterval,
@@ -59,7 +60,7 @@ func LibraryScan(libSvc *library.Service, showSvc *show.Service, q db.Querier, l
 			logger.Info("task started", "task", "library_scan")
 			start := time.Now()
 
-			if err := runLibraryScan(ctx, libSvc, showSvc, q, logger); err != nil {
+			if err := runLibraryScan(ctx, libSvc, showSvc, um, q, logger); err != nil {
 				logger.Warn("task failed",
 					"task", "library_scan",
 					"error", err,
@@ -77,15 +78,21 @@ func LibraryScan(libSvc *library.Service, showSvc *show.Service, q db.Querier, l
 }
 
 // runLibraryScan performs the actual scan work.
-func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.Service, q db.Querier, logger *slog.Logger) error {
+func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.Service, um *unmapped.Service, q db.Querier, logger *slog.Logger) error {
 	libs, err := libSvc.List(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Phase 1: Discover new shows from folder names and auto-add via TMDB.
-	for _, lib := range libs {
-		discoverShows(ctx, lib, showSvc, logger)
+	// Phase 1: record folders no series claims, for the user to review.
+	// Nothing is added automatically: a wrong TMDB hit used to add the
+	// wrong show and attach files to it.
+	if um != nil {
+		for _, lib := range libs {
+			if err := um.Discover(ctx, lib.ID, lib.RootPath); err != nil {
+				logger.Warn("library scan: recording unmapped folders failed", "library_id", lib.ID, "error", err)
+			}
+		}
 	}
 
 	// Phase 2: Match video files to known series/episodes.
@@ -108,96 +115,6 @@ func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.
 		}
 	}
 	return nil
-}
-
-// discoverShows reads top-level directories in a library root, extracts show
-// names, searches TMDB, and auto-adds any that aren't already in the database.
-func discoverShows(ctx context.Context, lib library.Library, showSvc *show.Service, logger *slog.Logger) {
-	entries, err := os.ReadDir(lib.RootPath)
-	if err != nil {
-		logger.Warn("library scan: cannot read library root",
-			"library_id", lib.ID,
-			"root_path", lib.RootPath,
-			"error", err,
-		)
-		return
-	}
-
-	// Build set of titles already in this library for quick skip.
-	existing, err := showSvc.List(ctx, show.ListRequest{LibraryID: lib.ID, Page: 1, PerPage: 10000})
-	if err != nil {
-		logger.Warn("library scan: cannot list existing series", "error", err)
-		return
-	}
-	existingTitles := make(map[string]bool, len(existing.Series))
-	for _, s := range existing.Series {
-		existingTitles[strings.ToLower(s.Title)] = true
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		showTitle := cleanFolderName(entry.Name())
-		if showTitle == "" {
-			continue
-		}
-
-		// Skip if we already have this show (case-insensitive).
-		if existingTitles[strings.ToLower(showTitle)] {
-			continue
-		}
-
-		// Search TMDB for this show title.
-		results, err := showSvc.Lookup(ctx, show.LookupRequest{Query: showTitle})
-		if err != nil {
-			logger.Warn("library scan: TMDB lookup failed",
-				"title", showTitle,
-				"folder", entry.Name(),
-				"error", err,
-			)
-			continue
-		}
-		if len(results) == 0 {
-			logger.Info("library scan: no TMDB match for folder",
-				"title", showTitle,
-				"folder", entry.Name(),
-			)
-			continue
-		}
-
-		// Use the top result.
-		best := results[0]
-		logger.Info("library scan: auto-adding series from folder",
-			"folder", entry.Name(),
-			"matched_title", best.Title,
-			"tmdb_id", best.ID,
-		)
-
-		_, addErr := showSvc.Add(ctx, show.AddRequest{
-			TMDBID:           best.ID,
-			LibraryID:        lib.ID,
-			QualityProfileID: lib.DefaultQualityProfileID,
-			Monitored:        true,
-			MonitorType:      "existing",
-			SeriesType:       "standard",
-		})
-		if addErr != nil {
-			if errors.Is(addErr, show.ErrAlreadyExists) {
-				continue
-			}
-			logger.Warn("library scan: failed to auto-add series",
-				"title", best.Title,
-				"tmdb_id", best.ID,
-				"error", addErr,
-			)
-			continue
-		}
-
-		// Track it so we don't try again for a duplicate folder variant.
-		existingTitles[strings.ToLower(best.Title)] = true
-	}
 }
 
 // cleanFolderName normalizes a directory name into a human-readable show title
@@ -248,10 +165,16 @@ func scanLibraryFiles(
 		return err
 	}
 
-	// Build a lowercase-title → Series map for fuzzy matching.
+	// Build a lowercase-title → Series map for fuzzy matching, and a
+	// folder → Series map for series pointed at a folder (confirmed
+	// unmapped folders, whose names may not match the show's title).
 	seriesByTitle := make(map[string]show.Series, len(result.Series))
+	seriesByFolder := make(map[string]show.Series, len(result.Series))
 	for _, s := range result.Series {
 		seriesByTitle[strings.ToLower(s.Title)] = s
+		if s.Path != "" {
+			seriesByFolder[filepath.Clean(s.Path)] = s
+		}
 	}
 
 	return filepath.WalkDir(lib.RootPath, func(path string, d os.DirEntry, werr error) error {
@@ -269,7 +192,7 @@ func scanLibraryFiles(
 			return nil // already tracked
 		}
 
-		if err := importScannedFile(ctx, path, lib, seriesByTitle, showSvc, q, logger); err != nil {
+		if err := importScannedFile(ctx, path, lib, seriesByTitle, seriesByFolder, showSvc, q, logger); err != nil {
 			logger.Warn("library scan: import failed", "path", path, "error", err)
 		}
 		return nil
@@ -283,6 +206,7 @@ func importScannedFile(
 	path string,
 	lib library.Library,
 	seriesByTitle map[string]show.Series,
+	seriesByFolder map[string]show.Series,
 	showSvc *show.Service,
 	q db.Querier,
 	logger *slog.Logger,
@@ -295,8 +219,17 @@ func importScannedFile(
 		return nil
 	}
 
-	// Try matching parsed show title first.
-	series, ok := seriesByTitle[strings.ToLower(parsed.ShowTitle)]
+	// A series pointed at this file's top-level folder claims it first.
+	var series show.Series
+	ok := false
+	if rel, err := filepath.Rel(lib.RootPath, path); err == nil {
+		topDir := strings.SplitN(rel, string(filepath.Separator), 2)[0]
+		series, ok = seriesByFolder[filepath.Join(lib.RootPath, topDir)]
+	}
+	// Then the parsed show title.
+	if !ok {
+		series, ok = seriesByTitle[strings.ToLower(parsed.ShowTitle)]
+	}
 	if !ok {
 		// Fallback: try matching against the top-level folder name within the library root.
 		rel, err := filepath.Rel(lib.RootPath, path)

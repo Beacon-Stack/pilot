@@ -38,6 +38,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/remotepath"
 	"github.com/beacon-stack/pilot/internal/core/seriesbulk"
+	"github.com/beacon-stack/pilot/internal/core/unmapped"
 	pilotdb "github.com/beacon-stack/pilot/internal/db"
 	dbgen "github.com/beacon-stack/pilot/internal/db/generated"
 )
@@ -82,6 +83,7 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 		RecycleBinService:      recyclebin.New(mediamanagement.NewService(dbgen.New(db)), logger),
 		SeriesBulkService:      seriesbulk.New(db, nil, nil, logger),
 		ImporterService:        importer.NewService(dbgen.New(db), nil, logger, mediamanagement.NewService(dbgen.New(db)), nil, nil),
+		UnmappedService:        unmapped.New(dbgen.New(db), nil),
 		PulseSyncHandler: func(w http.ResponseWriter, _ *http.Request) {
 			pulseCalls.Add(1)
 			w.WriteHeader(http.StatusAccepted)
@@ -157,6 +159,9 @@ var protectedEndpoints = []struct{ method, path string }{
 	{"POST", "/api/v1/series/bulk/delete"},
 	{"POST", "/api/v1/manual-import/scan"},
 	{"POST", "/api/v1/manual-import"},
+	{"GET", "/api/v1/library/unmapped-folders"},
+	{"POST", "/api/v1/library/unmapped-folders/x/add"},
+	{"POST", "/api/v1/library/unmapped-folders/x/ignore"},
 	{"PUT", "/api/v1/media-management"},
 	{"POST", "/api/v1/system/backups"},
 	{"GET", "/api/v1/system/backups/pilot-manual-20260101-000000.db/download"},
