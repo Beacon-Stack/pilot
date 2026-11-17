@@ -179,3 +179,15 @@ func TestQualityFromGrab_SetsName(t *testing.T) {
 		t.Fatalf("Name = %q, want it to include the resolution", q.Name)
 	}
 }
+
+// The revision isn't a grab_history column; it must be recovered from the
+// release title, or an imported PROPER looks like an original and RSS
+// sync grabs the same PROPER again.
+func TestQualityFromGrab_SetsRevision(t *testing.T) {
+	if got := qualityFromGrab(db.GrabHistory{ReleaseTitle: "Show.S01E01.PROPER.1080p.WEB-DL-GRP"}).Revision; got != 2 {
+		t.Fatalf("revision = %d, want 2", got)
+	}
+	if got := qualityFromGrab(db.GrabHistory{ReleaseTitle: "Show.S01E01.1080p.WEB-DL-GRP"}).EffectiveRevision(); got != 1 {
+		t.Fatalf("revision = %d, want 1", got)
+	}
+}

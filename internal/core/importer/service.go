@@ -679,6 +679,10 @@ func qualityFromGrab(g db.GrabHistory) plugin.Quality {
 		HDR:        plugin.HDRFormat(g.ReleaseHdr),
 	}
 	q.Name = releaseparser.QualityName(q)
+	// The revision (PROPER/REPACK) isn't a grab_history column; recover it
+	// from the release title. Without it an imported PROPER looks like an
+	// original, and RSS sync would grab the same PROPER again as an upgrade.
+	q.Revision = releaseparser.Parse(g.ReleaseTitle).Revision.Version
 	return q
 }
 

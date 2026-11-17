@@ -14,6 +14,7 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
+	"github.com/beacon-stack/pilot/internal/core/decision"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	"github.com/beacon-stack/pilot/internal/core/parser"
@@ -287,20 +288,14 @@ func applyQualityProfile(results []indexer.SearchResult, profile *quality.Profil
 	if profile == nil {
 		return
 	}
-	// Score formula is resolution*100 + source*10 + codec, so integer-
-	// dividing by 100 isolates the resolution score. Anything below the
-	// cutoff's resolution digit is stamped as below_quality_profile.
-	cutoffResScore := profile.Cutoff.Score() / 100
-	if cutoffResScore == 0 {
-		return // cutoff not meaningfully set
-	}
+	// One rule shared with RSS sync: see decision.MeetsProfileMinimum.
 	for i := range results {
 		q := results[i].Quality
 		if q.Resolution == "" && q.Source == "" {
 			q = plugin.ParseQualityFromTitle(results[i].Title)
 		}
-		if q.Score()/100 < cutoffResScore {
-			results[i].FilterReasons = append(results[i].FilterReasons, "below_quality_profile")
+		if !decision.MeetsProfileMinimum(q, profile) {
+			results[i].FilterReasons = append(results[i].FilterReasons, decision.ReasonBelowProfile)
 		}
 	}
 }

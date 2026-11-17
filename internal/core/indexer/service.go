@@ -453,6 +453,10 @@ func withParsedQuality(title string, q plugin.Quality) plugin.Quality {
 	return q
 }
 
+// RanksAbove reports whether a ranks above b under the search ranking.
+// RSS sync uses it to pick the best of several releases for one episode.
+func RanksAbove(a, b SearchResult) bool { return searchResultLess(a, b) }
+
 // searchResultLess is the ranking comparator for search results. Tiers, in
 // order:
 //  1. Quality score   (1080p > 720p > 480p). Quality trumps all.
