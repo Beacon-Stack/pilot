@@ -505,4 +505,3 @@ func hdrFromStream(colorTransfer string, sideData []struct {
 		return plugin.HDRNone
 	}
 }
-
