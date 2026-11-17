@@ -69,12 +69,18 @@ func newSvc(q db.Querier, r AbsoluteEpisodeResolver) *Service {
 type outcomeQuerier struct {
 	db.Querier
 	importStates []db.SetGrabImportStateParams
+	attempts     []db.NoteGrabImportAttemptParams
 	blocklisted  []db.CreateBlocklistEntryParams
 	grab         db.GrabHistory
 }
 
 func (q *outcomeQuerier) SetGrabImportState(_ context.Context, arg db.SetGrabImportStateParams) error {
 	q.importStates = append(q.importStates, arg)
+	return nil
+}
+
+func (q *outcomeQuerier) NoteGrabImportAttempt(_ context.Context, arg db.NoteGrabImportAttemptParams) error {
+	q.attempts = append(q.attempts, arg)
 	return nil
 }
 
@@ -99,7 +105,7 @@ func newOutcomeSvc(q db.Querier) *Service {
 
 func TestRecordImportOutcome_SuccessRecordsImported(t *testing.T) {
 	q := &outcomeQuerier{}
-	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", nil)
+	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", "/downloads/x", nil)
 
 	if len(q.importStates) != 1 || q.importStates[0].ImportStatus != "imported" || q.importStates[0].ImportedAt == "" {
 		t.Fatalf("import states = %+v, want one 'imported' with timestamp", q.importStates)
@@ -122,7 +128,7 @@ func TestRecordImportOutcome_HardFailureBlocklists(t *testing.T) {
 		ReleaseTitle: "Fake.exe", Protocol: "torrent", IndexerID: &idx, InfoHash: &hash,
 	}}
 	hardErr := fmt.Errorf("%w: not a recognised video extension: %q", ErrUnimportableContent, ".exe")
-	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", hardErr)
+	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", "/downloads/x", hardErr)
 
 	if len(q.importStates) != 1 || q.importStates[0].ImportStatus != "failed" {
 		t.Fatalf("import states = %+v, want one 'failed'", q.importStates)
@@ -143,13 +149,40 @@ func TestRecordImportOutcome_HardFailureBlocklists(t *testing.T) {
 // blocklist — the release itself may be perfectly fine.
 func TestRecordImportOutcome_SoftFailureDoesNotBlocklist(t *testing.T) {
 	q := &outcomeQuerier{grab: db.GrabHistory{ID: "g1"}}
-	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", fmt.Errorf("stat content path: transient"))
+	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", "/downloads/x", fmt.Errorf("stat content path: transient"))
 
 	if len(q.importStates) != 1 || q.importStates[0].ImportStatus != "failed" {
 		t.Fatalf("import states = %+v, want one 'failed'", q.importStates)
 	}
 	if len(q.blocklisted) != 0 {
 		t.Fatalf("soft failure must not blocklist, got %d entries", len(q.blocklisted))
+	}
+}
+
+// Retry bookkeeping: a soft failure keeps its content path and spends one
+// attempt, so RetryFailedImports can re-run it later.
+func TestRecordImportOutcome_SoftFailureNotesRetryableAttempt(t *testing.T) {
+	q := &outcomeQuerier{grab: db.GrabHistory{ID: "g1"}}
+	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", "/downloads/x", fmt.Errorf("mkdir /tv/Show: permission denied"))
+
+	if len(q.attempts) != 1 {
+		t.Fatalf("attempts noted = %d, want 1", len(q.attempts))
+	}
+	a := q.attempts[0]
+	if a.ContentPath != "/downloads/x" || a.MinAttempts != 0 || a.AttemptedAt == "" {
+		t.Fatalf("attempt = %+v, want content path kept, MinAttempts=0, timestamp set", a)
+	}
+}
+
+// A hard failure must exhaust the retry budget immediately: re-importing a
+// .exe can never succeed, and download_cleanup deletes it anyway.
+func TestRecordImportOutcome_HardFailureExhaustsRetryBudget(t *testing.T) {
+	q := &outcomeQuerier{grab: db.GrabHistory{ID: "g1"}}
+	hardErr := fmt.Errorf("%w: not a recognised video extension: %q", ErrUnimportableContent, ".scr")
+	newOutcomeSvc(q).recordImportOutcome(context.Background(), "g1", "/downloads/x.scr", hardErr)
+
+	if len(q.attempts) != 1 || q.attempts[0].MinAttempts != MaxImportAttempts {
+		t.Fatalf("attempts = %+v, want MinAttempts=%d", q.attempts, MaxImportAttempts)
 	}
 }
 

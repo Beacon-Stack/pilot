@@ -98,3 +98,24 @@ LIMIT ?;
 -- cleanup removed the torrent. download_status stays 'completed' --
 -- the grab did succeed; only the client-side artifact is gone.
 UPDATE grab_history SET client_item_id = NULL WHERE id = ?;
+
+-- name: NoteGrabImportAttempt :exec
+-- Bookkeeping for automatic import retry, written alongside
+-- SetGrabImportState. content_path is only overwritten with a non-empty
+-- value; min_attempts lets a hard failure exhaust the retry budget.
+UPDATE grab_history SET
+    content_path           = COALESCE(NULLIF(CAST(sqlc.arg('content_path') AS TEXT), ''), content_path),
+    import_attempts        = MAX(import_attempts + 1, CAST(sqlc.arg('min_attempts') AS INTEGER)),
+    import_last_attempt_at = CAST(sqlc.arg('attempted_at') AS TEXT)
+WHERE id = sqlc.arg('id');
+
+-- name: ListFailedImports :many
+-- Completed downloads whose import failed and that still have retry
+-- budget. Oldest attempt first so a backlog drains fairly.
+SELECT * FROM grab_history
+WHERE import_status = 'failed'
+  AND download_status = 'completed'
+  AND content_path != ''
+  AND import_attempts < sqlc.arg('max_attempts')
+ORDER BY import_last_attempt_at ASC
+LIMIT sqlc.arg('limit');

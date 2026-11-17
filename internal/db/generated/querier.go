@@ -130,6 +130,9 @@ type Querier interface {
 	ListEpisodesBySeasonID(ctx context.Context, seasonID string) ([]Episode, error)
 	ListEpisodesBySeriesID(ctx context.Context, seriesID string) ([]Episode, error)
 	ListExcludedTMDBIDs(ctx context.Context) ([]int64, error)
+	// Completed downloads whose import failed and that still have retry
+	// budget. Oldest attempt first so a backlog drains fairly.
+	ListFailedImports(ctx context.Context, arg ListFailedImportsParams) ([]GrabHistory, error)
 	ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams) ([]GrabHistory, error)
 	ListGrabHistoryByEpisode(ctx context.Context, episodeID *string) ([]GrabHistory, error)
 	ListGrabHistoryBySeries(ctx context.Context, seriesID string) ([]GrabHistory, error)
@@ -168,6 +171,10 @@ type Querier interface {
 	ListStatsSnapshots(ctx context.Context, limit int64) ([]StatsSnapshot, error)
 	ListStorageSnapshots(ctx context.Context, limit int64) ([]ListStorageSnapshotsRow, error)
 	MarkGrabRemoved(ctx context.Context, id string) error
+	// Bookkeeping for automatic import retry, written alongside
+	// SetGrabImportState. content_path is only overwritten with a non-empty
+	// value; min_attempts lets a hard failure exhaust the retry budget.
+	NoteGrabImportAttempt(ctx context.Context, arg NoteGrabImportAttemptParams) error
 	PruneActivities(ctx context.Context, createdAt string) error
 	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (int64, error)
 	SetGrabImportState(ctx context.Context, arg SetGrabImportStateParams) error

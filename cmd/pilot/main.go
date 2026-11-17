@@ -329,6 +329,7 @@ func run() error {
 	sched.Add(jobs.ImportListSync(importListSvc, logger))
 	sched.Add(jobs.ActivityPrune(activitySvc, logger))
 	sched.Add(jobs.FileExistenceReconciler(queries, bus, logger))
+	sched.Add(jobs.ImportRetry(importerSvc, logger))
 
 	// ── Pulse integration (optional) ──────────────────────────────────────────
 	pulseIntegration, err := pulseint.New(cfg.Pulse, cfg.Server.Host, cfg.Server.Port, cfg.Auth.APIKey.Value(), logger)
