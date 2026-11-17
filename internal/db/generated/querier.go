@@ -63,6 +63,8 @@ type Querier interface {
 	DeleteLibrary(ctx context.Context, id string) error
 	DeleteMediaServerConfig(ctx context.Context, id string) error
 	DeleteNotificationConfig(ctx context.Context, id string) error
+	DeletePendingRelease(ctx context.Context, id string) error
+	DeletePendingReleaseByEpisode(ctx context.Context, episodeID string) error
 	DeleteQualityProfile(ctx context.Context, id string) error
 	DeleteReleaseProfile(ctx context.Context, id string) error
 	DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error
@@ -155,6 +157,8 @@ type Querier interface {
 	ListMissingEpisodesWithSeries(ctx context.Context, arg ListMissingEpisodesWithSeriesParams) ([]ListMissingEpisodesWithSeriesRow, error)
 	ListMonitoredSeries(ctx context.Context) ([]Series, error)
 	ListNotificationConfigs(ctx context.Context) ([]NotificationConfig, error)
+	ListPendingReleases(ctx context.Context) ([]PendingRelease, error)
+	ListPendingReleasesWithSeries(ctx context.Context) ([]ListPendingReleasesWithSeriesRow, error)
 	ListQualityDefinitions(ctx context.Context) ([]QualityDefinition, error)
 	ListQualityProfiles(ctx context.Context) ([]QualityProfile, error)
 	ListReleaseProfiles(ctx context.Context) ([]ReleaseProfile, error)
@@ -216,6 +220,7 @@ type Querier interface {
 	UpdateSeries(ctx context.Context, arg UpdateSeriesParams) (Series, error)
 	UpdateSeriesMetadata(ctx context.Context, arg UpdateSeriesMetadataParams) (Series, error)
 	UpsertAnimeCourMonitored(ctx context.Context, arg UpsertAnimeCourMonitoredParams) error
+	UpsertPendingRelease(ctx context.Context, arg UpsertPendingReleaseParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,9 +10,12 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
+
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/decision"
+	"github.com/beacon-stack/pilot/internal/core/delay"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	"github.com/beacon-stack/pilot/internal/core/quality"
@@ -86,6 +90,19 @@ func runRSSSync(
 		// Non-fatal: partial results from other indexers may still be useful.
 		logger.Warn("some indexers failed during RSS fetch", "error", fetchErr)
 	}
+	// Releases held back by the delay profile on earlier runs compete with
+	// this run's releases (see mergePending).
+	delayProfile, err := delay.NewStore(q).Get(ctx)
+	if err != nil {
+		logger.Warn("rss_sync: could not load delay profile; using no delay", "error", err)
+		delayProfile = delay.Default()
+	}
+	now := time.Now().UTC()
+	pendingRows, err := q.ListPendingReleases(ctx)
+	if err != nil {
+		logger.Warn("rss_sync: could not list pending releases", "error", err)
+	}
+	releases, pendingEligible := mergePending(releases, pendingRows, logger)
 	if len(releases) == 0 {
 		return 0, nil
 	}
@@ -155,6 +172,7 @@ func runRSSSync(
 		profile:           profileLookup(profiles),
 		active:            activeEpisodes,
 		recentlyCompleted: recentlyCompletedEpisodes,
+		delay:             delayProfile,
 		blocked: func(ctx context.Context, guid string) bool {
 			// Blocklist guard. Interactive/manual search always filtered on
 			// the blocklist; RSS never did — so a blocklisted fake (stalled
@@ -171,11 +189,29 @@ func runRSSSync(
 		logger: logger,
 	})
 
-	// 6. Grab each pick.
-	var grabbed int
+	// 6. Hold picks still inside their delay as pending; grab the rest.
+	toGrab, toHold := planRSSGrabs(picks, delayProfile, now, pendingEligible)
+	pickedEpisodes := make(map[string]bool, len(picks))
 	for _, pick := range picks {
+		pickedEpisodes[pick.Episode.ID] = true
+	}
+	for _, pick := range toHold {
+		holdPending(ctx, q, pick, eligibleAt(pick, delayProfile, now, pendingEligible), logger)
+	}
+	// A pending release whose episode got no pick this run is no longer
+	// wanted (file imported, unmonitored, blocklisted, ...).
+	for _, row := range pendingRows {
+		if !pickedEpisodes[row.EpisodeID] {
+			_ = q.DeletePendingRelease(ctx, row.ID)
+		}
+	}
+
+	var grabbed int
+	for _, pick := range toGrab {
 		rel, matched, ep := pick.Release, pick.Series, pick.Episode
 		sn, epNum := int(ep.SeasonNumber), int(ep.EpisodeNumber)
+		// Whatever was pending for this episode is replaced by this grab.
+		_ = q.DeletePendingReleaseByEpisode(ctx, ep.ID)
 
 		// Submit to a download client.
 		dcID, itemID, err := dlSvc.Add(ctx, rel.Release, nil)
@@ -271,6 +307,7 @@ type rssEnv struct {
 	active            map[string]bool
 	recentlyCompleted map[string]bool
 	blocked           func(ctx context.Context, guid string) bool
+	delay             delay.Profile
 	logger            *slog.Logger
 }
 
@@ -279,7 +316,95 @@ type rssPick struct {
 	Release indexer.SearchResult
 	Series  db.Series
 	Episode db.Episode
-	Upgrade bool // the episode already had a file
+	Upgrade bool             // the episode already had a file
+	Profile *quality.Profile // the series' quality profile (nil if none)
+}
+
+// rssRanksAbove ranks two releases for the same episode: the search
+// ranking, except that between releases of equal quality and revision on
+// different protocols, the delay profile's preferred protocol wins.
+func rssRanksAbove(a, b indexer.SearchResult, d delay.Profile) bool {
+	if a.QualityScore == b.QualityScore &&
+		a.Quality.EffectiveRevision() == b.Quality.EffectiveRevision() &&
+		a.Protocol != b.Protocol {
+		return d.Preferred(a.Protocol)
+	}
+	return indexer.RanksAbove(a, b)
+}
+
+// mergePending adds stored pending releases to this run's candidates so
+// they compete with new releases, and returns when each may be grabbed
+// (by GUID). Their stored eligible_at is used, not a recomputed one: the
+// stored release's age is from when it was first seen.
+func mergePending(releases []indexer.SearchResult, rows []db.PendingRelease, logger *slog.Logger) ([]indexer.SearchResult, map[string]time.Time) {
+	eligible := make(map[string]time.Time, len(rows))
+	seen := make(map[string]bool, len(releases))
+	for _, r := range releases {
+		seen[r.GUID] = true
+	}
+	for _, row := range rows {
+		var rel indexer.SearchResult
+		if err := json.Unmarshal([]byte(row.ReleaseJson), &rel); err != nil {
+			logger.Warn("rss_sync: unreadable pending release", "id", row.ID, "error", err)
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, row.EligibleAt)
+		if err != nil {
+			continue
+		}
+		eligible[rel.GUID] = at
+		if !seen[rel.GUID] {
+			releases = append(releases, rel)
+			seen[rel.GUID] = true
+		}
+	}
+	return releases, eligible
+}
+
+func eligibleAt(p rssPick, d delay.Profile, now time.Time, pending map[string]time.Time) time.Time {
+	if at, ok := pending[p.Release.GUID]; ok {
+		return at
+	}
+	return d.EligibleAt(p.Release.Protocol, p.Release.AgeDays, now)
+}
+
+// planRSSGrabs splits picks into those to grab now and those to hold as
+// pending: a pick is grabbed when its delay has passed or it bypasses the
+// delay (the best quality its profile allows).
+func planRSSGrabs(picks []rssPick, d delay.Profile, now time.Time, pending map[string]time.Time) (grab, hold []rssPick) {
+	for _, p := range picks {
+		if d.Bypasses(p.Release.Quality, p.Profile) || !eligibleAt(p, d, now, pending).After(now) {
+			grab = append(grab, p)
+		} else {
+			hold = append(hold, p)
+		}
+	}
+	return grab, hold
+}
+
+// holdPending stores pick as the episode's pending release, replacing any
+// earlier one (it won the ranking against it in selectRSSGrabs).
+func holdPending(ctx context.Context, q db.Querier, p rssPick, at time.Time, logger *slog.Logger) {
+	b, err := json.Marshal(p.Release)
+	if err != nil {
+		return
+	}
+	if err := q.UpsertPendingRelease(ctx, db.UpsertPendingReleaseParams{
+		ID:           uuid.New().String(),
+		SeriesID:     p.Series.ID,
+		EpisodeID:    p.Episode.ID,
+		ReleaseTitle: p.Release.Title,
+		Protocol:     string(p.Release.Protocol),
+		QualityName:  p.Release.Quality.Name,
+		ReleaseJson:  string(b),
+		EligibleAt:   at.UTC().Format(time.RFC3339),
+		AddedAt:      time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		logger.Warn("rss_sync: could not store pending release", "release", p.Release.Title, "error", err)
+		return
+	}
+	logger.Info("rss_sync: holding release for the delay profile",
+		"release", p.Release.Title, "episode_id", p.Episode.ID, "eligible_at", at.UTC().Format(time.RFC3339))
 }
 
 // selectRSSGrabs decides which RSS releases to grab. For each monitored
@@ -328,6 +453,9 @@ func selectRSSGrabs(ctx context.Context, releases []indexer.SearchResult, env rs
 		if env.blocked(ctx, rel.GUID) {
 			continue
 		}
+		if !env.delay.Allows(rel.Protocol) {
+			continue // protocol turned off in the delay profile
+		}
 		if hasFilterReason(rel.FilterReasons, releaseprofile.FilterReason) {
 			continue // rejected by a release profile (tagged in GetRecent)
 		}
@@ -371,11 +499,11 @@ func selectRSSGrabs(ctx context.Context, releases []indexer.SearchResult, env rs
 			continue
 		}
 
-		pick := rssPick{Release: rel, Series: matched, Episode: ep, Upgrade: cur != nil}
+		pick := rssPick{Release: rel, Series: matched, Episode: ep, Upgrade: cur != nil, Profile: prof}
 		prev, seen := best[ep.ID]
 		if !seen {
 			order = append(order, ep.ID)
-		} else if !indexer.RanksAbove(rel, prev.Release) {
+		} else if !rssRanksAbove(rel, prev.Release, env.delay) {
 			continue
 		}
 		best[ep.ID] = pick

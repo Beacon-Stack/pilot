@@ -187,6 +187,18 @@ type NotificationConfig struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
+type PendingRelease struct {
+	ID           string `json:"id"`
+	SeriesID     string `json:"seriesId"`
+	EpisodeID    string `json:"episodeId"`
+	ReleaseTitle string `json:"releaseTitle"`
+	Protocol     string `json:"protocol"`
+	QualityName  string `json:"qualityName"`
+	ReleaseJson  string `json:"releaseJson"`
+	EligibleAt   string `json:"eligibleAt"`
+	AddedAt      string `json:"addedAt"`
+}
+
 type QualityDefinition struct {
 	ID            string  `json:"id"`
 	Name          string  `json:"name"`

@@ -7,10 +7,13 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
+	"github.com/beacon-stack/pilot/internal/core/delay"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
@@ -38,6 +41,7 @@ type rssFixture struct {
 	active   map[string]bool
 	recent   map[string]bool
 	blocked  map[string]bool
+	delay    delay.Profile
 }
 
 func newRSSFixture() *rssFixture {
@@ -54,6 +58,7 @@ func newRSSFixture() *rssFixture {
 		active:  map[string]bool{},
 		recent:  map[string]bool{},
 		blocked: map[string]bool{},
+		delay:   delay.Default(),
 	}
 }
 
@@ -81,6 +86,7 @@ func (f *rssFixture) run(releases ...indexer.SearchResult) []rssPick {
 		active:            f.active,
 		recentlyCompleted: f.recent,
 		blocked:           func(_ context.Context, guid string) bool { return f.blocked[guid] },
+		delay:             f.delay,
 		logger:            slog.New(slog.DiscardHandler),
 	})
 }
@@ -242,4 +248,116 @@ func TestRSS_ReleaseProfileRejectsAreSkipped(t *testing.T) {
 	if len(picks) != 1 || picks[0].Release.GUID != "ok" {
 		t.Fatalf("picks = %v, want only the untagged release", titles(picks))
 	}
+}
+
+// ── Delay profile ────────────────────────────────────────────────────────────
+
+func torrentRelease(title, guid string, ageMinutes float64) indexer.SearchResult {
+	r := rssRelease(title, guid, 50)
+	r.Protocol = plugin.ProtocolTorrent
+	r.AgeDays = ageMinutes / (24 * 60)
+	return r
+}
+
+func TestRSS_DisabledProtocolIsSkipped(t *testing.T) {
+	f := newRSSFixture()
+	f.delay.TorrentEnabled = false
+	if picks := f.run(torrentRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "t", 999)); len(picks) != 0 {
+		t.Fatalf("grabbed a torrent with torrents turned off: %v", titles(picks))
+	}
+}
+
+func TestRSS_PreferredProtocolBreaksQualityTies(t *testing.T) {
+	f := newRSSFixture()
+	usenet := rssRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "nzb", 0)
+	usenet.Protocol = plugin.ProtocolNZB
+	torrent := torrentRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "tor", 60)
+	torrent.Seeds = 900
+
+	f.delay.PreferredProtocol = "usenet"
+	if picks := f.run(torrent, usenet); len(picks) != 1 || picks[0].Release.GUID != "nzb" {
+		t.Fatalf("prefer usenet: picks = %v", titles(picks))
+	}
+	f.delay.PreferredProtocol = "torrent"
+	if picks := f.run(usenet, torrent); len(picks) != 1 || picks[0].Release.GUID != "tor" {
+		t.Fatalf("prefer torrent: picks = %v", titles(picks))
+	}
+	// Quality still comes first.
+	better := torrentRelease("Show.S01E01.2160p.WEB-DL.x265-GRP", "uhd", 60)
+	f.delay.PreferredProtocol = "usenet"
+	if picks := f.run(usenet, better); len(picks) != 1 || picks[0].Release.GUID != "uhd" {
+		t.Fatalf("protocol preference beat quality: picks = %v", titles(picks))
+	}
+}
+
+func TestPlanRSSGrabs_HoldsUntilDelayPasses(t *testing.T) {
+	now := time.Now().UTC()
+	d := delay.Default()
+	d.BypassIfHighestQuality = false
+	d.TorrentDelayMinutes = 60
+	f := newRSSFixture()
+	f.delay = d
+	fresh := f.run(torrentRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "fresh", 10))
+	old := f.run(torrentRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "old", 120))
+
+	grab, hold := planRSSGrabs(fresh, d, now, nil)
+	if len(grab) != 0 || len(hold) != 1 {
+		t.Fatalf("10-minute-old release with a 60-minute delay: grab=%d hold=%d", len(grab), len(hold))
+	}
+	grab, hold = planRSSGrabs(old, d, now, nil)
+	if len(grab) != 1 || len(hold) != 0 {
+		t.Fatalf("2-hour-old release with a 60-minute delay: grab=%d hold=%d", len(grab), len(hold))
+	}
+	// A stored pending release uses its stored eligible time.
+	grab, _ = planRSSGrabs(fresh, d, now, map[string]time.Time{"fresh": now.Add(-time.Minute)})
+	if len(grab) != 1 {
+		t.Fatal("a pending release whose time has come was not grabbed")
+	}
+}
+
+func TestPlanRSSGrabs_BestQualityBypassesDelay(t *testing.T) {
+	now := time.Now().UTC()
+	d := delay.Default()
+	d.TorrentDelayMinutes = 600
+	f := newRSSFixture()
+	f.delay = d
+	bd := plugin.Quality{Resolution: plugin.Resolution1080p, Source: plugin.SourceBluRay}
+	web := plugin.Quality{Resolution: plugin.Resolution1080p, Source: plugin.SourceWEBDL}
+	f.profile = &quality.Profile{Cutoff: web, Qualities: []plugin.Quality{web, bd}}
+
+	grab, hold := planRSSGrabs(f.run(torrentRelease("Show.S01E01.1080p.BluRay.x264-GRP", "bd", 1)), d, now, nil)
+	if len(grab) != 1 || len(hold) != 0 {
+		t.Fatalf("highest allowed quality should bypass: grab=%d hold=%d", len(grab), len(hold))
+	}
+	grab, hold = planRSSGrabs(f.run(torrentRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "web", 1)), d, now, nil)
+	if len(grab) != 0 || len(hold) != 1 {
+		t.Fatalf("lower quality must wait: grab=%d hold=%d", len(grab), len(hold))
+	}
+}
+
+func TestMergePending(t *testing.T) {
+	inFeed := rssRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "a", 10)
+	stored := rssRelease("Show.S01E02.1080p.WEB-DL.x264-GRP", "b", 10)
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	rows := []db.PendingRelease{
+		{ID: "p1", ReleaseJson: mustJSON(t, stored), EligibleAt: at.Format(time.RFC3339)},
+		{ID: "p2", ReleaseJson: mustJSON(t, inFeed), EligibleAt: at.Format(time.RFC3339)},
+		{ID: "p3", ReleaseJson: "not json", EligibleAt: at.Format(time.RFC3339)},
+	}
+	merged, eligible := mergePending([]indexer.SearchResult{inFeed}, rows, slog.New(slog.DiscardHandler))
+	if len(merged) != 2 {
+		t.Fatalf("merged %d releases, want 2 (no duplicate of the feed release)", len(merged))
+	}
+	if !eligible["b"].Equal(at) || !eligible["a"].Equal(at) {
+		t.Fatalf("eligible times = %v", eligible)
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
