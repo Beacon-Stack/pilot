@@ -14,6 +14,7 @@ import {
 } from "@/theme";
 import type { ThemeMode } from "@/theme";
 import { apiFetch } from "@/api/client";
+import ScheduledBackups from "./ScheduledBackups";
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -595,6 +596,9 @@ export default function AppSettings() {
 
         {/* ── Backup & Restore ───────────────────────────────────────────── */}
         <BackupRestoreSection />
+
+        {/* ── Scheduled backups ──────────────────────────────────────────── */}
+        <ScheduledBackups />
       </div>
     </div>
   );

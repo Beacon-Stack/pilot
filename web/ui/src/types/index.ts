@@ -581,6 +581,25 @@ export interface RemotePathMapping {
 
 export type RemotePathMappingRequest = Omit<RemotePathMapping, "id">;
 
+export interface BackupInfo {
+  name: string;
+  kind: "scheduled" | "manual";
+  size: number;
+  created_at: string;
+}
+
+export interface BackupList {
+  /** Newest first. */
+  backups: BackupInfo[];
+  folder: string;
+}
+
+export interface BackupSettings {
+  /** 0 turns scheduled backups off. */
+  interval_days: number;
+  retention_days: number;
+}
+
 export interface HealthIssue {
   source: "library" | "download_client" | "indexer";
   level: "error" | "warning";
