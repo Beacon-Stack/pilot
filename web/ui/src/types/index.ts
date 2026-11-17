@@ -544,3 +544,26 @@ export interface FsBrowseResult {
   parent: string | null;
   dirs: FsDirEntry[];
 }
+
+// Matches releaseProfileBody in internal/api/v1/release_profiles.go.
+export interface ReleaseProfile {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** Must contain: a release must match at least one. */
+  required: string[];
+  /** Must not contain: a release must match none. */
+  ignored: string[];
+  /** "" = all indexers. */
+  indexer_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReleaseProfileRequest {
+  name: string;
+  enabled: boolean;
+  required: string[];
+  ignored: string[];
+  indexer_id: string;
+}
