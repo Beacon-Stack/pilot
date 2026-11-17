@@ -6,13 +6,13 @@ before the next starts, under the same rules as the parity plan.
 
 ## Order
 
-| # | Section | Size | Why this position |
-|---|---------|------|-------------------|
-| D1 | Series bulk editor | S | Small and self-contained; needed before libraries get large. |
-| D2 | Manual import + reviewable library import | M | Biggest day-to-day gap: there is no way to import files Pilot didn't grab, and the library scan adds series from folder names with no review. |
-| D3 | Custom formats | L | Unblocks the hidden Custom Formats page (A1) and the CF score fields quality profiles already carry. Touches the Pulse contract, so it goes after the safer sections. |
-| D4 | More integrations | M | Independent plugins; can be split and done in any order. |
-| D5 | Scene numbering (TheXEM) | L | Highest risk: an external service and a second numbering scheme in every search, RSS and import path. Last, behind a per-series switch. |
+| # | Section | Size | Why this position | Status |
+|---|---------|------|-------------------|--------|
+| D1 | Series bulk editor | S | Small and self-contained; needed before libraries get large. | Done, #69 (backend), #70 (UI) |
+| D2 | Manual import + reviewable library import | M | Biggest day-to-day gap: there is no way to import files Pilot didn't grab, and the library scan adds series from folder names with no review. | |
+| D3 | Custom formats | L | Unblocks the hidden Custom Formats page (A1) and the CF score fields quality profiles already carry. Touches the Pulse contract, so it goes after the safer sections. | |
+| D4 | More integrations | M | Independent plugins; can be split and done in any order. | |
+| D5 | Scene numbering (TheXEM) | L | Highest risk: an external service and a second numbering scheme in every search, RSS and import path. Last, behind a per-series switch. | |
 
 ## D1. Series bulk editor
 
