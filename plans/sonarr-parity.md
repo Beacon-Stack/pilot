@@ -27,6 +27,8 @@ download-correctness bugs first, then quality rules, then operations.
 - **B1:** the Sonarr import ignored each quality's `allowed` flag, so imported profiles allowed everything. Fixed in B1.
 - **B4:** the release parser read language tags anywhere in the title, show name included ("Dan Da Dan" parsed as Danish). Nothing used parsed languages until B4, which reads them only after the show name.
 - **C1:** each library's `min_free_space_gb` was stored and shown but never read, so imports could fill the disk. Enforced in C1 when an import copies (hardlinks take no space).
+- **C3:** restoring a backup left the old database's `-wal`/`-shm` files beside the restored one (WAL mode), so an unclean shutdown could replay the old log onto it. Fixed in C3. The backup download also broke on a data folder with a `'` in its name; fixed.
+- **C3:** the Download Clients page has "Download Handling" and "Remote Path Mappings" sections that call `/download-handling/...` endpoints that don't exist (same class as A1). Fixed right after C3.
 - Still open:
   - The Wanted > Missing list includes episodes of unmonitored series (the search-all action skips them).
   - `quality.Profile.WantRelease`/`RejectReason` are unused, use the strict quality match, and accept an *equal* quality below the cutoff (a re-grab loop if ever wired up). Replace or delete them in B1.
@@ -51,7 +53,7 @@ download-correctness bugs first, then quality rules, then operations.
 |---|---------|--------|--------|
 | C1 | Health checks (disk, indexers, clients) + enforce `min_free_space_gb` | `feat/health-checks` | Done, #54 (backend), #55 (UI) |
 | C2 | Remote path mappings | `feat/remote-path-mappings` | Done, #56 (backend), #57 (UI) |
-| C3 | Scheduled backups with retention | `feat/scheduled-backups` | |
+| C3 | Scheduled backups with retention | `feat/scheduled-backups` | Done, #58 (backend), #59 (UI) |
 | C4 | Recycle bin for replaced/deleted files | `feat/recycle-bin` | |
 
 ## Phase D: larger features (separate design pass first)
