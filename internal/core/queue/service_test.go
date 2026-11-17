@@ -457,3 +457,74 @@ func TestPollAndUpdate_StatusErrorIsLoggedAndContinues(t *testing.T) {
 		t.Errorf("updated wrong grab: got %q, want g-good", updates[0].ID)
 	}
 }
+
+// ── Failed-download handling ─────────────────────────────────────────────────
+
+type recordingFailureHandler struct {
+	mu    sync.Mutex
+	calls []string // grab ID + "|" + client error
+}
+
+func (r *recordingFailureHandler) HandleDownloadFailed(_ context.Context, g db.GrabHistory, clientError string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, g.ID+"|"+clientError)
+	return nil
+}
+
+// Regression: a client-reported failure used to be logged and nothing
+// else. The failure handler (blocklist + re-search) must run, once, with
+// the client's error message.
+func TestPollAndUpdate_FailedTransitionCallsFailureHandler(t *testing.T) {
+	q := &mockQuerier{activeGrabs: []db.GrabHistory{activeGrab("g1", "item-1", "downloading")}}
+	dl := &mockDownloader{client: &mockClient{statusByItemID: map[string]plugin.QueueItem{
+		"item-1": {ClientItemID: "item-1", Status: plugin.StatusFailed, Error: "missing articles"},
+	}}}
+	h := &recordingFailureHandler{}
+	svc := NewService(q, dl, events.New(discardLogger()), discardLogger())
+	svc.SetFailureHandler(h)
+
+	if err := svc.PollAndUpdate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.calls) != 1 || h.calls[0] != "g1|missing articles" {
+		t.Fatalf("failure handler calls = %v, want [g1|missing articles]", h.calls)
+	}
+}
+
+// Already-failed grabs are not re-handled on every poll.
+func TestPollAndUpdate_AlreadyFailedDoesNotRecallHandler(t *testing.T) {
+	g := activeGrab("g1", "item-1", "failed")
+	q := &mockQuerier{activeGrabs: []db.GrabHistory{g}}
+	dl := &mockDownloader{client: &mockClient{statusByItemID: map[string]plugin.QueueItem{
+		"item-1": {ClientItemID: "item-1", Status: plugin.StatusFailed},
+	}}}
+	h := &recordingFailureHandler{}
+	svc := NewService(q, dl, events.New(discardLogger()), discardLogger())
+	svc.SetFailureHandler(h)
+
+	if err := svc.PollAndUpdate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("handler re-ran for an already-failed grab: %v", h.calls)
+	}
+}
+
+// Completed downloads never reach the failure handler.
+func TestPollAndUpdate_CompletedDoesNotCallFailureHandler(t *testing.T) {
+	q := &mockQuerier{activeGrabs: []db.GrabHistory{activeGrab("g1", "item-1", "downloading")}}
+	dl := &mockDownloader{client: &mockClient{statusByItemID: map[string]plugin.QueueItem{
+		"item-1": {ClientItemID: "item-1", Status: plugin.StatusCompleted},
+	}}}
+	h := &recordingFailureHandler{}
+	svc := NewService(q, dl, events.New(discardLogger()), discardLogger())
+	svc.SetFailureHandler(h)
+
+	if err := svc.PollAndUpdate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("failure handler ran for a completed download: %v", h.calls)
+	}
+}

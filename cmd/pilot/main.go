@@ -54,12 +54,14 @@ import (
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_trending_tv"
 
 	"github.com/beacon-stack/pilot/internal/api"
+	apiv1 "github.com/beacon-stack/pilot/internal/api/v1"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/appinfo"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/activity"
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
+	"github.com/beacon-stack/pilot/internal/core/failedgrab"
 	"github.com/beacon-stack/pilot/internal/core/importer"
 	"github.com/beacon-stack/pilot/internal/core/importlist"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
@@ -296,6 +298,8 @@ func run() error {
 	mediaManagementSvc := mediamanagement.NewService(queries)
 	qualityDefSvc := quality.NewDefinitionService(queries)
 	queueSvc := queue.NewService(queries, downloaderSvc, bus, logger)
+	// Failed downloads: blocklist + request a re-search (all clients).
+	queueSvc.SetFailureHandler(failedgrab.New(blocklistSvc, bus, logger))
 	stallWatcher := stallwatcher.NewService(queries, blocklistSvc, downloaderSvc, bus, logger)
 
 	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc, animeListSvc, blocklistSvc)
@@ -317,6 +321,9 @@ func run() error {
 
 	wsHub := ws.NewHub(logger)
 	bus.Subscribe(wsHub.HandleEvent)
+	// Re-search after the stall watcher or failed-download handler
+	// blocklists a dead automatic grab.
+	bus.Subscribe(apiv1.NewAutoSearchRetryHandler(showSvc, indexerSvc, downloaderSvc, blocklistSvc, qualitySvc, logger))
 
 	// ── Scheduler ─────────────────────────────────────────────────────────────
 	sched := scheduler.New(logger)
