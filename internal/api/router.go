@@ -229,6 +229,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 				cfg.DownloaderService, cfg.BlocklistService, cfg.QualityService, cfg.Logger)
 		}
 		v1.RegisterHistoryRoutes(humaAPI, cfg.Queries)
+		v1.RegisterDelayRoutes(humaAPI, cfg.Queries)
 	}
 
 	if cfg.ActivityService != nil {

@@ -31,6 +31,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
+	pilotdb "github.com/beacon-stack/pilot/internal/db"
 	dbgen "github.com/beacon-stack/pilot/internal/db/generated"
 )
 
@@ -51,6 +52,9 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	if err := pilotdb.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	var pulseCalls atomic.Int32
@@ -63,6 +67,7 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 		DBPath:                dbPath,
 		WSHub:                 ws.NewHub(logger),
 		ReleaseProfileService: releaseprofile.NewService(dbgen.New(db)),
+		Queries:               dbgen.New(db),
 		PulseSyncHandler: func(w http.ResponseWriter, _ *http.Request) {
 			pulseCalls.Add(1)
 			w.WriteHeader(http.StatusAccepted)
@@ -125,6 +130,9 @@ var protectedEndpoints = []struct{ method, path string }{
 	{"GET", "/api/v1/ws"},
 	{"POST", "/api/v1/hooks/pulse/sync"},
 	{"GET", "/api/v1/release-profiles"},
+	{"GET", "/api/v1/delay-profile"},
+	{"PUT", "/api/v1/delay-profile"},
+	{"GET", "/api/v1/queue/pending"},
 	{"POST", "/api/v1/release-profiles"},
 	{"GET", "/api/openapi.json"},
 }
