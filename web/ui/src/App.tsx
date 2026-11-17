@@ -34,6 +34,7 @@ import StatsPage from "@/pages/stats/StatsPage";
 import DiscoverPage from "@/pages/discover/DiscoverPage";
 import LoginPage from "@/pages/login/LoginPage";
 import ReleaseProfilesPage from "@/pages/settings/release-profiles/ReleaseProfilesPage";
+import DelayProfilePage from "@/pages/settings/delay-profile/DelayProfilePage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="settings/import-exclusions" element={<ImportExclusions />} />
             <Route path="settings/blocklist" element={<BlocklistPage />} />
             <Route path="settings/release-profiles" element={<ReleaseProfilesPage />} />
+            <Route path="settings/delay-profile" element={<DelayProfilePage />} />
             <Route path="settings/import" element={<ImportPage />} />
             <Route path="settings/system" element={<SystemSettings />} />
             <Route path="settings/system/logs" element={<LogsPage />} />

@@ -26,6 +26,7 @@ import {
   RotateCw,
   Compass,
   Filter,
+  Timer,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ export const NAV_COMMANDS: Command[] = [
   { id: "nav:notifications",     category: "navigation", label: "Notifications",        keywords: ["settings", "discord", "webhook"],    icon: Bell,               onSelect: (n) => n("/settings/notifications") },
   { id: "nav:media-servers",     category: "navigation", label: "Media Servers",        keywords: ["settings", "plex", "jellyfin"],      icon: MonitorPlay,        onSelect: (n) => n("/settings/media-servers") },
   { id: "nav:release-profiles",  category: "navigation", label: "Release Profiles",     keywords: ["settings", "must contain", "ignore", "terms"], icon: Filter, onSelect: (n) => n("/settings/release-profiles") },
+  { id: "nav:delay-profile",     category: "navigation", label: "Delay Profile",        keywords: ["settings", "usenet", "torrent", "wait", "protocol"], icon: Timer, onSelect: (n) => n("/settings/delay-profile") },
   { id: "nav:import-lists",      category: "navigation", label: "Import Lists",         keywords: ["settings", "trakt", "tmdb"],         icon: ListPlus,           onSelect: (n) => n("/settings/import-lists") },
   { id: "nav:blocklist",         category: "navigation", label: "Blocklist",            keywords: ["settings", "block", "ban"],          icon: Ban,                onSelect: (n) => n("/settings/blocklist") },
   { id: "nav:import",            category: "navigation", label: "Import",               keywords: ["settings", "sonarr"],                icon: ArrowDownToLine,    onSelect: (n) => n("/settings/import") },

@@ -567,3 +567,28 @@ export interface ReleaseProfileRequest {
   ignored: string[];
   indexer_id: string;
 }
+
+// Matches delayProfileBody in internal/api/v1/delay_profile.go.
+export interface DelayProfile {
+  usenet_enabled: boolean;
+  torrent_enabled: boolean;
+  preferred_protocol: "usenet" | "torrent";
+  usenet_delay_minutes: number;
+  torrent_delay_minutes: number;
+  bypass_if_highest_quality: boolean;
+}
+
+// Matches pendingReleaseBody in internal/api/v1/delay_profile.go.
+export interface PendingRelease {
+  id: string;
+  series_id: string;
+  series_title: string;
+  episode_id: string;
+  season_number: number;
+  episode_number: number;
+  release_title: string;
+  protocol: string;
+  quality: string;
+  eligible_at: string;
+  added_at: string;
+}
