@@ -52,6 +52,10 @@ type Profile struct {
 //  4. If the current file meets/exceeds the cutoff and upgrading is disabled,
 //     do not grab.
 //  5. If upgrading is enabled, grab if the release is a strict upgrade.
+//
+// Deprecated: unused, and its strict score-equality membership rejects
+// almost every real release. Use decision.Evaluate, which is what search
+// and RSS sync use.
 func (p *Profile) WantRelease(releaseQuality plugin.Quality, currentFileQuality *plugin.Quality) bool {
 	if !p.isAllowed(releaseQuality) {
 		return false
@@ -79,6 +83,8 @@ func (p *Profile) WantRelease(releaseQuality plugin.Quality, currentFileQuality 
 
 // RejectReason returns a typed reason string explaining why WantRelease would
 // return false. Returns "" if the release would be wanted (no rejection).
+//
+// Deprecated: see WantRelease. Use decision.Evaluate.
 func (p *Profile) RejectReason(releaseQuality plugin.Quality, currentFileQuality *plugin.Quality) string {
 	if !p.isAllowed(releaseQuality) {
 		return "quality_not_in_profile"
@@ -231,6 +237,48 @@ func codecRank(c plugin.Codec) int {
 	default:
 		return 0
 	}
+}
+
+// Allows reports whether a release of quality q is one of this profile's
+// allowed qualities. A quality here means resolution + source, as in
+// Sonarr ("WEBDL-1080p", "Bluray-1080p"); codec and HDR don't matter, so
+// listing "Bluray-1080p" accepts x264 and x265 alike.
+//
+// When the release's source couldn't be parsed, it matches any allowed
+// quality of the same resolution; when its resolution couldn't be parsed,
+// any of the same source. A release with neither is not allowed. An empty
+// list allows everything.
+//
+// This replaces membership by exact Score (isAllowed), which also
+// compared codec and so rejected almost every real release.
+func (p *Profile) Allows(q plugin.Quality) bool {
+	if len(p.Qualities) == 0 {
+		return true
+	}
+	res, src := knownResolution(q.Resolution), knownSource(q.Source)
+	if res == "" && src == "" {
+		return false
+	}
+	for _, a := range p.Qualities {
+		if (res == "" || res == a.Resolution) && (src == "" || src == a.Source) {
+			return true
+		}
+	}
+	return false
+}
+
+func knownResolution(r plugin.Resolution) plugin.Resolution {
+	if r == plugin.ResolutionUnknown {
+		return ""
+	}
+	return r
+}
+
+func knownSource(s plugin.Source) plugin.Source {
+	if s == plugin.SourceUnknown {
+		return ""
+	}
+	return s
 }
 
 // AllowedQualities returns the list of quality values this profile accepts.

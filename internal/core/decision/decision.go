@@ -11,6 +11,9 @@ import (
 
 // Rejection reasons, stable strings suitable for logs and API responses.
 const (
+	// ReasonBelowProfile: the profile doesn't accept this quality (not in
+	// its allowed list, or below its cutoff resolution when it has none).
+	// The string is kept for the UI's filtered-rows display.
 	ReasonBelowProfile     = "below_quality_profile"
 	ReasonNotAnUpgrade     = "not_an_upgrade"
 	ReasonUpgradesDisabled = "upgrades_disabled"
@@ -20,14 +23,20 @@ const (
 
 // MeetsProfileMinimum reports whether q is acceptable for profile p at all.
 //
-// The rule gates on resolution only: a release whose resolution is below
-// the cutoff's resolution is rejected. A strict match on the exact
-// source+codec combination would reject almost every real release (see
-// plans/sonarr-parity.md B1, quality groups, which will replace this).
-// A nil profile, or one with no meaningful cutoff, accepts everything.
+// When the profile lists allowed qualities, q must be one of them
+// (resolution + source, see quality.Profile.Allows). That's how a
+// "Bluray only" profile rejects WEB-DL, and how a profile accepts WEBRip
+// as a fallback by listing it.
+//
+// A profile with no list falls back to the cutoff's resolution as a floor.
+// A nil profile, or one with neither a list nor a cutoff, accepts
+// everything.
 func MeetsProfileMinimum(q plugin.Quality, p *quality.Profile) bool {
 	if p == nil {
 		return true
+	}
+	if len(p.Qualities) > 0 {
+		return p.Allows(q)
 	}
 	cutoffRes := p.Cutoff.Score() / 100
 	if cutoffRes == 0 {

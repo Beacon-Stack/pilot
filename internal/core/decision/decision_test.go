@@ -74,3 +74,29 @@ func TestMeetsProfileMinimum_ResolutionOnly(t *testing.T) {
 		t.Fatal("an unset cutoff accepts everything")
 	}
 }
+
+// TODO.md's headline case: a "Bluray only" profile used to accept 1080p
+// WEB-DL, because the gate only compared resolution against the cutoff.
+func TestMeetsProfileMinimum_AllowedListIsTheRule(t *testing.T) {
+	blurayOnly := &quality.Profile{
+		Cutoff:    bd1080,
+		Qualities: []plugin.Quality{bd1080},
+	}
+	if MeetsProfileMinimum(web1080, blurayOnly) {
+		t.Fatal("Bluray-only profile accepted 1080p WEB-DL")
+	}
+	if !MeetsProfileMinimum(bd1080, blurayOnly) {
+		t.Fatal("Bluray-only profile rejected 1080p Bluray")
+	}
+
+	// A listed quality below the cutoff is acceptable (the cutoff is where
+	// upgrading stops, not a floor), as in Sonarr.
+	wide := &quality.Profile{Cutoff: web1080, Qualities: []plugin.Quality{web720, web1080}}
+	if !MeetsProfileMinimum(web720, wide) {
+		t.Fatal("listed 720p rejected because it is below the cutoff")
+	}
+	ok, why := Evaluate(web1080, &web720, wide)
+	if !ok {
+		t.Fatalf("upgrade from listed 720p to 1080p cutoff refused: %s", why)
+	}
+}
