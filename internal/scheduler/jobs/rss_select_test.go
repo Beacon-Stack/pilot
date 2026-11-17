@@ -217,3 +217,17 @@ func TestRSS_BlocklistedBestFallsBackToNext(t *testing.T) {
 		t.Fatalf("picks = %v, want the non-blocklisted 1080p", titles(picks))
 	}
 }
+
+// End to end through RSS: a Bluray-only profile skips WEB-DL releases.
+func TestRSS_AllowedListIsRespected(t *testing.T) {
+	f := newRSSFixture()
+	bd := plugin.Quality{Resolution: plugin.Resolution1080p, Source: plugin.SourceBluRay}
+	f.profile = &quality.Profile{Cutoff: bd, Qualities: []plugin.Quality{bd}}
+	picks := f.run(
+		rssRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "web", 900),
+		rssRelease("Show.S01E02.1080p.BluRay.x264-GRP", "bd", 5),
+	)
+	if len(picks) != 1 || picks[0].Release.GUID != "bd" {
+		t.Fatalf("picks = %v, want only the Bluray release", titles(picks))
+	}
+}

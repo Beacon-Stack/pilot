@@ -474,8 +474,14 @@ func cutoffName(items []sonarrProfileItem, cutoffID int) string {
 }
 
 func mapProfile(p sonarrProfile) quality.CreateRequest {
+	// Sonarr's profile lists every quality with an allowed flag. Only the
+	// allowed ones belong in Pilot's list. An allowed group contributes
+	// all of its qualities.
 	var qualities []plugin.Quality
 	for _, item := range p.Items {
+		if !item.Allowed {
+			continue
+		}
 		for _, q := range item.qualities() {
 			qualities = append(qualities, mapSonarrQuality(q.Name))
 		}

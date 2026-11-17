@@ -2,7 +2,7 @@
 
 ## Quality System
 
-- [ ] **Quality groups in the profile gate (critical)** — `applyQualityProfile` in `internal/api/v1/releases.go` currently gates releases by resolution only (integer-divides `Quality.Score()` by 100 to isolate the resolution digit). A proper implementation needs quality *groups* like Sonarr/Radarr: the profile lists named buckets (e.g. "Bluray-1080p", "WEB-1080p") that each contain a set of source+codec+HDR combinations treated as interchangeable, and the gate checks membership in any enabled bucket plus the cutoff-or-better rule. Reason it's critical: the current resolution-only gate silently accepts 1080p WEBDL even for users who set a "Bluray-only" cutoff, and it can't distinguish "prefer Bluray but accept WEBRip as a fallback" from "reject WEBRip entirely". Touches `internal/core/quality/profile.go` (add `QualityGroup` type, replace `isAllowed` flat-list membership check) and the profile CRUD API + UI so users can actually edit the groups.
+- [x] **Quality groups in the profile gate** — done in plans/sonarr-parity.md B1. A profile's allowed list is now the rule, matched on resolution + source (`quality.Profile.Allows`, used by `decision.MeetsProfileMinimum`), so "Bluray only" rejects WEB-DL and "accept WEBRip as a fallback" means listing WEBRip. Still open: an editor in the UI for the allowed list (profiles currently come from Pulse or the Sonarr import).
 
 ## Release Search & Ranking
 
