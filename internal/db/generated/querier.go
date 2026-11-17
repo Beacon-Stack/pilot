@@ -47,6 +47,7 @@ type Querier interface {
 	CreateMediaServerConfig(ctx context.Context, arg CreateMediaServerConfigParams) (MediaServerConfig, error)
 	CreateNotificationConfig(ctx context.Context, arg CreateNotificationConfigParams) (NotificationConfig, error)
 	CreateQualityProfile(ctx context.Context, arg CreateQualityProfileParams) (QualityProfile, error)
+	CreateReleaseProfile(ctx context.Context, arg CreateReleaseProfileParams) (ReleaseProfile, error)
 	CreateSeason(ctx context.Context, arg CreateSeasonParams) (Season, error)
 	CreateSeries(ctx context.Context, arg CreateSeriesParams) (Series, error)
 	DeleteAnimeCourMonitoredBySeriesID(ctx context.Context, seriesID string) error
@@ -63,6 +64,7 @@ type Querier interface {
 	DeleteMediaServerConfig(ctx context.Context, id string) error
 	DeleteNotificationConfig(ctx context.Context, id string) error
 	DeleteQualityProfile(ctx context.Context, id string) error
+	DeleteReleaseProfile(ctx context.Context, id string) error
 	DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error
 	DeleteSeries(ctx context.Context, id string) error
 	DeleteSetting(ctx context.Context, key string) error
@@ -83,6 +85,7 @@ type Querier interface {
 	GetMediaServerConfig(ctx context.Context, id string) (MediaServerConfig, error)
 	GetNotificationConfig(ctx context.Context, id string) (NotificationConfig, error)
 	GetQualityProfile(ctx context.Context, id string) (QualityProfile, error)
+	GetReleaseProfile(ctx context.Context, id string) (ReleaseProfile, error)
 	GetSeason(ctx context.Context, id string) (Season, error)
 	GetSeries(ctx context.Context, id string) (Series, error)
 	GetSeriesByTMDBID(ctx context.Context, tmdbID int64) (Series, error)
@@ -120,6 +123,7 @@ type Querier interface {
 	ListEnabledIndexers(ctx context.Context) ([]IndexerConfig, error)
 	ListEnabledMediaServers(ctx context.Context) ([]MediaServerConfig, error)
 	ListEnabledNotifications(ctx context.Context) ([]NotificationConfig, error)
+	ListEnabledReleaseProfiles(ctx context.Context) ([]ReleaseProfile, error)
 	// Batched episode + file counts for a page of series, so the series list can
 	// populate counts in a single round-trip instead of two queries per series.
 	ListEpisodeCountsBySeriesIDs(ctx context.Context, seriesIds []string) ([]ListEpisodeCountsBySeriesIDsRow, error)
@@ -153,6 +157,7 @@ type Querier interface {
 	ListNotificationConfigs(ctx context.Context) ([]NotificationConfig, error)
 	ListQualityDefinitions(ctx context.Context) ([]QualityDefinition, error)
 	ListQualityProfiles(ctx context.Context) ([]QualityProfile, error)
+	ListReleaseProfiles(ctx context.Context) ([]ReleaseProfile, error)
 	ListSeasonsBySeriesID(ctx context.Context, seriesID string) ([]Season, error)
 	ListSeries(ctx context.Context, arg ListSeriesParams) ([]Series, error)
 	ListSeriesByLibrary(ctx context.Context, arg ListSeriesByLibraryParams) ([]Series, error)
@@ -206,6 +211,7 @@ type Querier interface {
 	UpdateNotificationConfig(ctx context.Context, arg UpdateNotificationConfigParams) (NotificationConfig, error)
 	UpdateQualityDefinitionSizes(ctx context.Context, arg UpdateQualityDefinitionSizesParams) error
 	UpdateQualityProfile(ctx context.Context, arg UpdateQualityProfileParams) (QualityProfile, error)
+	UpdateReleaseProfile(ctx context.Context, arg UpdateReleaseProfileParams) (ReleaseProfile, error)
 	UpdateSeasonMonitored(ctx context.Context, arg UpdateSeasonMonitoredParams) error
 	UpdateSeries(ctx context.Context, arg UpdateSeriesParams) (Series, error)
 	UpdateSeriesMetadata(ctx context.Context, arg UpdateSeriesMetadataParams) (Series, error)

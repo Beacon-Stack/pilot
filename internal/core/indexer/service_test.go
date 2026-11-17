@@ -4,6 +4,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -527,5 +528,26 @@ func TestSearchSort_ProperDoesNotBeatHigherQuality(t *testing.T) {
 	sortSearchResults(results)
 	if results[0].Quality.Resolution != plugin.Resolution1080p {
 		t.Fatalf("a 720p PROPER outranked 1080p: top = %q", results[0].Title)
+	}
+}
+
+// ── Release profiles ─────────────────────────────────────────────────────────
+
+// Releases a release profile rejects are tagged, not dropped (like
+// min_seeders): interactive search shows them grayed with an override;
+// auto-search and RSS skip tagged results.
+func TestApplyReleaseProfiles_TagsRejected(t *testing.T) {
+	results := []SearchResult{
+		newSearchResult(plugin.Release{Title: "Show.S01E01.1080p.WEB-DL-GRP"}, "idx-1", "I"),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.CAM-GRP"}, "idx-1", "I"),
+	}
+	applyReleaseProfiles(results, releaseprofile.NewMatcher([]releaseprofile.Profile{
+		{Name: "No CAM", Enabled: true, Ignored: []string{"cam"}},
+	}))
+	if len(results[0].FilterReasons) != 0 {
+		t.Fatalf("clean release tagged: %v", results[0].FilterReasons)
+	}
+	if len(results[1].FilterReasons) != 1 || results[1].FilterReasons[0] != releaseprofile.FilterReason {
+		t.Fatalf("CAM release not tagged: %v", results[1].FilterReasons)
 	}
 }

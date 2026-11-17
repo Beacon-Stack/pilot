@@ -214,6 +214,17 @@ type QualityProfile struct {
 	ManagedByPulse       bool    `json:"managedByPulse"`
 }
 
+type ReleaseProfile struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Enabled      bool    `json:"enabled"`
+	RequiredJson string  `json:"requiredJson"`
+	IgnoredJson  string  `json:"ignoredJson"`
+	IndexerID    *string `json:"indexerId"`
+	CreatedAt    string  `json:"createdAt"`
+	UpdatedAt    string  `json:"updatedAt"`
+}
+
 type Season struct {
 	ID           string `json:"id"`
 	SeriesID     string `json:"seriesId"`

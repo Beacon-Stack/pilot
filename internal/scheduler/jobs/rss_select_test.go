@@ -13,6 +13,7 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	"github.com/beacon-stack/pilot/internal/core/quality"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	releaseparser "github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -229,5 +230,16 @@ func TestRSS_AllowedListIsRespected(t *testing.T) {
 	)
 	if len(picks) != 1 || picks[0].Release.GUID != "bd" {
 		t.Fatalf("picks = %v, want only the Bluray release", titles(picks))
+	}
+}
+
+// Releases tagged by a release profile (in GetRecent) are never grabbed.
+func TestRSS_ReleaseProfileRejectsAreSkipped(t *testing.T) {
+	f := newRSSFixture()
+	tagged := rssRelease("Show.S01E01.2160p.WEB-DL.x265-GRP", "tagged", 900)
+	tagged.FilterReasons = []string{releaseprofile.FilterReason}
+	picks := f.run(tagged, rssRelease("Show.S01E01.1080p.WEB-DL.x264-GRP", "ok", 5))
+	if len(picks) != 1 || picks[0].Release.GUID != "ok" {
+		t.Fatalf("picks = %v, want only the untagged release", titles(picks))
 	}
 }
