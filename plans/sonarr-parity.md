@@ -25,6 +25,7 @@ download-correctness bugs first, then quality rules, then operations.
 - **A4b:** RSS sync never checked the quality profile and never upgraded. Fixed in A4b.
 - **A5:** Wanted > Cutoff Unmet was a stub; auto-search ignored the file on disk, didn't re-rank results merged from several queries, and let a multi-indexer 720p beat a 2160p. The Wanted page also showed blank episode titles (field-name mismatch). All fixed in A5.
 - **B1:** the Sonarr import ignored each quality's `allowed` flag, so imported profiles allowed everything. Fixed in B1.
+- **B4:** the release parser read language tags anywhere in the title, show name included ("Dan Da Dan" parsed as Danish). Nothing used parsed languages until B4, which reads them only after the show name.
 - Still open:
   - The Wanted > Missing list includes episodes of unmonitored series (the search-all action skips them).
   - `quality.Profile.WantRelease`/`RejectReason` are unused, use the strict quality match, and accept an *equal* quality below the cutoff (a re-grab loop if ever wired up). Replace or delete them in B1.
@@ -38,10 +39,10 @@ download-correctness bugs first, then quality rules, then operations.
 | # | Section | Branch | Status |
 |---|---------|--------|--------|
 | B1 | Quality groups in profiles (replace the resolution-only gate) | `feat/quality-groups` | Done, #46 |
-| B1b | Quality profile editor in the UI (profiles can only come from Pulse or the Sonarr import today) | `feat/quality-profile-editor` | |
+| B1b | Quality profile editor in the UI (profiles can only come from Pulse or the Sonarr import today) | `feat/quality-profile-editor` | Done, #49 |
 | B2 | Release profiles: required / ignored terms | `feat/release-profiles` | Done, #47 |
-| B3 | Delay profiles: preferred protocol + grab delay | `feat/delay-profiles` | |
-| B4 | Language preference | `feat/language-preference` | |
+| B3 | Delay profiles: preferred protocol + grab delay | `feat/delay-profiles` | Done, #50 (backend), #51 (UI) |
+| B4 | Language preference | `feat/language-preference` | In progress |
 
 ## Phase C: operations
 
