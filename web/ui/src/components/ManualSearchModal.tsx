@@ -982,7 +982,7 @@ export default function ManualSearchModal({
                       background: "var(--color-bg-elevated)",
                     }}
                   >
-                    Filtered ({filtered.length}) — below min_seeders, outside quality profile, or previously stalled. Click Override to grab anyway.
+                    Filtered ({filtered.length}) — below min_seeders, outside the quality profile, rejected by a release profile, or previously stalled. Click Override to grab anyway.
                   </td>
                 </tr>
               )}
