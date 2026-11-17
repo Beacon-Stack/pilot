@@ -413,6 +413,10 @@ export interface MediaManagement {
   import_extra_files: boolean;
   extra_file_extensions: string;
   unmonitor_deleted_episodes: boolean;
+  /** Folder replaced and deleted episode files go to; "" deletes them permanently. */
+  recycle_bin_path: string;
+  /** Files older than this in the recycle bin are deleted; 0 = never. */
+  recycle_bin_cleanup_days: number;
 }
 
 // ── Import Lists ─────────────────────────────────────────────────────────
