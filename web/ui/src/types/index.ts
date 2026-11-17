@@ -571,6 +571,16 @@ export interface ReleaseProfileRequest {
 }
 
 // Matches delayProfileBody in internal/api/v1/delay_profile.go.
+export interface RemotePathMapping {
+  id: string;
+  /** "" = any download client. */
+  download_client_id: string;
+  remote_path: string;
+  local_path: string;
+}
+
+export type RemotePathMappingRequest = Omit<RemotePathMapping, "id">;
+
 export interface HealthIssue {
   source: "library" | "download_client" | "indexer";
   level: "error" | "warning";

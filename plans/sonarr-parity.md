@@ -50,7 +50,7 @@ download-correctness bugs first, then quality rules, then operations.
 | # | Section | Branch | Status |
 |---|---------|--------|--------|
 | C1 | Health checks (disk, indexers, clients) + enforce `min_free_space_gb` | `feat/health-checks` | Done, #54 (backend), #55 (UI) |
-| C2 | Remote path mappings | `feat/remote-path-mappings` | |
+| C2 | Remote path mappings | `feat/remote-path-mappings` | Done, #56 (backend), #57 (UI) |
 | C3 | Scheduled backups with retention | `feat/scheduled-backups` | |
 | C4 | Recycle bin for replaced/deleted files | `feat/recycle-bin` | |
 
