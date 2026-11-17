@@ -4,6 +4,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/beacon-stack/pilot/internal/core/language"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
@@ -549,5 +550,32 @@ func TestApplyReleaseProfiles_TagsRejected(t *testing.T) {
 	}
 	if len(results[1].FilterReasons) != 1 || results[1].FilterReasons[0] != releaseprofile.FilterReason {
 		t.Fatalf("CAM release not tagged: %v", results[1].FilterReasons)
+	}
+}
+
+// Releases in no wanted language are tagged, not dropped. Languages are
+// parsed at ingestion; an untagged release counts as English.
+func TestApplyLanguagePreference_TagsUnwanted(t *testing.T) {
+	results := []SearchResult{
+		newSearchResult(plugin.Release{Title: "Show.S01E01.1080p.WEB-DL-GRP"}, "idx-1", "I"),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.FRENCH.1080p.WEB-DL-GRP"}, "idx-1", "I"),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.MULTi.1080p.WEB-DL-GRP"}, "idx-1", "I"),
+	}
+	if got := results[1].Languages; len(got) != 1 || got[0] != "french" {
+		t.Fatalf("languages not parsed at ingestion: %v", got)
+	}
+	applyLanguagePreference(results, language.Preference{Languages: []string{"english"}})
+	if len(results[0].FilterReasons) != 0 || len(results[2].FilterReasons) != 0 {
+		t.Fatalf("wanted releases tagged: %v / %v", results[0].FilterReasons, results[2].FilterReasons)
+	}
+	if len(results[1].FilterReasons) != 1 || results[1].FilterReasons[0] != language.FilterReason {
+		t.Fatalf("FRENCH release not tagged: %v", results[1].FilterReasons)
+	}
+
+	// No preference: nothing tagged.
+	results[1].FilterReasons = nil
+	applyLanguagePreference(results, language.Default())
+	if len(results[1].FilterReasons) != 0 {
+		t.Fatalf("tagged with no preference: %v", results[1].FilterReasons)
 	}
 }

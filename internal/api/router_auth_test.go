@@ -133,6 +133,8 @@ var protectedEndpoints = []struct{ method, path string }{
 	{"GET", "/api/v1/delay-profile"},
 	{"PUT", "/api/v1/delay-profile"},
 	{"GET", "/api/v1/queue/pending"},
+	{"GET", "/api/v1/language-preference"},
+	{"PUT", "/api/v1/language-preference"},
 	{"POST", "/api/v1/release-profiles"},
 	{"GET", "/api/openapi.json"},
 }

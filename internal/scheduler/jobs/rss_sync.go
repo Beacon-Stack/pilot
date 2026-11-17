@@ -18,6 +18,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/delay"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
+	"github.com/beacon-stack/pilot/internal/core/language"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
@@ -458,6 +459,9 @@ func selectRSSGrabs(ctx context.Context, releases []indexer.SearchResult, env rs
 		}
 		if hasFilterReason(rel.FilterReasons, releaseprofile.FilterReason) {
 			continue // rejected by a release profile (tagged in GetRecent)
+		}
+		if hasFilterReason(rel.FilterReasons, language.FilterReason) {
+			continue // in no wanted language (tagged in GetRecent)
 		}
 
 		var cur *plugin.Quality
