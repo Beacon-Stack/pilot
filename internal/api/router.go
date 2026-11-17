@@ -17,6 +17,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/appinfo"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/activity"
+	"github.com/beacon-stack/pilot/internal/core/backup"
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/health"
@@ -79,6 +80,7 @@ type RouterConfig struct {
 	Scheduler              *scheduler.Scheduler
 	HealthService          *health.Service
 	RemotePathService      *remotepath.Service
+	BackupService          *backup.Service
 	PulseSyncHandler       http.HandlerFunc
 }
 
@@ -126,6 +128,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.DB != nil && cfg.DBPath != "" {
 		protected.Get("/api/v1/system/backup", v1.BackupHandler(cfg.DB, cfg.DBPath, cfg.Logger))
 		protected.Post("/api/v1/system/restore", v1.RestoreHandler(cfg.DBPath, cfg.Logger))
+	}
+	if cfg.BackupService != nil {
+		protected.Get("/api/v1/system/backups/{name}/download", v1.BackupDownloadHandler(cfg.BackupService, cfg.Logger))
 	}
 
 	humaConfig := huma.DefaultConfig(appinfo.AppName+" API", version.Version)
@@ -215,6 +220,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		v1.RegisterQueueRoutes(humaAPI, cfg.QueueService, cfg.BlocklistService)
 	}
 
+	if cfg.BackupService != nil {
+		v1.RegisterBackupRoutes(humaAPI, cfg.BackupService)
+	}
 	if cfg.RemotePathService != nil {
 		v1.RegisterRemotePathMappingRoutes(humaAPI, cfg.RemotePathService)
 	}

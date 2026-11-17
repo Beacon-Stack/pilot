@@ -59,6 +59,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/appinfo"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/activity"
+	"github.com/beacon-stack/pilot/internal/core/backup"
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/failedgrab"
@@ -218,13 +219,10 @@ func run() error {
 
 	// ── Database restore staging check ────────────────────────────────────────
 	if cfg.Database.Path != "" {
-		stagingPath := cfg.Database.Path + ".restore"
-		if _, statErr := os.Stat(stagingPath); statErr == nil {
-			if renameErr := os.Rename(stagingPath, cfg.Database.Path); renameErr == nil {
-				logger.Info("database restored from backup")
-			} else {
-				logger.Warn("failed to swap restore file into place", "error", renameErr)
-			}
+		if applied, restoreErr := backup.ApplyStagedRestore(cfg.Database.Path); restoreErr != nil {
+			logger.Warn("failed to swap restore file into place", "error", restoreErr)
+		} else if applied {
+			logger.Info("database restored from backup")
 		}
 	}
 
@@ -343,6 +341,11 @@ func run() error {
 	sched.Add(jobs.FileExistenceReconciler(queries, bus, logger))
 	sched.Add(jobs.ImportRetry(importerSvc, logger))
 	healthSvc := health.NewService(queries, downloaderSvc, indexerSvc)
+	var backupSvc *backup.Service
+	if cfg.Database.Path != "" {
+		backupSvc = backup.NewService(database.SQL, queries, cfg.Database.Path)
+		sched.Add(jobs.ScheduledBackup(backupSvc, logger))
+	}
 	sched.Add(jobs.HealthCheck(healthSvc))
 
 	// ── Pulse integration (optional) ──────────────────────────────────────────
@@ -391,6 +394,7 @@ func run() error {
 		WSHub:                  wsHub,
 		Scheduler:              sched,
 		HealthService:          healthSvc,
+		BackupService:          backupSvc,
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),
 	})
 
