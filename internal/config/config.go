@@ -52,9 +52,18 @@ type LogConfig struct {
 	Format string `mapstructure:"format"`
 }
 
-// AuthConfig holds the Pilot API key used to authenticate requests.
+// AuthConfig controls who can reach the API and UI.
 type AuthConfig struct {
+	// APIKey authenticates scripts and other services (X-Api-Key).
 	APIKey Secret `mapstructure:"api_key"`
+	// Required is "disabled_for_local" (default: browsers on your own
+	// network open the UI without logging in, like Sonarr) or "enabled"
+	// (everyone logs in).
+	Required string `mapstructure:"required"`
+	// Username and PasswordHash are the browser login. PasswordHash is
+	// set from Settings → App Settings; it is never the plain password.
+	Username     string `mapstructure:"username"`
+	PasswordHash Secret `mapstructure:"password_hash"`
 }
 
 // TMDBConfig holds the TMDB (themoviedb.org) API credentials. Pilot uses

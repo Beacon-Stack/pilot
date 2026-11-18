@@ -40,6 +40,7 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("server.port", DefaultPort)
 	v.SetDefault("log.level", DefaultLogLevel)
 	v.SetDefault("log.format", DefaultLogFormat)
+	v.SetDefault("auth.required", "disabled_for_local")
 
 	// Config file location
 	if cfgFile != "" {
@@ -63,6 +64,7 @@ func Load(cfgFile string) (*Config, error) {
 
 	// Explicit bindings for keys that contain underscores.
 	_ = v.BindEnv("auth.api_key", "PILOT_AUTH_API_KEY")
+	_ = v.BindEnv("auth.password_hash", "PILOT_AUTH_PASSWORD_HASH")
 	_ = v.BindEnv("tmdb.api_key", "PILOT_TMDB_API_KEY")
 	_ = v.BindEnv("trakt.client_id", "PILOT_TRAKT_CLIENT_ID")
 	_ = v.BindEnv("database.path", "PILOT_DATABASE_PATH")

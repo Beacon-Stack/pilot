@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { summarizeHealth, useHealth } from "@/api/health";
 import {
@@ -38,7 +38,7 @@ import {
 import Shell, { type NavItem } from "@beacon-shared/Shell";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
-import { logout } from "@/lib/auth";
+import { getAuthStatus, logout } from "@/lib/auth";
 import { useCommandPalette } from "@/components/command-palette/useCommandPalette";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 
@@ -162,7 +162,16 @@ function DocsLink() {
   );
 }
 
+// Only a login session can be logged out of. On the local network there
+// is nothing to log out of, so the button stays hidden.
 function LogoutButton() {
+  const [hasSession, setHasSession] = useState(false);
+  useEffect(() => {
+    getAuthStatus()
+      .then((s) => setHasSession(s.method === "session"))
+      .catch(() => setHasSession(false));
+  }, []);
+  if (!hasSession) return null;
   return (
     <button
       type="button"

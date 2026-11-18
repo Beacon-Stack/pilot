@@ -49,6 +49,7 @@ import (
 // RouterConfig holds everything the router needs to function.
 type RouterConfig struct {
 	Auth                   config.Secret
+	AuthSettings           middleware.AuthSettings
 	Logger                 *slog.Logger
 	StartTime              time.Time
 	DB                     *sql.DB
@@ -106,13 +107,15 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Browser login/logout — the only unauthenticated /api routes.
-	auth := middleware.NewAuth(cfg.Auth.Value())
+	// Browser login/logout/status — the only unauthenticated /api routes.
+	auth := middleware.NewAuth(cfg.Auth.Value(), cfg.AuthSettings)
+	r.Get("/api/v1/auth/status", auth.StatusHandler())
 	r.Post("/api/v1/auth/login", auth.LoginHandler())
 	r.Post("/api/v1/auth/logout", auth.LogoutHandler())
 
 	// Every route registered on `protected` (including the huma API and
-	// its docs) requires an X-Api-Key header or a session cookie. Auth is
+	// its docs) requires an X-Api-Key header, a session cookie, or (by
+	// default) a request from a local address. Auth is
 	// attached per route rather than by path prefix so nothing can route
 	// around it.
 	protected := r.With(auth.Middleware)
@@ -142,8 +145,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	humaConfig.OpenAPIPath = "/api/openapi"
 	humaConfig.SchemasPath = "/api/schemas"
 	humaConfig.Info.Description = appinfo.AppName + " TV series manager API. " +
-		"Browsers authenticate with a session cookie from POST /api/v1/auth/login; " +
-		"other clients must provide X-Api-Key."
+		"Requests from local addresses need no credentials unless auth.required is \"enabled\". " +
+		"Browsers elsewhere log in with POST /api/v1/auth/login; other clients provide X-Api-Key."
 
 	humaAPI := humachi.New(protected, humaConfig)
 
@@ -162,6 +165,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	oapi.Security = []map[string][]string{{"ApiKeyAuth": {}}}
 
+	v1.RegisterAuthSettingsRoutes(humaAPI, auth, cfg.ConfigFile)
 	v1.RegisterSystemRoutes(humaAPI, cfg.StartTime, cfg.DBType, cfg.DBPath, cfg.ConfigFile, cfg.Auth.Value(), cfg.TMDBKeyConfigured, cfg.TMDBKeyIsDefault, cfg.Logger)
 	v1.RegisterRuntimeRoutes(humaAPI, cfg.StartTime)
 	v1.RegisterEnvRoutes(humaAPI)

@@ -28,6 +28,7 @@ import (
 	"github.com/coder/websocket"
 	_ "modernc.org/sqlite"
 
+	"github.com/beacon-stack/pilot/internal/api/middleware"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/backup"
@@ -47,10 +48,36 @@ const routerTestKey = "f00dfacef00dfacef00dfacef00dfacef00dfacef00dfacef00dfacef
 type testEnv struct {
 	srv        *httptest.Server
 	dbPath     string
+	configPath string
 	pulseCalls *atomic.Int32
 }
 
+const (
+	routerTestUser = "admin"
+	routerTestPass = "correct horse battery"
+)
+
+// strictSettings requires a login from every address. httptest clients
+// connect from 127.0.0.1, so the default (disabled_for_local) would let
+// them straight in; the strict tests below use this instead.
+func strictSettings(t *testing.T) middleware.AuthSettings {
+	t.Helper()
+	old := middleware.PasswordIterations
+	middleware.PasswordIterations = 1000
+	t.Cleanup(func() { middleware.PasswordIterations = old })
+	hash, err := middleware.HashPassword(routerTestPass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return middleware.AuthSettings{Required: middleware.AuthEnabled, Username: routerTestUser, PasswordHash: hash}
+}
+
 func newTestEnv(t *testing.T, apiKey string) *testEnv {
+	t.Helper()
+	return newTestEnvWith(t, apiKey, strictSettings(t))
+}
+
+func newTestEnvWith(t *testing.T, apiKey string, settings middleware.AuthSettings) *testEnv {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "pilot.db")
@@ -67,6 +94,8 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 	var pulseCalls atomic.Int32
 	h := NewRouter(RouterConfig{
 		Auth:                   config.Secret(apiKey),
+		AuthSettings:           settings,
+		ConfigFile:             filepath.Join(dir, "config.yaml"),
 		Logger:                 logger,
 		StartTime:              time.Now(),
 		DB:                     db,
@@ -89,7 +118,7 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return &testEnv{srv: srv, dbPath: dbPath, pulseCalls: &pulseCalls}
+	return &testEnv{srv: srv, dbPath: dbPath, configPath: filepath.Join(dir, "config.yaml"), pulseCalls: &pulseCalls}
 }
 
 // result is the bits of a response the tests inspect. The body is already
@@ -249,11 +278,11 @@ func TestAuth_PathVariantsDoNotBypass(t *testing.T) {
 	}
 }
 
-func login(t *testing.T, e *testEnv, key string) (result, *http.Cookie) {
+func login(t *testing.T, e *testEnv, password string) (result, *http.Cookie) {
 	t.Helper()
 	resp, _ := e.do(t, "POST", "/api/v1/auth/login",
 		map[string]string{"Content-Type": "application/json", "Sec-Fetch-Site": "same-origin"},
-		`{"api_key":"`+key+`"}`)
+		`{"username":"`+routerTestUser+`","password":"`+password+`"}`)
 	for _, c := range resp.Cookies() {
 		if c.Name == "pilot_session" {
 			return resp, c
@@ -264,7 +293,7 @@ func login(t *testing.T, e *testEnv, key string) (result, *http.Cookie) {
 
 func TestAuth_LoginCookieAuthenticates(t *testing.T) {
 	e := newTestEnv(t, routerTestKey)
-	resp, c := login(t, e, routerTestKey)
+	resp, c := login(t, e, routerTestPass)
 	if resp.StatusCode != http.StatusNoContent || c == nil {
 		t.Fatalf("login status = %d cookie = %v", resp.StatusCode, c)
 	}
@@ -283,7 +312,7 @@ func TestAuth_LoginCookieAuthenticates(t *testing.T) {
 	}
 }
 
-func TestAuth_LoginWrongKey(t *testing.T) {
+func TestAuth_LoginWrongPassword(t *testing.T) {
 	e := newTestEnv(t, routerTestKey)
 	resp, c := login(t, e, "nope")
 	if resp.StatusCode != http.StatusUnauthorized || c != nil {
@@ -294,7 +323,7 @@ func TestAuth_LoginWrongKey(t *testing.T) {
 func TestAuth_LoginCrossSiteRejected(t *testing.T) {
 	e := newTestEnv(t, routerTestKey)
 	resp, _ := e.do(t, "POST", "/api/v1/auth/login",
-		map[string]string{"Sec-Fetch-Site": "cross-site"}, `{"api_key":"`+routerTestKey+`"}`)
+		map[string]string{"Sec-Fetch-Site": "cross-site"}, `{"username":"`+routerTestUser+`","password":"`+routerTestPass+`"}`)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", resp.StatusCode)
 	}
@@ -302,7 +331,7 @@ func TestAuth_LoginCrossSiteRejected(t *testing.T) {
 
 func TestAuth_CookieCrossSiteRejected(t *testing.T) {
 	e := newTestEnv(t, routerTestKey)
-	_, c := login(t, e, routerTestKey)
+	_, c := login(t, e, routerTestPass)
 	for _, m := range []string{"GET", "POST"} {
 		path := "/api/v1/system/config/apikey"
 		if m == "POST" {
@@ -320,7 +349,7 @@ func TestAuth_CookieCrossSiteRejected(t *testing.T) {
 
 func TestAuth_ForgedAndStaleCookiesRejected(t *testing.T) {
 	old := newTestEnv(t, "old-key-old-key-old-key-old-key-old-key")
-	_, oldCookie := login(t, old, "old-key-old-key-old-key-old-key-old-key")
+	_, oldCookie := login(t, old, routerTestPass)
 
 	e := newTestEnv(t, routerTestKey)
 	for name, v := range map[string]string{
@@ -360,7 +389,7 @@ func TestAuth_WebSocket(t *testing.T) {
 	}
 
 	// Session cookie: accepted.
-	_, c := login(t, e, routerTestKey)
+	_, c := login(t, e, routerTestPass)
 	cookie := c.Name + "=" + c.Value
 	status, conn := wsDial(ctx, wsURL, http.Header{"Cookie": {cookie}, "Sec-Fetch-Site": {"same-origin"}})
 	if conn == nil {
@@ -371,5 +400,163 @@ func TestAuth_WebSocket(t *testing.T) {
 	// Cross-site WebSocket hijack with a valid cookie: rejected.
 	if status, _ := wsDial(ctx, wsURL, http.Header{"Cookie": {cookie}, "Sec-Fetch-Site": {"cross-site"}}); status != http.StatusForbidden {
 		t.Fatalf("cross-site ws with cookie: status = %d, want 403", status)
+	}
+}
+
+// ── Sonarr-style default: no login on your own network ────────────────────
+
+// remote makes a request look like it came from the internet through a
+// local reverse proxy (the test client itself is on 127.0.0.1).
+var remote = map[string]string{"X-Forwarded-For": "203.0.113.9", "Sec-Fetch-Site": "same-origin"}
+
+func TestAuth_DefaultLocalNeedsNoLogin(t *testing.T) {
+	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	sameOrigin := map[string]string{"Sec-Fetch-Site": "same-origin"}
+	r, _ := e.do(t, "GET", "/api/v1/system/status", sameOrigin, "")
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("local GET with no credentials: status = %d, want 200", r.StatusCode)
+	}
+	r, _ = e.do(t, "POST", "/api/v1/hooks/pulse/sync", sameOrigin, "")
+	if r.StatusCode != http.StatusAccepted {
+		t.Fatalf("local POST with no credentials: status = %d, want 202", r.StatusCode)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wsURL := "ws" + strings.TrimPrefix(e.srv.URL, "http") + "/api/v1/ws"
+	status, conn := wsDial(ctx, wsURL, http.Header{"Sec-Fetch-Site": {"same-origin"}})
+	if conn == nil {
+		t.Fatalf("local ws with no credentials failed: status = %d", status)
+	}
+	_ = conn.Close(websocket.StatusNormalClosure, "")
+}
+
+func TestAuth_DefaultRemoteStillNeedsLogin(t *testing.T) {
+	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	for _, ep := range protectedEndpoints {
+		resp, body := e.do(t, ep.method, ep.path, remote, "")
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s %s from the internet: status = %d, want 401", ep.method, ep.path, resp.StatusCode)
+		}
+		if strings.Contains(body, routerTestKey) {
+			t.Errorf("%s %s leaked the API key", ep.method, ep.path)
+		}
+	}
+	if e.pulseCalls.Load() != 0 {
+		t.Fatal("remote request reached the pulse handler")
+	}
+}
+
+// A malicious web page open in a browser on the LAN must not be able to
+// drive the API through the local bypass.
+func TestAuth_DefaultLocalCrossSiteRejected(t *testing.T) {
+	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	resp, _ := e.do(t, "POST", "/api/v1/hooks/pulse/sync", map[string]string{"Sec-Fetch-Site": "cross-site"}, "")
+	if resp.StatusCode != http.StatusForbidden || e.pulseCalls.Load() != 0 {
+		t.Fatalf("cross-site POST via local bypass: status = %d calls = %d, want 403 and 0", resp.StatusCode, e.pulseCalls.Load())
+	}
+	resp, body := e.do(t, "GET", "/api/v1/system/config/apikey", map[string]string{"Sec-Fetch-Site": "cross-site"}, "")
+	if resp.StatusCode != http.StatusForbidden || strings.Contains(body, routerTestKey) {
+		t.Fatalf("cross-site GET via local bypass: status = %d, want 403 without the key", resp.StatusCode)
+	}
+}
+
+func TestAuth_Status(t *testing.T) {
+	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	_, body := e.do(t, "GET", "/api/v1/auth/status", map[string]string{"Sec-Fetch-Site": "same-origin"}, "")
+	if !strings.Contains(body, `"authenticated":true`) || !strings.Contains(body, `"method":"local"`) ||
+		!strings.Contains(body, `"credentials_configured":false`) {
+		t.Fatalf("local status = %s", body)
+	}
+	_, body = e.do(t, "GET", "/api/v1/auth/status", remote, "")
+	if !strings.Contains(body, `"authenticated":false`) {
+		t.Fatalf("remote status = %s", body)
+	}
+
+	strict := newTestEnv(t, routerTestKey)
+	_, body = strict.do(t, "GET", "/api/v1/auth/status", nil, "")
+	if !strings.Contains(body, `"authenticated":false`) || !strings.Contains(body, `"credentials_configured":true`) {
+		t.Fatalf("strict status = %s", body)
+	}
+}
+
+func TestAuth_LoginWithoutCredentialsConfigured(t *testing.T) {
+	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	resp, _ := e.do(t, "POST", "/api/v1/auth/login", remote, `{"username":"admin","password":"anything"}`)
+	if resp.StatusCode != http.StatusUnauthorized || len(resp.Cookies()) != 0 {
+		t.Fatalf("status = %d, want 401 with no cookie", resp.StatusCode)
+	}
+	// The API key is not a login password.
+	resp, _ = e.do(t, "POST", "/api/v1/auth/login", remote, `{"username":"admin","password":"`+routerTestKey+`"}`)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("API key as password: status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestAuth_SettingsFlow(t *testing.T) {
+	old := middleware.PasswordIterations
+	middleware.PasswordIterations = 1000
+	t.Cleanup(func() { middleware.PasswordIterations = old })
+
+	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	local := map[string]string{"Sec-Fetch-Site": "same-origin", "Content-Type": "application/json"}
+
+	// Can't require a login everywhere before one exists.
+	r, _ := e.do(t, "PUT", "/api/v1/system/auth", local, `{"required":"enabled","username":""}`)
+	if r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("enable without login: status = %d, want 400", r.StatusCode)
+	}
+	r, _ = e.do(t, "PUT", "/api/v1/system/auth", local, `{"required":"disabled_for_local","username":"me","password":"short"}`)
+	if r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("short password: status = %d, want 400", r.StatusCode)
+	}
+
+	// Set a login; LAN still needs none, the internet can now log in.
+	r, body := e.do(t, "PUT", "/api/v1/system/auth", local, `{"required":"disabled_for_local","username":"me","password":"long enough pw"}`)
+	if r.StatusCode != http.StatusOK || strings.Contains(body, "pbkdf2") {
+		t.Fatalf("set login: status = %d body = %s", r.StatusCode, body)
+	}
+	raw, _ := os.ReadFile(e.configPath)
+	if !strings.Contains(string(raw), "pbkdf2-sha256$") || strings.Contains(string(raw), "long enough pw") {
+		t.Fatalf("config.yaml should hold the hash, not the password:\n%s", raw)
+	}
+	if r, _ := e.do(t, "GET", "/api/v1/system/status", local, ""); r.StatusCode != http.StatusOK {
+		t.Fatalf("LAN after setting login: status = %d, want 200", r.StatusCode)
+	}
+	r, _ = e.do(t, "POST", "/api/v1/auth/login", remote, `{"username":"me","password":"long enough pw"}`)
+	var cookie *http.Cookie
+	for _, c := range r.Cookies() {
+		if c.Name == middleware.SessionCookieName {
+			cookie = c
+		}
+	}
+	if r.StatusCode != http.StatusNoContent || cookie == nil {
+		t.Fatalf("remote login: status = %d", r.StatusCode)
+	}
+	withCookie := map[string]string{"X-Forwarded-For": "203.0.113.9", "Sec-Fetch-Site": "same-origin", "Cookie": cookie.Name + "=" + cookie.Value}
+	if r, _ := e.do(t, "GET", "/api/v1/system/status", withCookie, ""); r.StatusCode != http.StatusOK {
+		t.Fatalf("remote with session: status = %d, want 200", r.StatusCode)
+	}
+
+	// Require login everywhere (keeping the password); LAN now needs it too.
+	r, _ = e.do(t, "PUT", "/api/v1/system/auth", local, `{"required":"enabled","username":"me"}`)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("enable: status = %d", r.StatusCode)
+	}
+	if r, _ := e.do(t, "GET", "/api/v1/system/status", local, ""); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("LAN with required=enabled: status = %d, want 401", r.StatusCode)
+	}
+	if r, _ := e.do(t, "GET", "/api/v1/system/status", withCookie, ""); r.StatusCode != http.StatusOK {
+		t.Fatalf("session after enabling (same password): status = %d, want 200", r.StatusCode)
+	}
+
+	// Changing the password logs existing sessions out.
+	apiKey := map[string]string{"X-Api-Key": routerTestKey, "Content-Type": "application/json"}
+	r, _ = e.do(t, "PUT", "/api/v1/system/auth", apiKey, `{"required":"enabled","username":"me","password":"a new password"}`)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("change password: status = %d", r.StatusCode)
+	}
+	if r, _ := e.do(t, "GET", "/api/v1/system/status", withCookie, ""); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old session after password change: status = %d, want 401", r.StatusCode)
 	}
 }
