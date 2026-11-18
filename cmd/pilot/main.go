@@ -54,6 +54,7 @@ import (
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_trending_tv"
 
 	"github.com/beacon-stack/pilot/internal/api"
+	"github.com/beacon-stack/pilot/internal/api/middleware"
 	apiv1 "github.com/beacon-stack/pilot/internal/api/v1"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/appinfo"
@@ -204,6 +205,16 @@ func run() error {
 			masked = key[:4] + "****"
 		}
 		logger.Info("API key loaded", "key_prefix", masked, "source", "config/env")
+	}
+
+	switch {
+	case cfg.Auth.Required == middleware.AuthEnabled && (cfg.Auth.Username == "" || cfg.Auth.PasswordHash.IsEmpty()):
+		logger.Warn("auth.required is \"enabled\" but no username/password is set — allowing local addresses without a login so you aren't locked out",
+			"hint", "set a login in Settings → App Settings")
+	case cfg.Auth.Required == middleware.AuthEnabled:
+		logger.Info("authentication required for every address")
+	default:
+		logger.Info("authentication disabled for local addresses — browsers on your network open the UI without logging in")
 	}
 
 	// ── Startup banner ────────────────────────────────────────────────────────
@@ -365,7 +376,12 @@ func run() error {
 	// ── HTTP router ───────────────────────────────────────────────────────────
 	startTime := time.Now()
 	router := api.NewRouter(api.RouterConfig{
-		Auth:                   cfg.Auth.APIKey,
+		Auth: cfg.Auth.APIKey,
+		AuthSettings: middleware.AuthSettings{
+			Required:     cfg.Auth.Required,
+			Username:     cfg.Auth.Username,
+			PasswordHash: cfg.Auth.PasswordHash.Value(),
+		},
 		Logger:                 logger,
 		StartTime:              startTime,
 		DB:                     database.SQL,

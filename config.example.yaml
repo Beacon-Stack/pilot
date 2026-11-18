@@ -16,7 +16,14 @@ log:
   format: json   # json or text
 
 auth:
-  # api_key: ""  # auto-generated on first run if empty
+  # api_key: ""  # auto-generated on first run if empty; for scripts and other apps
+  # Like Sonarr: "disabled_for_local" (default) lets browsers on your own
+  # network open the UI without logging in; "enabled" makes everyone log in.
+  # required: disabled_for_local
+  # Set the login from Settings → App Settings → Security. password_hash is
+  # written there; never put a plain password in this file.
+  # username: ""
+  # password_hash: ""
 
 tvdb:
   # api_key: ""  # TheTVDB API key (not yet wired up)
