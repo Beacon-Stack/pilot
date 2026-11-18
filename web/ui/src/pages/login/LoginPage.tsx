@@ -1,26 +1,62 @@
-import { useState, type FormEvent } from "react";
-import { KeyRound } from "lucide-react";
-import { login, safeNextPath } from "@/lib/auth";
+import { useEffect, useState, type FormEvent } from "react";
+import { Lock } from "lucide-react";
+import { getAuthStatus, login, safeNextPath, type AuthStatus } from "@/lib/auth";
+
+const inputStyle: React.CSSProperties = {
+  height: 36,
+  padding: "0 10px",
+  borderRadius: 6,
+  border: "1px solid var(--color-border-default)",
+  background: "var(--color-bg-elevated)",
+  color: "var(--color-text-primary)",
+  fontSize: 13,
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  fontSize: 12,
+  color: "var(--color-text-secondary)",
+};
+
+function nextPath(): string {
+  return safeNextPath(new URLSearchParams(window.location.search).get("next"));
+}
 
 export default function LoginPage() {
-  const [apiKey, setApiKey] = useState("");
+  const [status, setStatus] = useState<AuthStatus | null>(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    getAuthStatus()
+      .then((s) => {
+        // Already allowed in (e.g. on the local network): skip the form.
+        if (s.authenticated) window.location.replace(nextPath());
+        else setStatus(s);
+      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not reach Pilot."));
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
-      await login(apiKey.trim());
-      const next = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+      await login(username.trim(), password);
       // Full navigation so every query refetches with the new cookie.
-      window.location.assign(next);
+      window.location.assign(nextPath());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
       setSubmitting(false);
     }
   }
+
+  const noLogin = status !== null && !status.credentials_configured;
+  const canSubmit = !submitting && username.trim() !== "" && password !== "";
 
   return (
     <div
@@ -48,57 +84,77 @@ export default function LoginPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <KeyRound size={20} strokeWidth={1.75} style={{ color: "var(--color-accent)" }} />
+          <Lock size={20} strokeWidth={1.75} style={{ color: "var(--color-accent)" }} />
           <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "var(--color-text-primary)" }}>
             Sign in
           </h1>
         </div>
-        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--color-text-secondary)" }}>
-          Enter the API key from <code>auth.api_key</code> in your config.yaml.
-        </p>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "var(--color-text-secondary)" }}>
-          API key
-          <input
-            type="password"
-            autoComplete="current-password"
-            autoFocus
-            required
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            style={{
-              height: 36,
-              padding: "0 10px",
-              borderRadius: 6,
-              border: "1px solid var(--color-border-default)",
-              background: "var(--color-bg-elevated)",
-              color: "var(--color-text-primary)",
-              fontSize: 13,
-              fontFamily: "var(--font-family-mono, monospace)",
-            }}
-          />
-        </label>
+
+        {status === null && !error && (
+          <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>Checking…</p>
+        )}
+
+        {noLogin && (
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--color-text-secondary)" }}>
+            Pilot only accepts connections from your local network until you set a username and
+            password. Open Pilot from a device on your network and go to{" "}
+            <strong>Settings → App Settings → Security</strong>.
+          </p>
+        )}
+
+        {status !== null && !noLogin && (
+          <>
+            <label style={labelStyle}>
+              Username
+              <input
+                type="text"
+                autoComplete="username"
+                autoFocus
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <label style={labelStyle}>
+              Password
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={inputStyle}
+              />
+            </label>
+          </>
+        )}
+
         {error && (
           <div role="alert" style={{ fontSize: 13, color: "var(--color-danger)" }}>
             {error}
           </div>
         )}
-        <button
-          type="submit"
-          disabled={submitting || apiKey.trim() === ""}
-          style={{
-            height: 36,
-            borderRadius: 6,
-            border: "none",
-            background: "var(--color-accent)",
-            color: "var(--color-accent-fg)",
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: submitting ? "default" : "pointer",
-            opacity: submitting || apiKey.trim() === "" ? 0.6 : 1,
-          }}
-        >
-          {submitting ? "Signing in…" : "Sign in"}
-        </button>
+
+        {status !== null && !noLogin && (
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            style={{
+              height: 36,
+              borderRadius: 6,
+              border: "none",
+              background: "var(--color-accent)",
+              color: "var(--color-accent-fg)",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: canSubmit ? "pointer" : "default",
+              opacity: canSubmit ? 1 : 0.6,
+            }}
+          >
+            {submitting ? "Signing in…" : "Sign in"}
+          </button>
+        )}
       </form>
     </div>
   );
