@@ -64,7 +64,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/pilot/pilot
+        - github.com/beacon-stack/pilot
   exclusions:
     generated: lax
     paths:

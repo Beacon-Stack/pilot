@@ -13,9 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	// Import pgx stdlib for database/sql compatibility (Postgres support).
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	// Register indexer plugins so they self-register with registry.Default.
 	_ "github.com/beacon-stack/pilot/plugins/indexers/newznab"
 	_ "github.com/beacon-stack/pilot/plugins/indexers/torznab"
@@ -52,6 +49,10 @@ import (
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_list_tv"
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_popular_tv"
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_trending_tv"
+
+	beaconlog "github.com/beacon-stack/pulse/pkg/log"
+	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
+	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
 
 	"github.com/beacon-stack/pilot/internal/api"
 	"github.com/beacon-stack/pilot/internal/api/middleware"
@@ -96,9 +97,6 @@ import (
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
 	"github.com/beacon-stack/pilot/internal/trakt"
 	"github.com/beacon-stack/pilot/internal/version"
-	beaconlog "github.com/beacon-stack/pulse/pkg/log"
-	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
-	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
 )
 
 func main() {
