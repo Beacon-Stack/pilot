@@ -264,7 +264,11 @@ func (a *Auth) LoginHandler() http.HandlerFunc {
 			writeAuthError(w, http.StatusInternalServerError, "Could not create session.")
 			return
 		}
-		http.SetCookie(w, &http.Cookie{
+		// Secure is set only over HTTPS (isHTTPS): Pilot is usually reached
+		// over plain HTTP on a LAN, where a Secure cookie would never be
+		// sent back and login would silently fail. HttpOnly and
+		// SameSite=Strict are always set.
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is conditional on purpose
 			Name:     SessionCookieName,
 			Value:    token,
 			Path:     "/",
@@ -284,7 +288,11 @@ func (a *Auth) LoginHandler() http.HandlerFunc {
 //	POST /api/v1/auth/logout
 func (a *Auth) LogoutHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		http.SetCookie(w, &http.Cookie{
+		// Secure is set only over HTTPS (isHTTPS): Pilot is usually reached
+		// over plain HTTP on a LAN, where a Secure cookie would never be
+		// sent back and login would silently fail. HttpOnly and
+		// SameSite=Strict are always set.
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is conditional on purpose
 			Name:     SessionCookieName,
 			Value:    "",
 			Path:     "/",

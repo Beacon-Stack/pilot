@@ -171,7 +171,9 @@ func BackupDownloadHandler(svc *backup.Service, logger *slog.Logger) http.Handle
 			http.Error(w, `{"status":404,"title":"backup not found"}`, http.StatusNotFound)
 			return
 		}
-		f, err := os.Open(p)
+		// p comes from svc.Path, which only accepts names matching the
+		// backup file pattern, so it can't escape the backup folder.
+		f, err := os.Open(p) //nolint:gosec // G703: name validated by svc.Path
 		if err != nil {
 			http.Error(w, `{"status":500,"title":"failed to open backup"}`, http.StatusInternalServerError)
 			logger.Warn("backup download: open", "error", err)

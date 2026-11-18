@@ -164,7 +164,9 @@ func (s *Service) clear(bin string, del func(fs.FileInfo) bool) (int, error) {
 			return nil
 		}
 		if del(info) {
-			if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			// WalkDir doesn't follow symlinks, and removing a symlink
+			// removes the link, not its target.
+			if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) { //nolint:gosec // G122: see above
 				errs = append(errs, err)
 				return nil
 			}

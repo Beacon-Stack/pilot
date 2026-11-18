@@ -1,8 +1,10 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -37,7 +39,9 @@ func Open(cfg config.DatabaseConfig) (*DB, error) {
 	// and removes SQLITE_BUSY contention for a service of this size.
 	sqlDB.SetMaxOpenConns(1)
 
-	if err := sqlDB.Ping(); err != nil {
+	pingCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := sqlDB.PingContext(pingCtx); err != nil {
 		sqlDB.Close()
 		return nil, fmt.Errorf("pinging sqlite database: %w", err)
 	}
