@@ -13,9 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	// Import pgx stdlib for database/sql compatibility (Postgres support).
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	// Register indexer plugins so they self-register with registry.Default.
 	_ "github.com/beacon-stack/pilot/plugins/indexers/newznab"
 	_ "github.com/beacon-stack/pilot/plugins/indexers/torznab"
