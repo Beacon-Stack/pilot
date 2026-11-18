@@ -64,6 +64,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/failedgrab"
+	"github.com/beacon-stack/pilot/internal/core/firstrun"
 	"github.com/beacon-stack/pilot/internal/core/health"
 	"github.com/beacon-stack/pilot/internal/core/importer"
 	"github.com/beacon-stack/pilot/internal/core/importlist"
@@ -262,6 +263,9 @@ func run() error {
 
 	qualitySvc := quality.NewService(queries, bus)
 	librarySvc := library.NewService(queries, bus)
+	if err := firstrun.Run(context.Background(), qualitySvc, librarySvc, firstrun.Options{}, logger); err != nil {
+		logger.Warn("first-run defaults failed", "error", err)
+	}
 
 	// Resolve the effective TMDB key: Settings-UI override wins over the
 	// baked default. Changes made in the UI take effect at next Pilot

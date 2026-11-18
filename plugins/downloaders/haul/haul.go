@@ -56,8 +56,16 @@ type Client struct {
 	http *http.Client
 }
 
+// DefaultCategory is used when no category is configured. Haul saves a
+// category without its own save path in <download dir>/<category>, so on
+// a fresh install Pilot's downloads land in /data/torrents/tv.
+const DefaultCategory = "tv"
+
 // New creates a new Haul client.
 func New(cfg Config) *Client {
+	if strings.TrimSpace(cfg.Category) == "" {
+		cfg.Category = DefaultCategory
+	}
 	return &Client{
 		cfg:  cfg,
 		http: &http.Client{Timeout: 30 * time.Second, Transport: safedialer.LANTransport()},
