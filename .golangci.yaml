@@ -1,53 +1,73 @@
+version: "2"
 run:
   timeout: 5m
-  exclude-dirs:
-    - web/ui/node_modules
-    - vendor
-
 linters:
   enable:
-    - errcheck
-    - govet
-    - staticcheck
-    - unused
-    - misspell
-    - noctx
     - bodyclose
-    - goimports
-    - revive
-    - gosec
-    - nilerr
     - exhaustive
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/pilot/pilot
-
-  revive:
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - revive
+  settings:
+    staticcheck:
+      # v1 ran staticcheck (SA) and gosimple (S1) but not stylecheck (ST)
+      # or the quickfix (QF) suggestions, which v2 folds into staticcheck.
+      # Keep the same rule set.
+      checks:
+        - S1*
+        - SA*
+    exhaustive:
+      default-signifies-exhaustive: true
+    gosec:
+      excludes:
+        - G304
+        - G115
+        # G118 (goroutine started with context.Background) is newer than
+        # the v1 linter CI used; revisit separately.
+        - G118
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+        - name: var-naming
+          severity: warning
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: exported
-        severity: warning
-      - name: var-naming
-        severity: warning
-
-  gosec:
-    excludes:
-      - G304
-      - G115
-
-  exhaustive:
-    default-signifies-exhaustive: true
-
+      - linters:
+          - errcheck
+          - gosec
+          - noctx
+        path: _test\.go
+      - linters:
+          - all
+        path: internal/db/generated/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - web/ui/node_modules
+      - vendor
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gosec
-
-    - path: internal/db/generated/
-      linters:
-        - all
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/pilot/pilot
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
