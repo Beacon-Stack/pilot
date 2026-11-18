@@ -11,6 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	beaconlog "github.com/beacon-stack/pulse/pkg/log"
+
 	"github.com/beacon-stack/pilot/internal/api/middleware"
 	v1 "github.com/beacon-stack/pilot/internal/api/v1"
 	"github.com/beacon-stack/pilot/internal/api/ws"
@@ -43,7 +45,6 @@ import (
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
 	"github.com/beacon-stack/pilot/internal/version"
 	"github.com/beacon-stack/pilot/web"
-	beaconlog "github.com/beacon-stack/pulse/pkg/log"
 )
 
 // RouterConfig holds everything the router needs to function.

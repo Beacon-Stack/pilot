@@ -53,6 +53,10 @@ import (
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_popular_tv"
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_trending_tv"
 
+	beaconlog "github.com/beacon-stack/pulse/pkg/log"
+	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
+	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
+
 	"github.com/beacon-stack/pilot/internal/api"
 	"github.com/beacon-stack/pilot/internal/api/middleware"
 	apiv1 "github.com/beacon-stack/pilot/internal/api/v1"
@@ -96,9 +100,6 @@ import (
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
 	"github.com/beacon-stack/pilot/internal/trakt"
 	"github.com/beacon-stack/pilot/internal/version"
-	beaconlog "github.com/beacon-stack/pulse/pkg/log"
-	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
-	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
 )
 
 func main() {
