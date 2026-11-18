@@ -20,7 +20,7 @@ var PasswordIterations = 600_000
 // hand-edited config can't turn every login into a minutes-long hash.
 const maxPasswordIterations = 10_000_000
 
-const passwordScheme = "pbkdf2-sha256"
+const hashScheme = "pbkdf2-sha256"
 
 // HashPassword returns "pbkdf2-sha256$<iterations>$<salt>$<hash>".
 func HashPassword(password string) (string, error) {
@@ -35,7 +35,7 @@ func HashPassword(password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return passwordScheme + "$" + strconv.Itoa(PasswordIterations) + "$" +
+	return hashScheme + "$" + strconv.Itoa(PasswordIterations) + "$" +
 		base64.RawStdEncoding.EncodeToString(salt) + "$" +
 		base64.RawStdEncoding.EncodeToString(key), nil
 }
@@ -44,7 +44,7 @@ func HashPassword(password string) (string, error) {
 // A malformed hash never matches.
 func CheckPassword(hash, password string) bool {
 	parts := strings.Split(hash, "$")
-	if len(parts) != 4 || parts[0] != passwordScheme {
+	if len(parts) != 4 || parts[0] != hashScheme {
 		return false
 	}
 	iter, err := strconv.Atoi(parts[1])
