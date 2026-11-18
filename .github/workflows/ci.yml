@@ -76,8 +76,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Type-check
+        run: npm run typecheck
+
       - name: Run tests
         run: npm test
+
+      # Same command the Docker image runs, so a broken frontend build
+      # fails the PR instead of the post-merge image push.
+      - name: Build
+        run: npm run build
 
   build:
     name: Build

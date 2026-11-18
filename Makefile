@@ -18,7 +18,7 @@ LDFLAGS   := -ldflags "\
 IMAGE ?= ghcr.io/beacon-stack/pilot
 
 .PHONY: build run dev test test/unit test/cover test/race test/frontend \
-        lint check generate clean docker docker/push help
+        lint typecheck check generate clean docker docker/push help
 
 ## build: Compile the binary into ./bin/pilot
 build:
@@ -59,9 +59,14 @@ test/frontend:
 lint:
 	golangci-lint run
 
+## typecheck: Type-check the frontend
+## (tsc -b follows the project references; a bare `tsc --noEmit` against the
+## root tsconfig, which has "files": [], checks nothing)
+typecheck:
+	cd web/ui && npm run typecheck
+
 ## check: Run all pre-push checks (Go lint + TypeScript type-check + frontend tests)
-check: lint
-	cd web/ui && npx tsc --noEmit
+check: lint typecheck test/frontend
 
 ## generate: Regenerate sqlc query code
 generate:
