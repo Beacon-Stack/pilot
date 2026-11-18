@@ -1,6 +1,6 @@
 ## Pilot Makefile
 
-MODULE  := github.com/pilot/pilot
+MODULE  := github.com/beacon-stack/pilot
 BINARY  := pilot
 BIN_DIR := ./bin
 CMD     := ./cmd/pilot
@@ -15,7 +15,7 @@ LDFLAGS   := -ldflags "\
   $(TMDB_LDFLAGS) \
   $(TRAKT_LDFLAGS)"
 
-IMAGE ?= ghcr.io/pilot/pilot
+IMAGE ?= ghcr.io/beacon-stack/pilot
 
 .PHONY: build run dev test test/unit test/cover test/race test/frontend \
         lint check generate clean docker docker/push help
