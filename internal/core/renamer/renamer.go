@@ -31,6 +31,9 @@ const (
 	ColonDash ColonReplacement = "dash"
 	// ColonSpaceDash replaces ": " with " - ": "Title: Subtitle" → "Title - Subtitle"
 	ColonSpaceDash ColonReplacement = "space-dash"
+	// ColonSmart is offered by the settings UI; it behaves as ColonSpaceDash
+	// (": " → " - ", any other ":" → "-").
+	ColonSmart ColonReplacement = "smart"
 )
 
 // Series holds the series-level metadata the renamer needs.
@@ -83,21 +86,21 @@ func ApplyEpisodeFormat(format string, series Series, episode Episode, quality p
 		"{MediaInfo VideoCodec}", string(quality.Codec),
 		"{Year}", yearStr(series.Year),
 	)
-	return sanitize(r.Replace(format))
+	return sanitize(r.Replace(format), colon)
 }
 
 // ApplyFolderFormat returns the series root folder name.
 //
 // Supported tokens: {Series Title}, {Series CleanTitle}, {Original Title}, {Release Year}.
-func ApplyFolderFormat(format string, series Series) string {
+func ApplyFolderFormat(format string, series Series, colon ColonReplacement) string {
 	r := strings.NewReplacer(
 		"{Series Title}", series.Title,
-		"{Series CleanTitle}", CleanTitle(series.Title, ColonSpaceDash),
+		"{Series CleanTitle}", CleanTitle(series.Title, colon),
 		"{Original Title}", series.OriginalTitle,
 		"{Release Year}", yearStr(series.Year),
 		"{Year}", yearStr(series.Year),
 	)
-	return sanitize(r.Replace(format))
+	return sanitize(r.Replace(format), colon)
 }
 
 // ApplySeasonFolderFormat returns the season sub-folder name.
@@ -108,7 +111,7 @@ func ApplySeasonFolderFormat(format string, seasonNumber int) string {
 		"{Season:00}", fmt.Sprintf("%02d", seasonNumber),
 		"{season:00}", fmt.Sprintf("%02d", seasonNumber),
 	)
-	return sanitize(r.Replace(format))
+	return sanitize(r.Replace(format), ColonSpaceDash)
 }
 
 // DestPath returns the absolute destination path for an imported episode file.
@@ -120,7 +123,7 @@ func DestPath(
 	quality plugin.Quality, colon ColonReplacement,
 	ext string,
 ) string {
-	seriesDir := ApplyFolderFormat(seriesFolderFormat, series)
+	seriesDir := ApplyFolderFormat(seriesFolderFormat, series, colon)
 	seasonDir := ApplySeasonFolderFormat(seasonFolderFormat, episode.SeasonNumber)
 	filename := ApplyEpisodeFormat(episodeFormat, series, episode, quality, colon) + ext
 	return filepath.Join(libraryRoot, seriesDir, seasonDir, filename)
@@ -133,7 +136,7 @@ func CleanTitle(title string, colon ColonReplacement) string {
 	switch colon {
 	case ColonDash:
 		title = strings.ReplaceAll(title, ":", "-")
-	case ColonSpaceDash:
+	case ColonSpaceDash, ColonSmart:
 		title = strings.ReplaceAll(title, ": ", " - ")
 		title = strings.ReplaceAll(title, ":", "-")
 	default: // ColonDelete
@@ -144,13 +147,18 @@ func CleanTitle(title string, colon ColonReplacement) string {
 	return strings.TrimSpace(title)
 }
 
-// sanitize makes a string safe to use as a filename: removes path separators
-// and collapses whitespace. Does not strip colons or other title chars so
-// that the full {Series Title} variable retains its value; use CleanTitle for that.
-func sanitize(s string) string {
-	s = strings.NewReplacer("/", "", "\x00", "").Replace(s)
-	s = multiSpaceRe.ReplaceAllString(s, " ")
-	return strings.TrimSpace(s)
+// sanitize makes a formatted name safe as a single file or folder name on
+// every filesystem a library is likely to live on (ext4, NFS, and the
+// SMB/NTFS shares media servers read from): colons follow the colon
+// setting, the characters Windows forbids (<>:"/\|?*) and control
+// characters are removed, and trailing dots and spaces are trimmed
+// (Windows drops them, so the name would not round-trip).
+//
+// Before, only "/" was removed, so "Star Wars: Maul" and "Who Are You?"
+// went into filenames as is and the colon setting had no effect.
+func sanitize(s string, colon ColonReplacement) string {
+	s = CleanTitle(s, colon)
+	return strings.TrimRight(s, ". ")
 }
 
 func yearStr(y int) string {
