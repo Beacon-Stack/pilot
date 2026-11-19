@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/beacon-stack/pilot/internal/core/library"
+	"github.com/beacon-stack/pilot/internal/core/mediacheck"
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/unmapped"
@@ -262,6 +263,12 @@ func importScannedFile(
 	fi, err := os.Stat(path)
 	if err != nil {
 		return err
+	}
+	// An all-zero file (an incomplete download) is not an episode file:
+	// recording it would hide the episode from searches forever.
+	if err := mediacheck.Check(path); err != nil {
+		logger.Warn("library scan: skipping file with no data", "path", path, "error", err)
+		return nil
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)

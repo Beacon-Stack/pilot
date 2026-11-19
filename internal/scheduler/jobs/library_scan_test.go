@@ -19,6 +19,18 @@ import (
 // files in it even when neither the folder nor the file names match the
 // series title.
 func TestScanLibraryFiles_MatchesSeriesByFolder(t *testing.T) {
+	scanOneFile(t, []byte("video"), 1)
+}
+
+// A preallocated, never-written download (all zeros) must not become an
+// episode file: it would mark the episode as downloaded forever. This is
+// how 16 empty Patriot S02 files and 3 Ted Lasso files got recorded.
+func TestScanLibraryFiles_SkipsAllZeroFile(t *testing.T) {
+	scanOneFile(t, make([]byte, 1<<20), 0)
+}
+
+func scanOneFile(t *testing.T, content []byte, wantFiles int) {
+	t.Helper()
 	d, err := dbpkg.Open(config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "pilot.db")})
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +43,7 @@ func TestScanLibraryFiles_MatchesSeriesByFolder(t *testing.T) {
 	folder := filepath.Join(root, "Some Odd Folder")
 	file := filepath.Join(folder, "Season 1", "odd.name.S01E01.mkv")
 	_ = os.MkdirAll(filepath.Dir(file), 0o755)
-	_ = os.WriteFile(file, []byte("video"), 0o644)
+	_ = os.WriteFile(file, content, 0o644)
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, q := range []string{
@@ -54,7 +66,7 @@ func TestScanLibraryFiles_MatchesSeriesByFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	files, _ := q.ListEpisodeFilesByEpisodeID(context.Background(), "e1")
-	if len(files) != 1 || files[0].Path != file {
-		t.Fatalf("episode files = %+v, want %s", files, file)
+	if len(files) != wantFiles || (wantFiles == 1 && files[0].Path != file) {
+		t.Fatalf("episode files = %+v, want %d (%s)", files, wantFiles, file)
 	}
 }
