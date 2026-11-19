@@ -1451,25 +1451,56 @@ func (s *Service) RefreshEpisodeMetadata(ctx context.Context, seriesID string, t
 			if !ok {
 				continue
 			}
-			// Only update if there's new data.
-			if ep.StillPath == d.StillPath && ep.RuntimeMinutes == int64(d.RuntimeMinutes) {
+			p, changed := refreshedEpisode(ep, d)
+			if !changed {
 				continue
 			}
-			_, _ = s.q.UpdateEpisode(ctx, db.UpdateEpisodeParams{
-				ID:             ep.ID,
-				Title:          ep.Title,
-				Overview:       ep.Overview,
-				AirDate:        ep.AirDate,
-				HasFile:        ep.HasFile,
-				StillPath:      d.StillPath,
-				RuntimeMinutes: int64(d.RuntimeMinutes),
-			})
+			_, _ = s.q.UpdateEpisode(ctx, p)
 		}
 	}
 	return nil
 }
 
 // sortTitle returns a normalised sort key by stripping common leading articles.
+// refreshedEpisode merges fresh TMDB data into a stored episode. Titles,
+// overviews and air dates are taken from TMDB when it has them: an
+// episode added before it aired is stored as "Episode 1" with no
+// overview, and without this it kept that placeholder forever, which
+// then ended up in renamed file names. Empty TMDB fields never blank
+// out stored ones. changed is false when there is nothing to write.
+func refreshedEpisode(ep db.Episode, d tmdbtv.EpisodeDetail) (db.UpdateEpisodeParams, bool) {
+	p := db.UpdateEpisodeParams{
+		ID:             ep.ID,
+		Title:          ep.Title,
+		Overview:       ep.Overview,
+		AirDate:        ep.AirDate,
+		HasFile:        ep.HasFile,
+		StillPath:      ep.StillPath,
+		RuntimeMinutes: ep.RuntimeMinutes,
+	}
+	if d.Title != "" {
+		p.Title = d.Title
+	}
+	if d.Overview != "" {
+		p.Overview = d.Overview
+	}
+	if d.AirDate != "" {
+		airDate := d.AirDate
+		p.AirDate = &airDate
+	}
+	if d.StillPath != "" {
+		p.StillPath = d.StillPath
+	}
+	if d.RuntimeMinutes > 0 {
+		p.RuntimeMinutes = int64(d.RuntimeMinutes)
+	}
+	sameAirDate := (p.AirDate == nil) == (ep.AirDate == nil) &&
+		(p.AirDate == nil || *p.AirDate == *ep.AirDate)
+	changed := p.Title != ep.Title || p.Overview != ep.Overview || !sameAirDate ||
+		p.StillPath != ep.StillPath || p.RuntimeMinutes != ep.RuntimeMinutes
+	return p, changed
+}
+
 func sortTitle(title string) string {
 	lower := strings.ToLower(title)
 	for _, prefix := range []string{"the ", "a ", "an "} {
