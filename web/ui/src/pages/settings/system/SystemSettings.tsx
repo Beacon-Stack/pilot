@@ -1,5 +1,6 @@
 import { useSystemStatus } from "@/api/system";
 import PageHeader from "@/components/PageHeader";
+import HealthPanel from "./HealthPanel";
 
 export default function SystemSettings() {
   const { data: status } = useSystemStatus();
@@ -20,8 +21,10 @@ export default function SystemSettings() {
     <div style={{ padding: 24, maxWidth: 900 }}>
       <PageHeader
         title="System"
-        description="Runtime information about this Pilot instance."
+        description="Health and runtime information about this Pilot instance."
       />
+
+      <HealthPanel />
 
       <div
         style={{

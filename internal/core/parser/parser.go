@@ -12,6 +12,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // EpisodeInfo holds the TV-episode-specific fields parsed from a filename.
@@ -52,8 +55,12 @@ type ParsedRelease struct {
 // Group 1: season; groups 2…n: episode numbers (one per "E\d+" token).
 var seEpisodeRe = regexp.MustCompile(`(?i)[._\s-]S(\d{1,2})((?:E\d{1,3})+)`)
 
-// seasonPackRe matches a bare season marker with no episode number (e.g. S02 or Season.2).
-var seasonPackRe = regexp.MustCompile(`(?i)(?:^|[._\s-])S(\d{1,2})(?:[._\s-]|$)`)
+// seasonPackRe matches a bare season marker with no episode number, in
+// both the compact form (S02) and the word form (Season 2 / Season.2).
+// The word form matters: Pilot deliberately issues a "<Title> Season N"
+// query variant to find these releases, and dropping them here silently
+// discarded every result that query variant produced.
+var seasonPackRe = regexp.MustCompile(`(?i)(?:^|[._\s-])(?:S(\d{1,2})|Season[._\s]+(\d{1,2}))(?:[._\s-]|$)`)
 
 // episodeNumsRe extracts individual episode numbers from a token like E01E02E03.
 var episodeNumsRe = regexp.MustCompile(`(?i)E(\d{1,3})`)
@@ -83,9 +90,14 @@ func Parse(filename string) ParsedRelease {
 	if idx := strings.LastIndexAny(filename, "/\\"); idx >= 0 {
 		filename = filename[idx+1:]
 	}
-	// Strip the file extension.
+	// Strip the file extension — but only a KNOWN one. Parse also runs on
+	// release titles, and blindly truncating at the last dot destroyed
+	// titles whose final dot-separated token is short ("S.W.A.T. S05E01"
+	// → "S.W.A.T", losing the episode token before any regex ran).
 	if dot := strings.LastIndex(filename, "."); dot > 0 {
-		filename = filename[:dot]
+		if _, ok := knownFileExtensions[strings.ToLower(filename[dot+1:])]; ok {
+			filename = filename[:dot]
+		}
 	}
 
 	var result ParsedRelease
@@ -125,13 +137,18 @@ func Parse(filename string) ParsedRelease {
 	}
 
 	// ── Season pack (no episode number) ──────────────────────────────────────
-	if m := seasonPackRe.FindStringSubmatch(filename); len(m) >= 2 {
-		season, _ := strconv.Atoi(m[1])
+	if m := seasonPackRe.FindStringSubmatchIndex(filename); m != nil {
+		// Group 1 is the compact form (S02), group 2 the word form
+		// (Season 2) — exactly one is set.
+		numStart, numEnd := m[2], m[3]
+		if numStart < 0 {
+			numStart, numEnd = m[4], m[5]
+		}
+		season, _ := strconv.Atoi(filename[numStart:numEnd])
 		result.EpisodeInfo.Season = season
 		result.EpisodeInfo.IsSeasonPack = true
 
-		titlePart := seasonPackRe.Split(filename, 2)[0]
-		result.ShowTitle = cleanTitle(titlePart)
+		result.ShowTitle = cleanTitle(filename[:m[0]])
 		return result
 	}
 
@@ -162,18 +179,42 @@ func Parse(filename string) ParsedRelease {
 	return result
 }
 
-// NormalizeTitle lowercases a title and strips all non-alphanumeric
-// characters so two titles can be compared without being tripped up by
-// dots, underscores, spaces, or punctuation.
+// knownFileExtensions is the set of extensions Parse strips before
+// parsing. Media containers, subtitle/sidecar files, archives, and the
+// fake-upload favorite .exe — never bare words or codec tokens ("264" in
+// "H.264", "1" in "DD5.1" survive because they're not in the set).
+var knownFileExtensions = map[string]struct{}{
+	"mkv": {}, "mp4": {}, "avi": {}, "m4v": {}, "mov": {}, "wmv": {},
+	"ts": {}, "m2ts": {}, "mpg": {}, "mpeg": {}, "webm": {}, "flv": {},
+	"ogm": {}, "divx": {}, "iso": {}, "img": {},
+	"rar": {}, "zip": {}, "7z": {},
+	"srt": {}, "sub": {}, "idx": {}, "nfo": {}, "torrent": {},
+	"mka": {}, "mks": {}, "exe": {},
+}
+
+// NormalizeTitle lowercases a title and reduces it to letters and digits
+// so two titles can be compared without being tripped up by dots,
+// underscores, spaces, or punctuation. Unicode-aware: accented letters
+// fold to their ASCII base ("Pokémon" → "pokemon", matching release
+// titles that drop the accent), non-Latin letters are kept (not deleted
+// — deleting them normalized CJK titles to "" and made every comparison
+// fail), and "&" folds to "and" so "Rick & Morty" matches
+// "Rick.and.Morty".
 //
 // Example:
 //
 //	NormalizeTitle("Breaking.Bad") == NormalizeTitle("breaking bad") == "breakingbad"
 func NormalizeTitle(s string) string {
+	s = strings.ReplaceAll(s, "&", " and ")
+	// NFD-decompose so diacritics become combining marks we can drop.
+	s = norm.NFD.String(s)
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range strings.ToLower(s) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		switch {
+		case unicode.Is(unicode.Mn, r):
+			// Combining mark (the accent split off by NFD) — drop.
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
 			b.WriteRune(r)
 		}
 	}

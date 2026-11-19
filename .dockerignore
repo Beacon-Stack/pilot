@@ -1,0 +1,38 @@
+# Build context for docker/Dockerfile and docker/Dockerfile.minimal
+# (both built with the repo root as context).
+#
+# Keep web/static/: Dockerfile.minimal embeds it as-is (it doesn't run the
+# frontend build), and go:embed needs at least one file there.
+
+# VCS and editor/agent state
+.git
+.github
+.idea/
+.vscode/
+.claude/
+.playwright-mcp/
+
+# Build output
+/pilot
+bin/
+dist/
+tmp/
+*.test
+*.out
+coverage.txt
+coverage.out
+
+# Frontend deps and caches (the image runs its own `npm ci`; copying the
+# host's node_modules over it would mix in host-platform binaries)
+web/ui/node_modules/
+web/ui/.vite/
+web/ui/coverage/
+
+# Local data and secrets: never bake these into an image layer
+config.yaml
+data/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*

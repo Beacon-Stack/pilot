@@ -258,6 +258,33 @@ func TestAddFromStall_SetsReasonExplicitly(t *testing.T) {
 	}
 }
 
+// AddFromImportFailure must force the import_failed reason (never a
+// stall_* reason — it must not feed the stall circuit breaker) and
+// preserve the info hash for two-keyed dedup of re-listed fakes.
+func TestAddFromImportFailure_SetsReasonAndInfoHash(t *testing.T) {
+	mock := newMock()
+	svc := NewService(mock)
+
+	err := svc.AddFromImportFailure(context.Background(), StallEntry{
+		SeriesID:    "s",
+		ReleaseGUID: "g-fake",
+		InfoHash:    "hash-fake",
+		Reason:      ReasonStallNoPeersEver, // must be overridden
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock.mu.Lock()
+	row := mock.entriesByGUID["g-fake"]
+	mock.mu.Unlock()
+	if row.Reason != ReasonImportFailed {
+		t.Errorf("expected reason %q, got %q", ReasonImportFailed, row.Reason)
+	}
+	if row.InfoHash == nil || *row.InfoHash != "hash-fake" {
+		t.Errorf("info hash not preserved: %+v", row.InfoHash)
+	}
+}
+
 func TestAdd_SetsUserMarkedReason(t *testing.T) {
 	mock := newMock()
 	svc := NewService(mock)

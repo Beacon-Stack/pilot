@@ -12,6 +12,8 @@ SET rename_episodes            = ?,
     colon_replacement          = ?,
     import_extra_files         = ?,
     extra_file_extensions      = ?,
-    unmonitor_deleted_episodes = ?
+    unmonitor_deleted_episodes = ?,
+    recycle_bin_path           = ?,
+    recycle_bin_cleanup_days   = ?
 WHERE id = 1
 RETURNING *;

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/redact"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/safedialer"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -89,13 +90,13 @@ func (n *Notifier) Notify(ctx context.Context, event plugin.NotificationEvent) e
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", n.cfg.BotToken)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("telegram: building request: %w", err)
+		return fmt.Errorf("telegram: building request: %w", redact.Error(err, n.cfg.BotToken))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("telegram: sending request: %w", err)
+		return fmt.Errorf("telegram: sending request: %w", redact.Error(err, n.cfg.BotToken))
 	}
 	defer resp.Body.Close()
 
@@ -111,12 +112,12 @@ func (n *Notifier) Test(ctx context.Context) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/getMe", n.cfg.BotToken)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("telegram: building test request: %w", err)
+		return fmt.Errorf("telegram: building test request: %w", redact.Error(err, n.cfg.BotToken))
 	}
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("telegram: test request: %w", err)
+		return fmt.Errorf("telegram: test request: %w", redact.Error(err, n.cfg.BotToken))
 	}
 	defer resp.Body.Close()
 

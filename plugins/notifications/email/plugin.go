@@ -158,7 +158,11 @@ func (n *Notifier) sendTLS(addr string, msg []byte) error {
 
 	tlsCfg := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
 	conn := tls.Client(rawConn, tlsCfg)
-	if err := conn.Handshake(); err != nil {
+	// Bound the handshake so a server that accepts TCP but never speaks
+	// TLS can't hang the notifier forever.
+	hsCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := conn.HandshakeContext(hsCtx); err != nil {
 		rawConn.Close()
 		return fmt.Errorf("email: TLS handshake: %w", err)
 	}

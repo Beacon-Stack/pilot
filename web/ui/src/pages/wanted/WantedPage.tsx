@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMissingEpisodes, useCutoffUnmet } from "@/api/wanted";
+import { useMissingEpisodes, useCutoffUnmet, useSearchAllWanted } from "@/api/wanted";
+import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import ManualSearchModal from "@/components/ManualSearchModal";
 import type { WantedEpisode } from "@/types";
 
@@ -89,9 +90,14 @@ function EpisodeRow({
             display: "block",
             maxWidth: 260,
           }}
-          title={episode.title}
+          title={episode.episode_title}
         >
-          {episode.title}
+          {episode.episode_title}
+          {episode.current_quality && (
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 2 }}>
+              {episode.current_quality} → cutoff {episode.cutoff_quality}
+            </div>
+          )}
         </span>
       </td>
 
@@ -190,7 +196,7 @@ function EpisodeTable({
       <tbody>
         {episodes.map((ep) => (
           <EpisodeRow
-            key={ep.id}
+            key={ep.episode_id}
             episode={ep}
             onSearch={() => onSearch(ep)}
           />
@@ -439,6 +445,20 @@ interface SearchTarget {
 export default function WantedPage() {
   const [tab, setTab] = useState<WantedTab>("missing");
   const [searchTarget, setSearchTarget] = useState<SearchTarget | null>(null);
+  const confirm = useConfirm();
+  const searchAll = useSearchAllWanted();
+
+  async function handleSearchAll() {
+    const ok = await confirm({
+      title: tab === "missing" ? "Search all missing episodes" : "Search for upgrades",
+      message:
+        tab === "missing"
+          ? "Search every indexer for each missing episode and grab the best release your quality profiles accept. This runs in the background and can take a while."
+          : "Search every indexer for an upgrade to each episode below its quality cutoff. This runs in the background and can take a while.",
+      confirmLabel: "Search",
+    });
+    if (ok) searchAll.mutate(tab);
+  }
 
   function handleSearch(ep: WantedEpisode) {
     setSearchTarget({
@@ -499,6 +519,26 @@ export default function WantedPage() {
             </button>
           );
         })}
+        <button
+          type="button"
+          onClick={handleSearchAll}
+          disabled={searchAll.isPending}
+          style={{
+            marginLeft: "auto",
+            alignSelf: "center",
+            padding: "6px 12px",
+            fontSize: 12,
+            fontWeight: 500,
+            borderRadius: 6,
+            border: "1px solid var(--color-border-default)",
+            background: "var(--color-bg-elevated)",
+            color: "var(--color-text-primary)",
+            cursor: searchAll.isPending ? "default" : "pointer",
+            opacity: searchAll.isPending ? 0.6 : 1,
+          }}
+        >
+          {tab === "missing" ? "Search all missing" : "Search all cutoff unmet"}
+        </button>
       </div>
 
       {tab === "missing" && <MissingTab onSearch={handleSearch} />}

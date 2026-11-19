@@ -8,13 +8,16 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/redact"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/safedialer"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -88,7 +91,11 @@ func (idx *Indexer) Capabilities(ctx context.Context) (plugin.Capabilities, erro
 	}
 
 	var caps capsResponse
-	if err := xml.NewDecoder(resp.Body).Decode(&caps); err != nil {
+	if err := decodeXML(resp.Body, &caps); err != nil {
+		var nerr *newznabError
+		if errors.As(err, &nerr) {
+			return plugin.Capabilities{}, fmt.Errorf("newznab: %w", nerr)
+		}
 		return plugin.Capabilities{}, fmt.Errorf("newznab: decoding capabilities: %w", err)
 	}
 
@@ -150,6 +157,20 @@ func (idx *Indexer) Test(ctx context.Context) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("newznab: test returned HTTP %d", resp.StatusCode)
 	}
+
+	var caps capsResponse
+	if err := decodeXML(resp.Body, &caps); err != nil {
+		// An empty body means the indexer answered HTTP 200 but returned no
+		// caps document; tolerate it, matching the torznab plugin.
+		if errors.Is(err, errEmptyBody) {
+			return nil
+		}
+		var nerr *newznabError
+		if errors.As(err, &nerr) {
+			return fmt.Errorf("newznab: %w", nerr)
+		}
+		return fmt.Errorf("newznab: invalid caps response (wrong URL?): %w", err)
+	}
 	return nil
 }
 
@@ -168,9 +189,54 @@ func (idx *Indexer) buildURL(t string, params url.Values) string {
 func (idx *Indexer) get(ctx context.Context, rawURL string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("newznab: building request: %w", err)
+		return nil, fmt.Errorf("newznab: building request: %w", redact.Error(err, idx.cfg.APIKey))
 	}
-	return idx.client.Do(req)
+	resp, err := idx.client.Do(req)
+	if err != nil {
+		// *url.Error includes the full URL, apikey and all.
+		return nil, redact.Error(err, idx.cfg.APIKey)
+	}
+	return resp, nil
+}
+
+// maxResponseBytes caps how much of a response body decodeXML will read.
+// The largest legitimate feeds are a few MB; the cap only guards against a
+// misbehaving endpoint streaming forever.
+const maxResponseBytes = 32 << 20
+
+// errEmptyBody signals an HTTP-200 response with an empty body.
+var errEmptyBody = errors.New("empty response body")
+
+// newznabError is the protocol's standard failure document
+// (<error code="…" description="…"/>), served with HTTP 200.
+type newznabError struct {
+	XMLName     xml.Name `xml:"error"`
+	Code        string   `xml:"code,attr"`
+	Description string   `xml:"description,attr"`
+}
+
+func (e *newznabError) Error() string {
+	return fmt.Sprintf("indexer reported error %s: %s", e.Code, e.Description)
+}
+
+// decodeXML buffers the response body and decodes it into v. Newznab signals
+// failures as an <error> document rather than an HTTP status, so that case is
+// decoded explicitly and returned as *newznabError — otherwise the indexer's
+// own description would be swallowed by an opaque "expected element type
+// <rss>" mismatch from the decoder.
+func decodeXML(r io.Reader, v any) error {
+	data, err := io.ReadAll(io.LimitReader(r, maxResponseBytes))
+	if err != nil {
+		return fmt.Errorf("reading response: %w", err)
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return errEmptyBody
+	}
+	protoErr := &newznabError{}
+	if xml.Unmarshal(data, protoErr) == nil {
+		return protoErr
+	}
+	return xml.Unmarshal(data, v)
 }
 
 // fetchReleases performs a GET to rawURL, decodes the Newznab RSS response,
@@ -187,7 +253,14 @@ func (idx *Indexer) fetchReleases(ctx context.Context, rawURL string) ([]plugin.
 	}
 
 	var feed rssResponse
-	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
+	if err := decodeXML(resp.Body, &feed); err != nil {
+		if errors.Is(err, errEmptyBody) {
+			return nil, fmt.Errorf("newznab: empty response body — check the API key and indexer URL")
+		}
+		var nerr *newznabError
+		if errors.As(err, &nerr) {
+			return nil, fmt.Errorf("newznab: %w", nerr)
+		}
 		return nil, fmt.Errorf("newznab: decoding response: %w", err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -118,5 +119,102 @@ func TestSearch_FallsBackToTextSearchOnZeroTVResults(t *testing.T) {
 	// Both must carry the full query verbatim.
 	if got := capturedURLs[1].Query().Get("q"); got != "Andor S01" {
 		t.Errorf("text-fallback q = %q, want %q", got, "Andor S01")
+	}
+}
+
+// ── Torznab <error> document handling ───────────────────────────────────────
+
+// torznabErrorDoc is the exact document Pulse returned during the
+// 2026-08-16 incident: the upstream Prowlarr definition for
+// TorrentGalaxyClone was removed (TorrentGalaxy shut down), and Pulse
+// answered every search with this HTTP-200 error document. Pilot decoded
+// it blindly into the RSS struct and reported the useless
+// `expected element type <rss> but have <error>` — hiding the actual
+// reason for weeks of "indexes are broken" reports.
+const torznabErrorDoc = `<?xml version="1.0" encoding="UTF-8"?>` +
+	`<error code="100" description="No catalog definition found for indexer &#34;TorrentGalaxyClone&#34; — it may have been removed from Prowlarr"></error>`
+
+func errorDocServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(torznabErrorDoc))
+	}))
+}
+
+// Regression guard: a torznab <error> document (the protocol's standard
+// failure signaling, served with HTTP 200) MUST surface its code and
+// description, never an XML type-mismatch about <rss>.
+func TestSearch_ErrorDocumentSurfacesDescription(t *testing.T) {
+	srv := errorDocServer()
+	defer srv.Close()
+
+	idx := New(Config{URL: srv.URL, APIKey: "k"})
+
+	_, err := idx.Search(context.Background(), plugin.SearchQuery{Query: "Ted Lasso S04E05"})
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "indexer reported error 100") {
+		t.Errorf("error %q should contain the torznab error code", msg)
+	}
+	if !strings.Contains(msg, "No catalog definition found") {
+		t.Errorf("error %q should contain the indexer's description", msg)
+	}
+	if strings.Contains(msg, "expected element type") {
+		t.Errorf("error %q leaks the raw XML mismatch — the error doc was not parsed", msg)
+	}
+}
+
+// The connectivity Test must also surface the description — this is the
+// message shown verbatim in the UI's per-indexer Test button, so it is the
+// most direct place a user can diagnose a broken indexer.
+func TestTest_ErrorDocumentSurfacesDescription(t *testing.T) {
+	srv := errorDocServer()
+	defer srv.Close()
+
+	idx := New(Config{URL: srv.URL, APIKey: "k"})
+
+	err := idx.Test(context.Background())
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "No catalog definition found") {
+		t.Errorf("error %q should contain the indexer's description", msg)
+	}
+	if strings.Contains(msg, "wrong URL?") {
+		t.Errorf("error %q gives the misleading wrong-URL hint for a parsed error doc", msg)
+	}
+}
+
+func TestCapabilities_ErrorDocumentSurfacesDescription(t *testing.T) {
+	srv := errorDocServer()
+	defer srv.Close()
+
+	idx := New(Config{URL: srv.URL, APIKey: "k"})
+
+	_, err := idx.Capabilities(context.Background())
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "No catalog definition found") {
+		t.Errorf("error %q should contain the indexer's description", err)
+	}
+}
+
+// Preserved behavior: an HTTP-200 empty body still passes Test — some
+// Prowlarr-backed indexers return no caps document while serving search
+// results fine.
+func TestTest_EmptyBodyStillPasses(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	idx := New(Config{URL: srv.URL, APIKey: "k"})
+
+	if err := idx.Test(context.Background()); err != nil {
+		t.Fatalf("Test() on empty 200 body = %v, want nil", err)
 	}
 }

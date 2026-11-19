@@ -36,13 +36,35 @@ type DownloaderClient interface {
 	ClientFor(ctx context.Context, configID string) (plugin.DownloadClient, error)
 }
 
+// FailureHandler reacts to a grab whose download the client reported as
+// failed (blocklist + re-search). Implemented by failedgrab.Handler.
+type FailureHandler interface {
+	HandleDownloadFailed(ctx context.Context, g db.GrabHistory, clientError string) error
+}
+
+// PathMapper rewrites a path reported by a download client into the
+// path Pilot sees (remote path mappings). Implemented by remotepath.Service.
+type PathMapper interface {
+	Map(ctx context.Context, clientID, path string) string
+}
+
 // Service polls download clients and keeps grab_history status up to date.
 type Service struct {
 	q          db.Querier
 	downloader DownloaderClient
 	bus        *events.Bus
 	logger     *slog.Logger
+	failures   FailureHandler
+	paths      PathMapper
 }
+
+// SetPathMapper installs the remote path mappings applied to the content
+// path of completed downloads. Without one, paths are used as reported.
+func (s *Service) SetPathMapper(m PathMapper) { s.paths = m }
+
+// SetFailureHandler installs the handler for failed downloads. Without
+// one, failures are only logged.
+func (s *Service) SetFailureHandler(h FailureHandler) { s.failures = h }
 
 // NewService creates a new queue Service.
 func NewService(q db.Querier, downloader DownloaderClient, bus *events.Bus, logger *slog.Logger) *Service {
@@ -197,7 +219,19 @@ func (s *Service) pollClient(ctx context.Context, clientID string, grabs []db.Gr
 
 		// Fire events on terminal state transitions.
 		if g.DownloadStatus != newStatus {
-			s.fireTransitionEvent(ctx, g, newStatus, item.ContentPath)
+			contentPath := item.ContentPath
+			if s.paths != nil {
+				contentPath = s.paths.Map(ctx, clientID, contentPath)
+			}
+			s.fireTransitionEvent(ctx, g, newStatus, contentPath)
+			if plugin.DownloadStatus(newStatus) == plugin.StatusFailed && s.failures != nil {
+				if err := s.failures.HandleDownloadFailed(ctx, g, item.Error); err != nil {
+					s.logger.Warn("queue: handling failed download",
+						"grab_id", g.ID,
+						"error", err,
+					)
+				}
+			}
 		}
 	}
 	return nil

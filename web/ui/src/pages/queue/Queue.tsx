@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQueue, useRemoveFromQueue } from "@/api/queue";
 import { formatBytes, formatDate } from "@/lib/utils";
 import PageHeader from "@/components/PageHeader";
+import PendingReleases from "./PendingReleases";
 import type { QueueItem } from "@/types";
 
 function progressPct(item: QueueItem): number {
@@ -435,6 +436,8 @@ export default function Queue() {
           </table>
         )}
       </div>
+
+      <PendingReleases />
     </div>
   );
 }

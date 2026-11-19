@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSeriesList } from "@/api/series";
 import {
@@ -9,22 +9,49 @@ import {
 import { Poster } from "@/components/Poster";
 import { formatBytes } from "@/lib/utils";
 import type { Series } from "@/types";
+import SeriesBulkBar from "./SeriesBulkBar";
 
-function SeriesCard({ series }: { series: Series }) {
+function SeriesCard({
+  series,
+  selecting = false,
+  selected = false,
+  onToggle,
+}: {
+  series: Series;
+  selecting?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
+}) {
   const navigate = useNavigate();
   const hasAll = series.episode_count > 0 && series.episode_file_count >= series.episode_count;
 
   return (
     <div
-      onClick={() => navigate(`/series/${series.id}`)}
+      onClick={() => (selecting ? onToggle?.() : navigate(`/series/${series.id}`))}
+      role={selecting ? "checkbox" : undefined}
+      aria-checked={selecting ? selected : undefined}
+      aria-label={selecting ? `Select ${series.title}` : undefined}
       style={{
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
         gap: 8,
+        borderRadius: 8,
+        outline: selected ? "2px solid var(--color-accent)" : "none",
+        outlineOffset: 3,
       }}
     >
       <div style={{ position: "relative" }}>
+        {selecting && (
+          <input
+            type="checkbox"
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            checked={selected}
+            style={{ position: "absolute", top: 8, right: 8, zIndex: 1, width: 16, height: 16, pointerEvents: "none" }}
+          />
+        )}
         <Poster
           src={series.poster_url}
           title={series.title}
@@ -168,6 +195,21 @@ export default function Dashboard() {
   const { data, isLoading, isError } = useSeriesList();
   const { data: collStats } = useCollectionStats();
   const { data: storStats } = useStorageStats();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggle(id: string) {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function stopSelecting() {
+    setSelecting(false);
+    setSelected(new Set());
+  }
 
   const qualityResolution = searchParams.get("quality_resolution") ?? "";
   const qualitySource = searchParams.get("quality_source") ?? "";
@@ -222,6 +264,21 @@ export default function Dashboard() {
                 : `${data.total} series`}
             </span>
           )}
+          {selecting && (
+            <button
+              onClick={() => setSelected(new Set(visibleSeries.map((s) => s.id)))}
+              style={{ background: "transparent", border: "1px solid var(--color-border-default)", color: "var(--color-text-primary)", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}
+            >
+              Select all
+            </button>
+          )}
+          <button
+            onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+            aria-pressed={selecting}
+            style={{ background: "transparent", border: "1px solid var(--color-border-default)", color: "var(--color-text-primary)", borderRadius: 6, padding: "6px 12px", fontSize: 13, cursor: "pointer" }}
+          >
+            {selecting ? "Done" : "Select"}
+          </button>
           <button
             onClick={() => navigate("/discover")}
             style={{
@@ -323,9 +380,13 @@ export default function Dashboard() {
         >
           {isLoading
             ? Array.from({ length: 20 }).map((_, i) => <SkeletonCard key={i} />)
-            : visibleSeries.map((s) => <SeriesCard key={s.id} series={s} />)}
+            : visibleSeries.map((s) => (
+                <SeriesCard key={s.id} series={s} selecting={selecting} selected={selected.has(s.id)} onToggle={() => toggle(s.id)} />
+              ))}
         </div>
       )}
+
+      {selecting && <SeriesBulkBar ids={[...selected]} onClear={() => setSelected(new Set())} />}
 
       {!isLoading && !isError && visibleSeries.length === 0 && (
         <div

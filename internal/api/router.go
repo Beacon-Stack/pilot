@@ -1,7 +1,6 @@
 package api
 
 import (
-	"crypto/subtle"
 	"database/sql"
 	"log/slog"
 	"net/http"
@@ -12,14 +11,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	beaconlog "github.com/beacon-stack/pulse/pkg/log"
+
 	"github.com/beacon-stack/pilot/internal/api/middleware"
 	v1 "github.com/beacon-stack/pilot/internal/api/v1"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/appinfo"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/activity"
+	"github.com/beacon-stack/pilot/internal/core/backup"
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
+	"github.com/beacon-stack/pilot/internal/core/health"
 	"github.com/beacon-stack/pilot/internal/core/importer"
 	"github.com/beacon-stack/pilot/internal/core/importlist"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
@@ -30,19 +33,24 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
+	"github.com/beacon-stack/pilot/internal/core/recyclebin"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
+	"github.com/beacon-stack/pilot/internal/core/remotepath"
+	"github.com/beacon-stack/pilot/internal/core/seriesbulk"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stats"
+	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
 	"github.com/beacon-stack/pilot/internal/version"
 	"github.com/beacon-stack/pilot/web"
-	beaconlog "github.com/beacon-stack/pulse/pkg/log"
 )
 
 // RouterConfig holds everything the router needs to function.
 type RouterConfig struct {
 	Auth                   config.Secret
+	AuthSettings           middleware.AuthSettings
 	Logger                 *slog.Logger
 	StartTime              time.Time
 	DB                     *sql.DB
@@ -71,8 +79,14 @@ type RouterConfig struct {
 	ImportListService      *importlist.Service
 	SonarrImportService    *sonarrimport.Service
 	ProviderResolver       *provider.Resolver
+	ReleaseProfileService  *releaseprofile.Service
 	WSHub                  *ws.Hub
 	Scheduler              *scheduler.Scheduler
+	HealthService          *health.Service
+	RemotePathService      *remotepath.Service
+	BackupService          *backup.Service
+	RecycleBinService      *recyclebin.Service
+	SeriesBulkService      *seriesbulk.Service
 	PulseSyncHandler       http.HandlerFunc
 }
 
@@ -94,35 +108,37 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// Browser login/logout/status — the only unauthenticated /api routes.
+	auth := middleware.NewAuth(cfg.Auth.Value(), cfg.AuthSettings)
+	r.Get("/api/v1/auth/status", auth.StatusHandler())
+	r.Post("/api/v1/auth/login", auth.LoginHandler())
+	r.Post("/api/v1/auth/logout", auth.LogoutHandler())
+
+	// Every route registered on `protected` (including the huma API and
+	// its docs) requires an X-Api-Key header, a session cookie, or (by
+	// default) a request from a local address. Auth is
+	// attached per route rather than by path prefix so nothing can route
+	// around it.
+	protected := r.With(auth.Middleware)
+
 	// Pulse sync webhook — called by Beacon Pulse when configs change.
 	if cfg.PulseSyncHandler != nil {
-		r.Post("/api/v1/hooks/pulse/sync", cfg.PulseSyncHandler)
+		protected.Post("/api/v1/hooks/pulse/sync", cfg.PulseSyncHandler)
 	}
 
 	// WebSocket endpoint — registered directly on chi so the upgrade
 	// bypasses the huma JSON middleware stack.
 	if cfg.WSHub != nil {
-		r.Get("/api/v1/ws", cfg.WSHub.ServeHTTP)
+		protected.Get("/api/v1/ws", cfg.WSHub.ServeHTTP)
 	}
 
 	// Backup / restore — registered directly on chi (binary body/response, not JSON).
 	if cfg.DB != nil && cfg.DBPath != "" {
-		authKey := []byte(cfg.Auth.Value())
-		withAuth := func(next http.HandlerFunc) http.HandlerFunc {
-			return func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Sec-Fetch-Site") == "same-origin" {
-					next(w, r)
-					return
-				}
-				if len(authKey) > 0 && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Api-Key")), authKey) == 1 {
-					next(w, r)
-					return
-				}
-				http.Error(w, `{"status":401,"title":"Unauthorized"}`, http.StatusUnauthorized)
-			}
-		}
-		r.Get("/api/v1/system/backup", withAuth(v1.BackupHandler(cfg.DB, cfg.DBPath, cfg.Logger)))
-		r.Post("/api/v1/system/restore", withAuth(v1.RestoreHandler(cfg.DBPath, cfg.Logger)))
+		protected.Get("/api/v1/system/backup", v1.BackupHandler(cfg.DB, cfg.DBPath, cfg.Logger))
+		protected.Post("/api/v1/system/restore", v1.RestoreHandler(cfg.DBPath, cfg.Logger))
+	}
+	if cfg.BackupService != nil {
+		protected.Get("/api/v1/system/backups/{name}/download", v1.BackupDownloadHandler(cfg.BackupService, cfg.Logger))
 	}
 
 	humaConfig := huma.DefaultConfig(appinfo.AppName+" API", version.Version)
@@ -130,9 +146,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	humaConfig.OpenAPIPath = "/api/openapi"
 	humaConfig.SchemasPath = "/api/schemas"
 	humaConfig.Info.Description = appinfo.AppName + " TV series manager API. " +
-		"Browser requests are authenticated via Sec-Fetch-Site; external clients must provide X-Api-Key."
+		"Requests from local addresses need no credentials unless auth.required is \"enabled\". " +
+		"Browsers elsewhere log in with POST /api/v1/auth/login; other clients provide X-Api-Key."
 
-	humaAPI := humachi.New(r, humaConfig)
+	humaAPI := humachi.New(protected, humaConfig)
 
 	// Register X-Api-Key security scheme for the docs UI.
 	oapi := humaAPI.OpenAPI()
@@ -149,21 +166,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	oapi.Security = []map[string][]string{{"ApiKeyAuth": {}}}
 
-	// Auth middleware: same-origin browser requests are trusted; external
-	// consumers must provide a valid X-Api-Key header.
-	apiKeyBytes := []byte(cfg.Auth.Value())
-	humaAPI.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
-		if ctx.Header("Sec-Fetch-Site") == "same-origin" {
-			next(ctx)
-			return
-		}
-		if len(apiKeyBytes) > 0 && subtle.ConstantTimeCompare([]byte(ctx.Header("X-Api-Key")), apiKeyBytes) == 1 {
-			next(ctx)
-			return
-		}
-		_ = huma.WriteErr(humaAPI, ctx, http.StatusUnauthorized, "A valid X-Api-Key header is required.")
-	})
-
+	v1.RegisterAuthSettingsRoutes(humaAPI, auth, cfg.ConfigFile)
 	v1.RegisterSystemRoutes(humaAPI, cfg.StartTime, cfg.DBType, cfg.DBPath, cfg.ConfigFile, cfg.Auth.Value(), cfg.TMDBKeyConfigured, cfg.TMDBKeyIsDefault, cfg.Logger)
 	v1.RegisterRuntimeRoutes(humaAPI, cfg.StartTime)
 	v1.RegisterEnvRoutes(humaAPI)
@@ -201,7 +204,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// lookups), downloader (to find a Haul client), and importer
 	// (to run the import pipeline).
 	if cfg.Queries != nil && cfg.DownloaderService != nil && cfg.ImporterService != nil {
-		v1.RegisterHaulHistoryRoutes(humaAPI, cfg.Queries, cfg.DownloaderService, cfg.ImporterService)
+		v1.RegisterHaulHistoryRoutes(humaAPI, cfg.Queries, cfg.DownloaderService, cfg.ImporterService, cfg.RemotePathService)
+	}
+	if cfg.ImporterService != nil {
+		v1.RegisterManualImportRoutes(humaAPI, cfg.ImporterService)
 	}
 
 	if cfg.NotificationService != nil {
@@ -228,14 +234,41 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		v1.RegisterQueueRoutes(humaAPI, cfg.QueueService, cfg.BlocklistService)
 	}
 
+	if cfg.BackupService != nil {
+		v1.RegisterBackupRoutes(humaAPI, cfg.BackupService)
+	}
+	if cfg.RecycleBinService != nil {
+		v1.RegisterRecycleBinRoutes(humaAPI, cfg.RecycleBinService)
+	}
+	if cfg.SeriesBulkService != nil {
+		v1.RegisterSeriesBulkRoutes(humaAPI, cfg.SeriesBulkService)
+	}
+	if cfg.RemotePathService != nil {
+		v1.RegisterRemotePathMappingRoutes(humaAPI, cfg.RemotePathService)
+	}
+	if cfg.HealthService != nil {
+		v1.RegisterHealthRoutes(humaAPI, cfg.HealthService)
+	}
 	if cfg.Scheduler != nil {
 		v1.RegisterTaskRoutes(humaAPI, cfg.Scheduler)
 	}
 
 	if cfg.Queries != nil {
 		v1.RegisterCalendarRoutes(humaAPI, cfg.Queries)
-		v1.RegisterWantedRoutes(humaAPI, cfg.Queries)
+		// Pass the profile getter only when set: a nil *quality.Service in
+		// a non-nil interface would panic on use.
+		var profiles wanted.ProfileGetter
+		if cfg.QualityService != nil {
+			profiles = cfg.QualityService
+		}
+		v1.RegisterWantedRoutes(humaAPI, cfg.Queries, profiles)
+		if cfg.ShowService != nil && cfg.IndexerService != nil && cfg.DownloaderService != nil {
+			v1.RegisterWantedSearchRoutes(humaAPI, cfg.Queries, cfg.ShowService, cfg.IndexerService,
+				cfg.DownloaderService, cfg.BlocklistService, cfg.QualityService, cfg.Logger)
+		}
 		v1.RegisterHistoryRoutes(humaAPI, cfg.Queries)
+		v1.RegisterDelayRoutes(humaAPI, cfg.Queries)
+		v1.RegisterLanguageRoutes(humaAPI, cfg.Queries)
 	}
 
 	if cfg.ActivityService != nil {
@@ -252,6 +285,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.SonarrImportService != nil {
 		v1.RegisterImportRoutes(humaAPI, cfg.SonarrImportService)
+	}
+
+	if cfg.ReleaseProfileService != nil {
+		v1.RegisterReleaseProfileRoutes(humaAPI, cfg.ReleaseProfileService)
 	}
 
 	if cfg.ProviderResolver != nil {

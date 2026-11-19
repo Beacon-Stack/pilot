@@ -173,7 +173,7 @@ function formToRequest(f: FormState): ImportListRequest {
       if (f.list_type === "custom") settings.list_slug = f.list_slug.trim();
       break;
     case "plex_watchlist_tv":
-      if (f.plex_token.trim()) settings.token = f.plex_token.trim();
+      if (f.plex_token.trim()) settings.access_token = f.plex_token.trim();
       break;
     case "custom_list":
       settings.url = f.url.trim();

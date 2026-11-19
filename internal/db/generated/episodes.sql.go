@@ -33,9 +33,16 @@ func (q *Queries) CountEpisodesWithFileBySeriesID(ctx context.Context, seriesID 
 }
 
 const countMissingEpisodes = `-- name: CountMissingEpisodes :one
-SELECT COUNT(*) FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= strftime('%Y-%m-%d', 'now')
+
+SELECT COUNT(*) FROM episodes e
+JOIN series s ON s.id = e.series_id
+WHERE s.monitored = 1 AND e.monitored = 1 AND e.has_file = 0
+  AND e.air_date IS NOT NULL AND e.air_date <= strftime('%Y-%m-%d', 'now')
 `
 
+// Missing = aired, no file, and both the episode and its series are
+// monitored (season monitoring cascades to episodes). An unmonitored
+// series' episodes are not wanted, as in Sonarr.
 func (q *Queries) CountMissingEpisodes(ctx context.Context) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countMissingEpisodes)
 	var count int64
@@ -341,58 +348,12 @@ func (q *Queries) ListEpisodesBySeriesID(ctx context.Context, seriesID string) (
 	return items, nil
 }
 
-const listMissingEpisodes = `-- name: ListMissingEpisodes :many
-SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE monitored = 1 AND has_file = 0 AND air_date IS NOT NULL AND air_date <= strftime('%Y-%m-%d', 'now')
-ORDER BY air_date DESC LIMIT ? OFFSET ?
-`
-
-type ListMissingEpisodesParams struct {
-	Limit  int64 `json:"limit"`
-	Offset int64 `json:"offset"`
-}
-
-func (q *Queries) ListMissingEpisodes(ctx context.Context, arg ListMissingEpisodesParams) ([]Episode, error) {
-	rows, err := q.db.QueryContext(ctx, listMissingEpisodes, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Episode
-	for rows.Next() {
-		var i Episode
-		if err := rows.Scan(
-			&i.ID,
-			&i.SeriesID,
-			&i.SeasonID,
-			&i.SeasonNumber,
-			&i.EpisodeNumber,
-			&i.AbsoluteNumber,
-			&i.AirDate,
-			&i.Title,
-			&i.Overview,
-			&i.Monitored,
-			&i.HasFile,
-			&i.StillPath,
-			&i.RuntimeMinutes,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listMissingEpisodesWithSeries = `-- name: ListMissingEpisodesWithSeries :many
 SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e
 JOIN series s ON s.id = e.series_id
-WHERE e.monitored = 1 AND e.has_file = 0 AND e.air_date IS NOT NULL AND e.air_date <= strftime('%Y-%m-%d', 'now')
+WHERE s.monitored = 1 AND e.monitored = 1 AND e.has_file = 0
+  AND e.air_date IS NOT NULL AND e.air_date <= strftime('%Y-%m-%d', 'now')
 ORDER BY e.air_date DESC
 LIMIT ? OFFSET ?
 `

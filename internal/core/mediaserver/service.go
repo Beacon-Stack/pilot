@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/registry"
 )
@@ -105,14 +106,17 @@ func (s *Service) List(ctx context.Context) ([]Config, error) {
 // Update replaces the mutable fields of a media server config.
 // Returns ErrNotFound if the config does not exist.
 func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (Config, error) {
-	if _, err := s.q.GetMediaServerConfig(ctx, id); err != nil {
+	existing, err := s.q.GetMediaServerConfig(ctx, id)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Config{}, ErrNotFound
 		}
 		return Config{}, fmt.Errorf("fetching media server %q for update: %w", id, err)
 	}
 
-	settings := req.Settings
+	// The API masks secrets (API keys, tokens) as "***". A client that
+	// sends the masked value back, or omits the key, keeps the stored one.
+	settings := dbutil.MergeSettings(json.RawMessage(existing.Settings), req.Settings)
 	if len(settings) == 0 {
 		settings = json.RawMessage("{}")
 	}

@@ -97,5 +97,6 @@ func (p ParsedRelease) Quality() plugin.Quality {
 		AudioCodec:    p.AudioCodec,
 		AudioChannels: p.AudioChannels,
 		Name:          p.QualityName,
+		Revision:      p.Revision.Version,
 	}
 }

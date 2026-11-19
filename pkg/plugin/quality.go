@@ -114,6 +114,19 @@ type Quality struct {
 	// Name is the human-readable label derived from the video fields,
 	// e.g. "Bluray-1080p x265" or "WEBDL-2160p HDR10".
 	Name string `json:"name"`
+	// Revision is 1 for an original release, 2 for PROPER/REPACK, 3 for
+	// PROPER2/REPACK2, and so on. 0 means unknown and is treated as 1.
+	// It is not part of Score: two releases of the same quality tie on
+	// Score and are then ordered by revision.
+	Revision int `json:"revision,omitempty"`
+}
+
+// EffectiveRevision returns the revision, treating unknown (0) as 1.
+func (q Quality) EffectiveRevision() int {
+	if q.Revision < 1 {
+		return 1
+	}
+	return q.Revision
 }
 
 // Score returns a numeric rank for this quality used when comparing

@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/beacon-stack/pilot/internal/core/importlist"
+	"github.com/beacon-stack/pilot/internal/registry"
 )
 
 // ── Request / response shapes ────────────────────────────────────────────────
@@ -339,7 +340,7 @@ func importListToBody(c importlist.Config) *importListBody {
 		Name:             c.Name,
 		Kind:             c.Kind,
 		Enabled:          c.Enabled,
-		Settings:         c.Settings,
+		Settings:         registry.Default.SanitizeImportListSettings(c.Kind, c.Settings),
 		SearchOnAdd:      c.SearchOnAdd,
 		Monitor:          c.Monitor,
 		MonitorType:      c.MonitorType,

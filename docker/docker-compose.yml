@@ -1,63 +1,47 @@
 # ============================================================================
-# Pilot — standalone deployment
+# Pilot — TV series manager
+# https://beaconstack.io/pilot
 #
-# Runs Pilot on its own with a dedicated Postgres. No Pulse — indexers,
-# download clients, and quality profiles are managed inside Pilot's own
-# Settings UI rather than synced from Pulse.
-#
-# For the full Beacon Stack (Pulse + Pilot + Prism + Haul + VPN), see
-# https://github.com/beacon-stack/deploy
-#
-# Quick start:
-#   1. Edit the /path/to/... lines and the password below.
+#   1. Set the two host paths below.
 #   2. docker compose -f docker/docker-compose.yml up -d
-#   3. Visit http://localhost:8383. Find your API key in Settings → System.
+#   3. Open http://<this-host>:8383 (no login needed on your own network).
+#
+# Pilot runs on its own: add indexers and a download client in its
+# Settings, like Sonarr. To run it with Haul, Prism and Pulse, see
+# https://beaconstack.io for examples that connect them.
 # ============================================================================
 
 services:
-
-  pilot-postgres:
-    image: postgres:17-alpine
-    container_name: pilot-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: pilot
-      POSTGRES_PASSWORD: change-me-please
-      POSTGRES_DB: pilot_db
-    volumes:
-      - pilot-pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pilot"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
   pilot:
     image: ghcr.io/beacon-stack/pilot:latest
     container_name: pilot
     restart: unless-stopped
-    depends_on:
-      pilot-postgres:
-        condition: service_healthy
-    environment:
-      # Override the beacon-stack defaults baked into the image.
-      PILOT_DATABASE_DSN: "postgres://pilot:change-me-please@pilot-postgres:5432/pilot_db?sslmode=disable"
-      PILOT_DATABASE_PASSWORD_FILE: ""
-      PILOT_PULSE_URL: ""
-      PILOT_PULSE_API_KEY_FILE: ""
-    volumes:
-      - /path/to/config:/config
-      - /path/to/tv:/tv
-      - /path/to/downloads:/downloads
     ports:
       - "8383:8383"
+    environment:
+      TZ: UTC                       # your timezone, e.g. America/New_York
+
+      # ── Optional: connect to Pulse ──────────────────────────────────────
+      # Pulse hands Pilot its indexers, download clients and quality
+      # profiles. To turn it on, set the URL and uncomment the two lines
+      # below it. Empty means Pilot runs on its own.
+      PILOT_PULSE_URL: ""                         # e.g. http://192.168.1.10:9696
+      # PILOT_PULSE_API_KEY: <Pulse's API key>    # Pulse → Settings
+      # ADVERTISE_HOST: 192.168.1.10              # this host's address, so
+      #                                           # Pulse can reach Pilot
+    volumes:
+      # Pilot's database and settings. Keep it on a local disk.
+      - /path/to/config/pilot:/config
+
+      # Your media and downloads, in ONE folder. Pilot's library is
+      # /data/media/tv (created on first start); point your download
+      # client at /data/torrents. Give every app the same folder at /data
+      # so imports are instant hardlinks and no path mappings are needed.
+      # The folder must be writable by uid 1000.
+      - /path/to/data:/data
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8383/health"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
-
-volumes:
-  pilot-pgdata:

@@ -75,6 +75,15 @@ tags, no `-short` gating.
   tier, more seeds still wins.
 - `TestSearchSort_AgeTiebreakerOnTies` — the final tiebreaker on
   quality + seed bucket is release age (newer wins).
+- `TestNewSearchResult_*` / `TestSearchSort_QualityPrimacyFromTitles` —
+  quality (and PROPER/REPACK revision) is parsed from the release title
+  at ingestion. Indexer plugins return no quality; before this every
+  result scored 0 and ranking silently fell through to seeds. These
+  start from raw titles; the tests above set `QualityScore` by hand.
+- `TestSearchSort_ProperBeatsOriginalOfSameQuality` /
+  `ProperDoesNotBeatHigherQuality` — revision is the tier right after
+  quality. `sortSearchResults` in the tests calls the real
+  `searchResultLess` comparator, so tests and production can't drift.
 - `TestFilterPass_BelowMinSeedersGetsTagged` / `AboveMinSeedersUntagged`
   / `FreshMultiIndexerBypass` / `OldReleaseNoBypass` /
   `SingleIndexerFreshNoBypass` / `DefaultMinSeeders` /
@@ -98,6 +107,9 @@ tags, no `-short` gating.
   retry loops when every release for an episode is dead.
 - `TestTick_AutoSearchTriggersRetry` — the positive case: below the
   circuit breaker threshold, `TypeAutoSearchRetry` fires.
+- `TestTick_SeasonPackRetryCarriesSeason` — a stalled season-pack grab
+  has no episode_id, so the retry event must carry the season or the
+  retry handler has nothing to search for.
 - `TestTick_InteractiveDoesNotAutoRetry` — interactive grabs only toast
   on stall, never auto-re-search. User owns the decision.
 - `TestTick_NoHaulConfigured` / `TestTick_HaulUnreachable` — graceful
@@ -131,3 +143,28 @@ tags, no `-short` gating.
   `/api/v1/stalls` endpoint shape must be coordinated with Pilot's
   `stallwatcher` and `plugins/downloaders/haul/haul.go` `StalledTorrent`
   struct — the shape is an inter-service contract, not a local type.
+
+## Regression guard: API authentication
+
+Pilot used to treat `Sec-Fetch-Site: same-origin` as proof of a browser
+and skip the API key check. Any non-browser client can send that header, so
+`curl -H 'Sec-Fetch-Site: same-origin' …/api/v1/system/config/apikey`
+returned the full key. **Run `make test` before touching:**
+
+- `internal/api/middleware/auth.go` (the only auth check — sessions, CSRF, login/logout)
+- `internal/api/router.go` (every protected route must be registered on `protected`, never on `r`)
+- `internal/api/ws/hub.go` (has no auth of its own; relies on the router)
+- `web/ui/src/lib/auth.ts` (401 → /login redirect, `safeNextPath` open-redirect guard)
+
+Suite: `internal/api/router_auth_test.go` (drives the real router) and
+`internal/api/middleware/auth_test.go`. The headline test is
+`TestAuth_SecFetchSiteIsNotACredential` — if it fails, the bypass is back.
+
+### Rules
+
+- `Sec-Fetch-Site` is a CSRF signal for cookie sessions, **never** a credential.
+- New `/api` routes go on `protected` (or the huma API, which is mounted on it).
+  The only unauthenticated routes are `/health`, `/api/v1/auth/login`,
+  `/api/v1/auth/logout`, and the static SPA.
+- When adding a new protected surface (binary endpoint, hook, stream), add it
+  to `protectedEndpoints` in `router_auth_test.go`.

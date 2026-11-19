@@ -1,6 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { summarizeHealth, useHealth } from "@/api/health";
 import {
   Activity,
+  AlertTriangle,
   ArrowDownToLine,
   Ban,
   BarChart2,
@@ -11,11 +14,15 @@ import {
   Compass,
   Download,
   FileText,
+  Filter,
+  Timer,
+  Languages,
+  FolderSync,
+  FolderInput,
   Film,
   Gauge,
   History,
   KeyRound,
-  Layers,
   Library,
   ListPlus,
   MonitorPlay,
@@ -25,11 +32,13 @@ import {
   Settings2,
   SlidersHorizontal,
   LayoutDashboard,
+  LogOut,
   Tv,
 } from "lucide-react";
 import Shell, { type NavItem } from "@beacon-shared/Shell";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
+import { getAuthStatus, logout } from "@/lib/auth";
 import { useCommandPalette } from "@/components/command-palette/useCommandPalette";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 
@@ -42,6 +51,7 @@ const mainNav: NavItem[] = [
   { to: "/stats", icon: BarChart2, label: "Statistics" },
   { to: "/queue", icon: Download, label: "Queue" },
   { to: "/history", icon: History, label: "History" },
+  { to: "/manual-import", icon: FolderInput, label: "Manual Import" },
 ];
 
 const settingsNav: NavItem[] = [
@@ -49,11 +59,14 @@ const settingsNav: NavItem[] = [
   { to: "/settings/media-management", icon: Film, label: "Media Management" },
   { to: "/settings/quality-profiles", icon: SlidersHorizontal, label: "Quality Profiles" },
   { to: "/settings/quality-definitions", icon: Gauge, label: "Quality Definitions" },
-  { to: "/settings/custom-formats", icon: Layers, label: "Custom Formats" },
   { to: "/settings/indexers", icon: Search, label: "Indexers" },
   { to: "/settings/download-clients", icon: Settings2, label: "Download Clients" },
+  { to: "/settings/remote-path-mappings", icon: FolderSync, label: "Remote Path Mappings" },
   { to: "/settings/notifications", icon: Bell, label: "Notifications" },
   { to: "/settings/media-servers", icon: MonitorPlay, label: "Media Servers" },
+  { to: "/settings/release-profiles", icon: Filter, label: "Release Profiles" },
+  { to: "/settings/delay-profile", icon: Timer, label: "Delay Profile" },
+  { to: "/settings/languages", icon: Languages, label: "Languages" },
   { to: "/settings/import-lists", icon: ListPlus, label: "Import Lists" },
   { to: "/settings/blocklist", icon: Ban, label: "Blocklist" },
   { to: "/settings/import", icon: ArrowDownToLine, label: "Import" },
@@ -92,6 +105,36 @@ function AppIcon() {
   );
 }
 
+// Shows "N errors, M warnings" in the sidebar footer, linking to the
+// System page, when health checks found something. Nothing when healthy.
+function HealthIndicator() {
+  const { data } = useHealth();
+  const summary = summarizeHealth(data);
+  if (!summary) return null;
+  const hasError = data?.issues.some((i) => i.level === "error");
+  const color = hasError ? "var(--color-danger)" : "var(--color-warning)";
+  return (
+    <Link
+      to="/settings/system"
+      title="Health issues"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "0 12px",
+        height: "36px",
+        color,
+        fontSize: "12px",
+        textDecoration: "none",
+        borderRadius: "6px",
+      }}
+    >
+      <AlertTriangle size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
+      <span>{summary}</span>
+    </Link>
+  );
+}
+
 // Pilot's docs link sits in the sidebar footer. Rendered as a slot
 // rather than via Shell's docsUrl so we keep parity with the previous
 // inline styling.
@@ -119,6 +162,42 @@ function DocsLink() {
   );
 }
 
+// Only a login session can be logged out of. On the local network there
+// is nothing to log out of, so the button stays hidden.
+function LogoutButton() {
+  const [hasSession, setHasSession] = useState(false);
+  useEffect(() => {
+    getAuthStatus()
+      .then((s) => setHasSession(s.method === "session"))
+      .catch(() => setHasSession(false));
+  }, []);
+  if (!hasSession) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => void logout()}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "0 12px",
+        height: "36px",
+        width: "100%",
+        color: "var(--color-text-muted)",
+        fontSize: "12px",
+        background: "none",
+        border: "none",
+        borderRadius: "6px",
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <LogOut size={16} strokeWidth={1.5} style={{ flexShrink: 0 }} />
+      <span>Log out</span>
+    </button>
+  );
+}
+
 export default function PilotShell() {
   useEffect(() => {
     applyTheme();
@@ -134,7 +213,13 @@ export default function PilotShell() {
       mainNav={mainNav}
       settingsNav={settingsNav}
       collapsedStorageKey="pilot-sidebar-collapsed"
-      sidebarFooterExtras={<DocsLink />}
+      sidebarFooterExtras={
+        <>
+          <HealthIndicator />
+          <DocsLink />
+          <LogoutButton />
+        </>
+      }
       overlay={
         commandPalette.isOpen && (
           <CommandPalette onClose={commandPalette.close} />

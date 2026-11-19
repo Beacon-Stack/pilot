@@ -27,9 +27,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
+	"github.com/beacon-stack/pilot/internal/core/language"
 	"github.com/beacon-stack/pilot/internal/core/parser"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
+	releaseparser "github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/internal/ratelimit"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -91,6 +94,9 @@ type SearchResult struct {
 	// ranking comparator prefers full packs over partial packs within the
 	// same quality tier.
 	EpisodeCount int
+	// Languages are the audio languages tagged in the title (parser
+	// names, e.g. "french"). Empty when the title has no language tag.
+	Languages []string
 	// FilterReasons lists all the reasons this release was filtered out
 	// of the "active" set. If non-empty, the UI should render the row
 	// grayed with the reasons shown and an "override" button. Empty means
@@ -121,7 +127,17 @@ type GrabRequest struct {
 // cap the outbound concurrency was queries×indexers — a thundering herd
 // against providers and the local FD table. The semaphore is shared so the
 // bound holds across concurrent Search/GetRecent calls, not just within one.
-const maxConcurrentIndexerSearches = 8
+// 16 slots: a season search issues 2 query variants × ~10 indexers = 20
+// tasks; at 8 slots the tail waited a full scrape-round before starting
+// and blew the interactive budget. Pulse rate-limits per site anyway, so
+// the extra concurrency doesn't hammer providers.
+const maxConcurrentIndexerSearches = 16
+
+// errSearchTimedOut replaces a raw context.DeadlineExceeded in
+// user-facing per-indexer outcomes. Slow (Cloudflare-protected)
+// indexers finish their scrape server-side after we disconnect and the
+// result is cached — retrying is the fix, and the message should say so.
+var errSearchTimedOut = errors.New("timed out — slow (Cloudflare-protected) indexers finish in the background; search again shortly for cached results")
 
 // perIndexerSearchTimeout bounds how long a single indexer call may run (and
 // thus hold a semaphore slot). It inherits any earlier deadline on the parent
@@ -340,6 +356,66 @@ func (s *Service) Test(ctx context.Context, id string) error {
 // fall back to a sensible default of 5 — this matters for edge cases where
 // an indexer exists in search results but not in the rows list (shouldn't
 // happen in production, but tests may construct such cases).
+// applyReleaseProfiles tags results that an enabled release profile
+// rejects (a must-not-contain term, or none of the must-contain terms).
+// Tagged rather than dropped, like min_seeders: interactive search shows
+// them grayed with an override, auto-search and RSS skip them. If the
+// profiles can't be loaded, nothing is tagged: a database hiccup must
+// not empty every search.
+func (s *Service) applyReleaseProfiles(ctx context.Context, results []SearchResult) {
+	if s.q == nil || len(results) == 0 {
+		return
+	}
+	m, err := releaseprofile.LoadMatcher(ctx, s.q)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("could not load release profiles; not applying them", "error", err)
+		}
+		return
+	}
+	applyReleaseProfiles(results, m)
+}
+
+// applyLanguagePreference tags results in no wanted language (see
+// internal/core/language). Like release profiles: tagged, not dropped,
+// and a load failure tags nothing.
+func (s *Service) applyLanguagePreference(ctx context.Context, results []SearchResult) {
+	if s.q == nil || len(results) == 0 {
+		return
+	}
+	pref, err := language.NewStore(s.q).Get(ctx)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("could not load the language preference; not applying it", "error", err)
+		}
+		return
+	}
+	applyLanguagePreference(results, pref)
+}
+
+func applyLanguagePreference(results []SearchResult, pref language.Preference) {
+	if len(pref.Languages) == 0 {
+		return
+	}
+	for i := range results {
+		langs := make([]releaseparser.Language, 0, len(results[i].Languages))
+		for _, l := range results[i].Languages {
+			langs = append(langs, releaseparser.Language(l))
+		}
+		if !pref.Accepts(langs) {
+			results[i].FilterReasons = append(results[i].FilterReasons, language.FilterReason)
+		}
+	}
+}
+
+func applyReleaseProfiles(results []SearchResult, m *releaseprofile.Matcher) {
+	for i := range results {
+		if ok, _ := m.Check(results[i].Title, results[i].IndexerID); !ok {
+			results[i].FilterReasons = append(results[i].FilterReasons, releaseprofile.FilterReason)
+		}
+	}
+}
+
 func applyMinSeedersFilter(results []SearchResult, minByIndexer map[string]int) {
 	titleIndexers := make(map[string]map[string]bool)
 	for _, r := range results {
@@ -408,6 +484,81 @@ func classifyRelease(title string) (PackType, int) {
 	return PackTypeUnknown, 0
 }
 
+// newSearchResult builds the SearchResult for one release returned by an
+// indexer. Indexer plugins don't parse quality, so it is parsed here from
+// the title. Before this, every release kept an empty Quality: the
+// "quality first" sort tier compared zeros, ranking fell through to seeds
+// and age, and grabs recorded no quality.
+func newSearchResult(r plugin.Release, indexerID, indexerName string) SearchResult {
+	if r.Indexer == "" {
+		r.Indexer = indexerName
+	}
+	parsed := releaseparser.Parse(r.Title)
+	r.Quality = withParsedQuality(parsed, r.Quality)
+	pt, count := classifyRelease(r.Title)
+	langs := make([]string, 0, len(parsed.Languages))
+	for _, l := range parsed.Languages {
+		langs = append(langs, string(l))
+	}
+	return SearchResult{
+		Release:      r,
+		IndexerID:    indexerID,
+		IndexerName:  indexerName,
+		QualityScore: r.Quality.Score(),
+		PackType:     pt,
+		EpisodeCount: count,
+		Languages:    langs,
+	}
+}
+
+// withParsedQuality fills q from the release title when the indexer gave
+// no quality, and always fills the revision (PROPER/REPACK) if missing.
+func withParsedQuality(rp releaseparser.ParsedRelease, q plugin.Quality) plugin.Quality {
+	parsed := rp.Quality()
+	if q.Resolution == "" && q.Source == "" {
+		return parsed
+	}
+	if q.Revision == 0 {
+		q.Revision = parsed.Revision
+	}
+	return q
+}
+
+// RanksAbove reports whether a ranks above b under the search ranking.
+// RSS sync uses it to pick the best of several releases for one episode.
+func RanksAbove(a, b SearchResult) bool { return searchResultLess(a, b) }
+
+// searchResultLess is the ranking comparator for search results. Tiers, in
+// order:
+//  1. Quality score   (1080p > 720p > 480p). Quality trumps all.
+//  2. Revision        (PROPER/REPACK beats the original of the same quality)
+//  3. Episode count   (season pack > multi-episode > single episode)
+//  4. Seed weight     (age-aware log10 bucket; resists stale seed inflation)
+//  5. Age             (newer wins when everything else is equal)
+//
+// The Episode Count tier matches Sonarr's DownloadDecisionComparer and is
+// the reason season packs surface above individual episodes within the
+// same quality tier in interactive season searches. Revision sits right
+// after quality because Sonarr treats it as part of quality. See
+// seedWeight() and effectiveEpisodeCount() for the other tiers.
+func searchResultLess(a, b SearchResult) bool {
+	if a.QualityScore != b.QualityScore {
+		return a.QualityScore > b.QualityScore
+	}
+	if ra, rb := a.Quality.EffectiveRevision(), b.Quality.EffectiveRevision(); ra != rb {
+		return ra > rb
+	}
+	if ea, eb := effectiveEpisodeCount(a), effectiveEpisodeCount(b); ea != eb {
+		return ea > eb
+	}
+	if wa, wb := seedWeight(a.Seeds, a.AgeDays), seedWeight(b.Seeds, b.AgeDays); wa != wb {
+		return wa > wb
+	}
+	// Final tiebreaker: prefer newer releases. For same-quality same-seed-bucket
+	// candidates, newer is more likely to have live peers.
+	return a.AgeDays < b.AgeDays
+}
+
 // effectiveEpisodeCount returns a comparable number for the sort comparator.
 // Season packs return a large sentinel so any full pack outranks a partial
 // pack of the same quality. Multi-episode releases return their actual count.
@@ -439,18 +590,41 @@ func seedWeight(seeds int, ageDays float64) int {
 	return bucket
 }
 
+// Outcome summarizes one indexer's contribution to a search —
+// the raw material for the per-indexer breakdown the UI shows instead of
+// a bare "No releases found." This data was previously computed and
+// thrown away, which made "half the fleet is broken" indistinguishable
+// from "nothing matched".
+type Outcome struct {
+	IndexerID   string
+	IndexerName string
+	Results     int
+	Error       string // empty on success
+	// Pending means the indexer hit our deadline but its scrape continues
+	// server-side (Pulse detaches Cloudflare-walled scrapes and caches
+	// the result) — a retry shortly will be served from cache. NOT a
+	// failure; the UI shows "still searching", not an error.
+	Pending bool
+}
+
 // Search queries all enabled indexers with the given search query and returns
 // results sorted by quality score, then an age-aware log10 seed weight, then
 // release age. Errors from individual indexers are collected; a combined error
 // is returned alongside any results that were gathered.
 func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchResult, error) {
+	results, _, err := s.SearchWithOutcomes(ctx, q)
+	return results, err
+}
+
+// SearchWithOutcomes is Search plus the per-indexer outcome list.
+func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) ([]SearchResult, []Outcome, error) {
 	rows, err := s.q.ListEnabledIndexers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("listing enabled indexers: %w", err)
+		return nil, nil, fmt.Errorf("listing enabled indexers: %w", err)
 	}
 
 	if len(rows) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	type indexerResult struct {
@@ -517,6 +691,13 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 					"duration_ms", elapsed.Milliseconds(),
 					"results", len(releases))
 			}
+			// A deadline hit is almost always a Cloudflare-walled indexer
+			// mid-solve: Pulse keeps scraping after we hang up and caches
+			// the result, so a retry shortly succeeds instantly. Say that
+			// instead of a bare "context deadline exceeded".
+			if err != nil && errors.Is(err, context.DeadlineExceeded) {
+				err = errSearchTimedOut
+			}
 			resultsCh <- indexerResult{
 				indexerID:   cfg.ID,
 				indexerName: cfg.Name,
@@ -531,55 +712,42 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 
 	var allResults []SearchResult
 	var errs []error
+	var outcomes []Outcome
 
 	for res := range resultsCh {
 		if res.err != nil {
+			// Deadline hits are "pending", not failures: the scrape
+			// continues server-side and its result will be cached. Only
+			// genuine errors (torznab <error> docs, connection failures)
+			// count as failed.
+			if errors.Is(res.err, errSearchTimedOut) {
+				outcomes = append(outcomes, Outcome{
+					IndexerID:   res.indexerID,
+					IndexerName: res.indexerName,
+					Pending:     true,
+				})
+				continue
+			}
 			errs = append(errs, fmt.Errorf("indexer %q: %w", res.indexerName, res.err))
+			outcomes = append(outcomes, Outcome{
+				IndexerID:   res.indexerID,
+				IndexerName: res.indexerName,
+				Error:       res.err.Error(),
+			})
 			continue
 		}
+		outcomes = append(outcomes, Outcome{
+			IndexerID:   res.indexerID,
+			IndexerName: res.indexerName,
+			Results:     len(res.releases),
+		})
 		for _, r := range res.releases {
-			if r.Indexer == "" {
-				r.Indexer = res.indexerName
-			}
-			pt, count := classifyRelease(r.Title)
-			allResults = append(allResults, SearchResult{
-				Release:      r,
-				IndexerID:    res.indexerID,
-				IndexerName:  res.indexerName,
-				QualityScore: r.Quality.Score(),
-				PackType:     pt,
-				EpisodeCount: count,
-			})
+			allResults = append(allResults, newSearchResult(r, res.indexerID, res.indexerName))
 		}
 	}
 
-	// Sort tiers, in order:
-	//   1. Quality score   (1080p > 720p > 480p). Quality trumps all.
-	//   2. Episode count   (season pack > multi-episode > single episode)
-	//   3. Seed weight     (age-aware log10 bucket; resists stale seed inflation)
-	//   4. Age             (newer wins when everything else is equal)
-	//
-	// The Episode Count tier matches Sonarr's DownloadDecisionComparer and is
-	// the reason season packs surface above individual episodes within the
-	// same quality tier in interactive season searches. See seedWeight() and
-	// effectiveEpisodeCount() for the individual tier rationales.
 	sort.Slice(allResults, func(i, j int) bool {
-		si, sj := allResults[i].QualityScore, allResults[j].QualityScore
-		if si != sj {
-			return si > sj
-		}
-		ei, ej := effectiveEpisodeCount(allResults[i]), effectiveEpisodeCount(allResults[j])
-		if ei != ej {
-			return ei > ej
-		}
-		wi := seedWeight(allResults[i].Seeds, allResults[i].AgeDays)
-		wj := seedWeight(allResults[j].Seeds, allResults[j].AgeDays)
-		if wi != wj {
-			return wi > wj
-		}
-		// Final tiebreaker: prefer newer releases. For same-quality same-seed-bucket
-		// candidates, newer is more likely to have live peers.
-		return allResults[i].AgeDays < allResults[j].AgeDays
+		return searchResultLess(allResults[i], allResults[j])
 	})
 
 	// Build per-indexer min_seeders lookup from the rows we already fetched.
@@ -588,6 +756,8 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 		minByIndexer[r.ID] = int(r.MinSeeders)
 	}
 	applyMinSeedersFilter(allResults, minByIndexer)
+	s.applyReleaseProfiles(ctx, allResults)
+	s.applyLanguagePreference(ctx, allResults)
 
 	var combinedErr error
 	if len(errs) > 0 {
@@ -598,7 +768,7 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 		combinedErr = fmt.Errorf("%d indexer(s) failed: %v", len(errs), msgs)
 	}
 
-	return allResults, combinedErr
+	return allResults, outcomes, combinedErr
 }
 
 // GetRecent fetches the most recent releases from all enabled indexers via
@@ -656,6 +826,13 @@ func (s *Service) GetRecent(ctx context.Context) ([]SearchResult, error) {
 				return
 			}
 			releases, err := idx.GetRecent(sctx)
+			// A deadline hit is almost always a Cloudflare-walled indexer
+			// mid-solve: Pulse keeps scraping after we hang up and caches
+			// the result, so a retry shortly succeeds instantly. Say that
+			// instead of a bare "context deadline exceeded".
+			if err != nil && errors.Is(err, context.DeadlineExceeded) {
+				err = errSearchTimedOut
+			}
 			resultsCh <- indexerResult{
 				indexerID:   cfg.ID,
 				indexerName: cfg.Name,
@@ -677,18 +854,7 @@ func (s *Service) GetRecent(ctx context.Context) ([]SearchResult, error) {
 			continue
 		}
 		for _, r := range res.releases {
-			if r.Indexer == "" {
-				r.Indexer = res.indexerName
-			}
-			pt, count := classifyRelease(r.Title)
-			allResults = append(allResults, SearchResult{
-				Release:      r,
-				IndexerID:    res.indexerID,
-				IndexerName:  res.indexerName,
-				QualityScore: r.Quality.Score(),
-				PackType:     pt,
-				EpisodeCount: count,
-			})
+			allResults = append(allResults, newSearchResult(r, res.indexerID, res.indexerName))
 		}
 	}
 
@@ -700,6 +866,9 @@ func (s *Service) GetRecent(ctx context.Context) ([]SearchResult, error) {
 		}
 		combinedErr = fmt.Errorf("%d indexer(s) failed: %v", len(errs), msgs)
 	}
+
+	s.applyReleaseProfiles(ctx, allResults)
+	s.applyLanguagePreference(ctx, allResults)
 
 	return allResults, combinedErr
 }

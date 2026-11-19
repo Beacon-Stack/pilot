@@ -75,27 +75,33 @@ type EpisodeFile struct {
 }
 
 type GrabHistory struct {
-	ID                string  `json:"id"`
-	SeriesID          string  `json:"seriesId"`
-	EpisodeID         *string `json:"episodeId"`
-	SeasonNumber      *int64  `json:"seasonNumber"`
-	IndexerID         *string `json:"indexerId"`
-	ReleaseGuid       string  `json:"releaseGuid"`
-	ReleaseTitle      string  `json:"releaseTitle"`
-	ReleaseSource     string  `json:"releaseSource"`
-	ReleaseResolution string  `json:"releaseResolution"`
-	ReleaseCodec      string  `json:"releaseCodec"`
-	ReleaseHdr        string  `json:"releaseHdr"`
-	Protocol          string  `json:"protocol"`
-	Size              int64   `json:"size"`
-	DownloadClientID  *string `json:"downloadClientId"`
-	ClientItemID      *string `json:"clientItemId"`
-	DownloadStatus    string  `json:"downloadStatus"`
-	DownloadedBytes   int64   `json:"downloadedBytes"`
-	ScoreBreakdown    *string `json:"scoreBreakdown"`
-	GrabbedAt         string  `json:"grabbedAt"`
-	Source            string  `json:"source"`
-	InfoHash          *string `json:"infoHash"`
+	ID                  string  `json:"id"`
+	SeriesID            string  `json:"seriesId"`
+	EpisodeID           *string `json:"episodeId"`
+	SeasonNumber        *int64  `json:"seasonNumber"`
+	IndexerID           *string `json:"indexerId"`
+	ReleaseGuid         string  `json:"releaseGuid"`
+	ReleaseTitle        string  `json:"releaseTitle"`
+	ReleaseSource       string  `json:"releaseSource"`
+	ReleaseResolution   string  `json:"releaseResolution"`
+	ReleaseCodec        string  `json:"releaseCodec"`
+	ReleaseHdr          string  `json:"releaseHdr"`
+	Protocol            string  `json:"protocol"`
+	Size                int64   `json:"size"`
+	DownloadClientID    *string `json:"downloadClientId"`
+	ClientItemID        *string `json:"clientItemId"`
+	DownloadStatus      string  `json:"downloadStatus"`
+	DownloadedBytes     int64   `json:"downloadedBytes"`
+	ScoreBreakdown      *string `json:"scoreBreakdown"`
+	GrabbedAt           string  `json:"grabbedAt"`
+	Source              string  `json:"source"`
+	InfoHash            *string `json:"infoHash"`
+	ImportStatus        string  `json:"importStatus"`
+	ImportedAt          string  `json:"importedAt"`
+	ImportError         string  `json:"importError"`
+	ContentPath         string  `json:"contentPath"`
+	ImportAttempts      int64   `json:"importAttempts"`
+	ImportLastAttemptAt string  `json:"importLastAttemptAt"`
 }
 
 type ImportExclusion struct {
@@ -158,6 +164,8 @@ type MediaManagement struct {
 	ImportExtraFiles         bool   `json:"importExtraFiles"`
 	ExtraFileExtensions      string `json:"extraFileExtensions"`
 	UnmonitorDeletedEpisodes bool   `json:"unmonitorDeletedEpisodes"`
+	RecycleBinPath           string `json:"recycleBinPath"`
+	RecycleBinCleanupDays    int64  `json:"recycleBinCleanupDays"`
 }
 
 type MediaServerConfig struct {
@@ -179,6 +187,18 @@ type NotificationConfig struct {
 	OnEvents  string `json:"onEvents"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
+}
+
+type PendingRelease struct {
+	ID           string `json:"id"`
+	SeriesID     string `json:"seriesId"`
+	EpisodeID    string `json:"episodeId"`
+	ReleaseTitle string `json:"releaseTitle"`
+	Protocol     string `json:"protocol"`
+	QualityName  string `json:"qualityName"`
+	ReleaseJson  string `json:"releaseJson"`
+	EligibleAt   string `json:"eligibleAt"`
+	AddedAt      string `json:"addedAt"`
 }
 
 type QualityDefinition struct {
@@ -206,6 +226,26 @@ type QualityProfile struct {
 	CreatedAt            string  `json:"createdAt"`
 	UpdatedAt            string  `json:"updatedAt"`
 	ManagedByPulse       bool    `json:"managedByPulse"`
+}
+
+type ReleaseProfile struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Enabled      bool    `json:"enabled"`
+	RequiredJson string  `json:"requiredJson"`
+	IgnoredJson  string  `json:"ignoredJson"`
+	IndexerID    *string `json:"indexerId"`
+	CreatedAt    string  `json:"createdAt"`
+	UpdatedAt    string  `json:"updatedAt"`
+}
+
+type RemotePathMapping struct {
+	ID               string  `json:"id"`
+	DownloadClientID *string `json:"downloadClientId"`
+	RemotePath       string  `json:"remotePath"`
+	LocalPath        string  `json:"localPath"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
 }
 
 type Season struct {

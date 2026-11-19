@@ -16,8 +16,8 @@ import (
 type qualityProfileBody struct {
 	ID                   string           `json:"id"                        doc:"Profile UUID"`
 	Name                 string           `json:"name"                      doc:"Human-readable profile name"`
-	Cutoff               plugin.Quality   `json:"cutoff"                    doc:"Minimum acceptable quality"`
-	Qualities            []plugin.Quality `json:"qualities"                 doc:"Ordered list of accepted qualities"`
+	Cutoff               plugin.Quality   `json:"cutoff"                    doc:"Quality at which upgrading stops"`
+	Qualities            []plugin.Quality `json:"qualities"                 doc:"Allowed qualities (resolution + source); a release must match one"`
 	UpgradeAllowed       bool             `json:"upgrade_allowed"           doc:"Whether upgrades are permitted"`
 	UpgradeUntil         *plugin.Quality  `json:"upgrade_until,omitempty"   doc:"Quality ceiling for upgrades"`
 	MinCustomFormatScore int              `json:"min_custom_format_score"   doc:"Minimum CF score to accept a release"`
@@ -27,8 +27,8 @@ type qualityProfileBody struct {
 
 type qualityProfileInput struct {
 	Name                 string           `json:"name"                             doc:"Human-readable profile name"`
-	Cutoff               plugin.Quality   `json:"cutoff"                           doc:"Minimum acceptable quality"`
-	Qualities            []plugin.Quality `json:"qualities"                        doc:"Ordered list of accepted qualities"`
+	Cutoff               plugin.Quality   `json:"cutoff"                           doc:"Quality at which upgrading stops"`
+	Qualities            []plugin.Quality `json:"qualities"                        doc:"Allowed qualities (resolution + source); a release must match one"`
 	UpgradeAllowed       bool             `json:"upgrade_allowed"                  doc:"Whether upgrades are permitted"`
 	UpgradeUntil         *plugin.Quality  `json:"upgrade_until,omitempty"          doc:"Quality ceiling for upgrades"`
 	MinCustomFormatScore *int             `json:"min_custom_format_score,omitempty" doc:"Minimum CF score (default: 0)"`

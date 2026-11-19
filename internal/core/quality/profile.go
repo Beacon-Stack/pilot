@@ -40,69 +40,6 @@ type Profile struct {
 	ManagedByPulse bool
 }
 
-// WantRelease reports whether this profile should grab a release with
-// releaseQuality, given the quality of the file already on disk
-// (currentFileQuality). Pass nil for currentFileQuality when no file exists.
-//
-// Decision logic:
-//  1. The release quality must be in the profile's allowed set.
-//  2. If no file exists, grab it.
-//  3. If the current file is below the cutoff, grab anything allowed that is
-//     at least as good as what we have (or better).
-//  4. If the current file meets/exceeds the cutoff and upgrading is disabled,
-//     do not grab.
-//  5. If upgrading is enabled, grab if the release is a strict upgrade.
-func (p *Profile) WantRelease(releaseQuality plugin.Quality, currentFileQuality *plugin.Quality) bool {
-	if !p.isAllowed(releaseQuality) {
-		return false
-	}
-
-	// No file on disk — grab anything allowed.
-	if currentFileQuality == nil {
-		return true
-	}
-
-	current := *currentFileQuality
-
-	// Below cutoff: keep trying to improve.
-	if !current.AtLeast(p.Cutoff) {
-		return releaseQuality.AtLeast(current)
-	}
-
-	// Cutoff is met — only grab if upgrading is permitted and worthwhile.
-	if !p.UpgradeAllowed {
-		return false
-	}
-
-	return p.IsUpgrade(releaseQuality, current)
-}
-
-// RejectReason returns a typed reason string explaining why WantRelease would
-// return false. Returns "" if the release would be wanted (no rejection).
-func (p *Profile) RejectReason(releaseQuality plugin.Quality, currentFileQuality *plugin.Quality) string {
-	if !p.isAllowed(releaseQuality) {
-		return "quality_not_in_profile"
-	}
-	if currentFileQuality == nil {
-		return "" // no file → want anything allowed
-	}
-	current := *currentFileQuality
-	if !current.AtLeast(p.Cutoff) {
-		if !releaseQuality.AtLeast(current) {
-			return "no_upgrade_needed"
-		}
-		return ""
-	}
-	// Cutoff met.
-	if !p.UpgradeAllowed {
-		return "upgrade_disabled"
-	}
-	if !p.IsUpgrade(releaseQuality, current) {
-		return "no_upgrade_needed"
-	}
-	return ""
-}
-
 // IsUpgrade reports whether releaseQuality is a strict improvement over
 // currentQuality, subject to the UpgradeUntil ceiling defined in this profile.
 func (p *Profile) IsUpgrade(releaseQuality plugin.Quality, currentQuality plugin.Quality) bool {
@@ -233,29 +170,62 @@ func codecRank(c plugin.Codec) int {
 	}
 }
 
+// Allows reports whether a release of quality q is one of this profile's
+// allowed qualities. A quality here means resolution + source, as in
+// Sonarr ("WEBDL-1080p", "Bluray-1080p"); codec and HDR don't matter, so
+// listing "Bluray-1080p" accepts x264 and x265 alike.
+//
+// When the release's source couldn't be parsed, it matches any allowed
+// quality of the same resolution; when its resolution couldn't be parsed,
+// any of the same source. A release with neither is not allowed. An empty
+// list allows everything.
+//
+// This replaced membership by exact Score, which also compared codec and
+// so rejected almost every real release.
+func (p *Profile) Allows(q plugin.Quality) bool {
+	if len(p.Qualities) == 0 {
+		return true
+	}
+	res, src := knownResolution(q.Resolution), knownSource(q.Source)
+	if res == "" && src == "" {
+		return false
+	}
+	for _, a := range p.Qualities {
+		if (res == "" || res == knownResolution(a.Resolution)) && (src == "" || src == a.Source) {
+			return true
+		}
+	}
+	return false
+}
+
+// knownResolution normalizes r for matching: unknown becomes "", and the
+// standard-definition resolutions (sd, 480p, 576p) become one value.
+// Sonarr's SD qualities ("WEBDL-480p", "DVD", "SDTV") are stored as sd,
+// while the parser reports a 480p release as 480p; without this they
+// never matched.
+func knownResolution(r plugin.Resolution) plugin.Resolution {
+	switch r {
+	case plugin.ResolutionUnknown:
+		return ""
+	case plugin.Resolution480p, plugin.Resolution576p:
+		return plugin.ResolutionSD
+	case plugin.ResolutionSD, plugin.Resolution720p, plugin.Resolution1080p, plugin.Resolution2160p:
+		return r
+	}
+	return r
+}
+
+func knownSource(s plugin.Source) plugin.Source {
+	if s == plugin.SourceUnknown {
+		return ""
+	}
+	return s
+}
+
 // AllowedQualities returns the list of quality values this profile accepts.
 // The slice is a copy; mutations do not affect the profile.
 func (p *Profile) AllowedQualities() []plugin.Quality {
 	out := make([]plugin.Quality, len(p.Qualities))
 	copy(out, p.Qualities)
 	return out
-}
-
-// isAllowed checks whether q appears in p.Qualities using Score equality.
-// We compare by Score rather than struct equality so that the Name field
-// (a derived label) doesn't cause false negatives.
-//
-// An empty Qualities list means "accept any quality", allowing a simple
-// catch-all "Any" profile without enumerating every quality combination.
-func (p *Profile) isAllowed(q plugin.Quality) bool {
-	if len(p.Qualities) == 0 {
-		return true
-	}
-	score := q.Score()
-	for _, allowed := range p.Qualities {
-		if allowed.Score() == score {
-			return true
-		}
-	}
-	return false
 }

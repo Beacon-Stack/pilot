@@ -4,6 +4,8 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/beacon-stack/pilot/internal/core/language"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -434,24 +436,146 @@ func TestFilterPass_DoesNotCatchInflatedSeeders(t *testing.T) {
 	}
 }
 
-// sortSearchResults mirrors the sort logic in Search() so tests don't have to
-// stand up a full service. Keep this in lockstep with the real sort closure
-// in Search() — if they diverge, the tests are lying.
+// sortSearchResults sorts with the same comparator Search() uses. It used
+// to be a hand-kept copy of the comparator; calling the real one means the
+// tests can't drift from production.
 func sortSearchResults(results []SearchResult) {
 	sort.Slice(results, func(i, j int) bool {
-		si, sj := results[i].QualityScore, results[j].QualityScore
-		if si != sj {
-			return si > sj
-		}
-		ei, ej := effectiveEpisodeCount(results[i]), effectiveEpisodeCount(results[j])
-		if ei != ej {
-			return ei > ej
-		}
-		wi := seedWeight(results[i].Seeds, results[i].AgeDays)
-		wj := seedWeight(results[j].Seeds, results[j].AgeDays)
-		if wi != wj {
-			return wi > wj
-		}
-		return results[i].AgeDays < results[j].AgeDays
+		return searchResultLess(results[i], results[j])
 	})
+}
+
+// ── Ingestion: quality parsed from the title ─────────────────────────────────
+//
+// Indexer plugins return releases with an empty Quality. Search() used to
+// copy that through, so every result had QualityScore 0 and the "quality
+// first" tier compared zeros: ranking silently fell through to seeds and
+// age. The sort tests above set QualityScore by hand and couldn't see it.
+// These tests start from raw titles, the way production data arrives.
+
+func TestNewSearchResult_ParsesQualityFromTitle(t *testing.T) {
+	r := newSearchResult(plugin.Release{Title: "Show.S01E01.1080p.BluRay.x264-GRP"}, "idx-1", "Indexer")
+	if r.Quality.Resolution != plugin.Resolution1080p || r.Quality.Source != plugin.SourceBluRay {
+		t.Fatalf("quality not parsed from title: %+v", r.Quality)
+	}
+	if r.QualityScore == 0 {
+		t.Fatal("QualityScore is 0: the quality tier of the sort is inert")
+	}
+	if r.Indexer != "Indexer" || r.IndexerID != "idx-1" {
+		t.Fatalf("indexer fields: %q %q", r.Indexer, r.IndexerID)
+	}
+}
+
+func TestNewSearchResult_KeepsIndexerQualityAddsRevision(t *testing.T) {
+	given := plugin.Quality{Resolution: plugin.Resolution720p, Source: plugin.SourceHDTV}
+	r := newSearchResult(plugin.Release{Title: "Show.S01E01.PROPER.1080p.WEB-DL", Quality: given}, "idx", "I")
+	if r.Quality.Resolution != plugin.Resolution720p {
+		t.Fatalf("indexer-supplied quality was overwritten: %+v", r.Quality)
+	}
+	if r.Quality.Revision != 2 {
+		t.Fatalf("revision = %d, want 2 for PROPER", r.Quality.Revision)
+	}
+}
+
+func TestNewSearchResult_Revisions(t *testing.T) {
+	cases := map[string]int{
+		"Show.S01E01.1080p.WEB-DL-GRP":         1,
+		"Show.S01E01.PROPER.1080p.WEB-DL-GRP":  2,
+		"Show.S01E01.REPACK.1080p.WEB-DL-GRP":  2,
+		"Show.S01E01.PROPER2.1080p.WEB-DL-GRP": 3,
+	}
+	for title, want := range cases {
+		if got := newSearchResult(plugin.Release{Title: title}, "", "").Quality.EffectiveRevision(); got != want {
+			t.Errorf("%s: revision = %d, want %d", title, got, want)
+		}
+	}
+}
+
+// End to end from titles: a well-seeded 720p must not outrank a 1080p.
+// Before quality was parsed at ingestion, both scored 0 and seeds won.
+func TestSearchSort_QualityPrimacyFromTitles(t *testing.T) {
+	results := []SearchResult{
+		newSearchResult(plugin.Release{Title: "Show.S01E01.720p.WEB.x264-GRP", Seeds: 500, AgeDays: 5}, "", ""),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.1080p.BluRay.x265-GRP", Seeds: 5, AgeDays: 5}, "", ""),
+	}
+	sortSearchResults(results)
+	if results[0].Quality.Resolution != plugin.Resolution1080p {
+		t.Fatalf("720p with more seeds outranked 1080p: top = %q", results[0].Title)
+	}
+}
+
+// Within the same quality, a PROPER/REPACK outranks the original, even
+// with fewer seeds.
+func TestSearchSort_ProperBeatsOriginalOfSameQuality(t *testing.T) {
+	results := []SearchResult{
+		newSearchResult(plugin.Release{Title: "Show.S01E01.1080p.WEB-DL.x264-GRP", Seeds: 400, AgeDays: 2}, "", ""),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.PROPER.1080p.WEB-DL.x264-GRP", Seeds: 10, AgeDays: 1}, "", ""),
+	}
+	if results[0].QualityScore != results[1].QualityScore {
+		t.Fatalf("precondition: same quality expected, got %d vs %d", results[0].QualityScore, results[1].QualityScore)
+	}
+	sortSearchResults(results)
+	if results[0].Quality.EffectiveRevision() != 2 {
+		t.Fatalf("original outranked the PROPER: top = %q", results[0].Title)
+	}
+}
+
+// A PROPER never beats a better quality.
+func TestSearchSort_ProperDoesNotBeatHigherQuality(t *testing.T) {
+	results := []SearchResult{
+		newSearchResult(plugin.Release{Title: "Show.S01E01.PROPER.720p.WEB-DL.x264-GRP", Seeds: 100}, "", ""),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.1080p.WEB-DL.x264-GRP", Seeds: 100}, "", ""),
+	}
+	sortSearchResults(results)
+	if results[0].Quality.Resolution != plugin.Resolution1080p {
+		t.Fatalf("a 720p PROPER outranked 1080p: top = %q", results[0].Title)
+	}
+}
+
+// ── Release profiles ─────────────────────────────────────────────────────────
+
+// Releases a release profile rejects are tagged, not dropped (like
+// min_seeders): interactive search shows them grayed with an override;
+// auto-search and RSS skip tagged results.
+func TestApplyReleaseProfiles_TagsRejected(t *testing.T) {
+	results := []SearchResult{
+		newSearchResult(plugin.Release{Title: "Show.S01E01.1080p.WEB-DL-GRP"}, "idx-1", "I"),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.CAM-GRP"}, "idx-1", "I"),
+	}
+	applyReleaseProfiles(results, releaseprofile.NewMatcher([]releaseprofile.Profile{
+		{Name: "No CAM", Enabled: true, Ignored: []string{"cam"}},
+	}))
+	if len(results[0].FilterReasons) != 0 {
+		t.Fatalf("clean release tagged: %v", results[0].FilterReasons)
+	}
+	if len(results[1].FilterReasons) != 1 || results[1].FilterReasons[0] != releaseprofile.FilterReason {
+		t.Fatalf("CAM release not tagged: %v", results[1].FilterReasons)
+	}
+}
+
+// Releases in no wanted language are tagged, not dropped. Languages are
+// parsed at ingestion; an untagged release counts as English.
+func TestApplyLanguagePreference_TagsUnwanted(t *testing.T) {
+	results := []SearchResult{
+		newSearchResult(plugin.Release{Title: "Show.S01E01.1080p.WEB-DL-GRP"}, "idx-1", "I"),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.FRENCH.1080p.WEB-DL-GRP"}, "idx-1", "I"),
+		newSearchResult(plugin.Release{Title: "Show.S01E01.MULTi.1080p.WEB-DL-GRP"}, "idx-1", "I"),
+	}
+	if got := results[1].Languages; len(got) != 1 || got[0] != "french" {
+		t.Fatalf("languages not parsed at ingestion: %v", got)
+	}
+	applyLanguagePreference(results, language.Preference{Languages: []string{"english"}})
+	if len(results[0].FilterReasons) != 0 || len(results[2].FilterReasons) != 0 {
+		t.Fatalf("wanted releases tagged: %v / %v", results[0].FilterReasons, results[2].FilterReasons)
+	}
+	if len(results[1].FilterReasons) != 1 || results[1].FilterReasons[0] != language.FilterReason {
+		t.Fatalf("FRENCH release not tagged: %v", results[1].FilterReasons)
+	}
+
+	// No preference: nothing tagged.
+	results[1].FilterReasons = nil
+	applyLanguagePreference(results, language.Default())
+	if len(results[1].FilterReasons) != 0 {
+		t.Fatalf("tagged with no preference: %v", results[1].FilterReasons)
+	}
 }

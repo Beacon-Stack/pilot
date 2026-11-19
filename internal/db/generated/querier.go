@@ -10,6 +10,10 @@ import (
 
 type Querier interface {
 	ClearBlocklist(ctx context.Context) error
+	// Detaches a grab from its download-client item after seed-target
+	// cleanup removed the torrent. download_status stays 'completed' --
+	// the grab did succeed; only the client-side artifact is gone.
+	ClearGrabClientItem(ctx context.Context, id string) error
 	CountActivities(ctx context.Context, arg CountActivitiesParams) (int64, error)
 	CountAllEpisodes(ctx context.Context) (int64, error)
 	CountBlocklist(ctx context.Context) (int64, error)
@@ -18,10 +22,14 @@ type Querier interface {
 	CountEpisodesBySeriesID(ctx context.Context, seriesID string) (int64, error)
 	CountEpisodesWithFile(ctx context.Context) (int64, error)
 	CountEpisodesWithFileBySeriesID(ctx context.Context, seriesID string) (int64, error)
+	// Missing = aired, no file, and both the episode and its series are
+	// monitored (season monitoring cascades to episodes). An unmonitored
+	// series' episodes are not wanted, as in Sonarr.
 	CountMissingEpisodes(ctx context.Context) (int64, error)
 	CountMonitoredEpisodes(ctx context.Context) (int64, error)
-	// Circuit breaker for auto-re-search: how many stall-reason blocklist
-	// entries exist for this (series, episode) within the last 24 hours?
+	// Circuit breaker for auto-re-search: how many stall- or download-failure
+	// blocklist entries exist for this (series, episode) within the last 24
+	// hours? Both kinds share one retry budget per episode.
 	// Auto-re-search caps at 3 to avoid infinite retry loops when every
 	// release for an episode happens to be dead. Pass episode_id as a
 	// sql.NullString; null matches blocklist rows where episode_id IS NULL.
@@ -42,6 +50,8 @@ type Querier interface {
 	CreateMediaServerConfig(ctx context.Context, arg CreateMediaServerConfigParams) (MediaServerConfig, error)
 	CreateNotificationConfig(ctx context.Context, arg CreateNotificationConfigParams) (NotificationConfig, error)
 	CreateQualityProfile(ctx context.Context, arg CreateQualityProfileParams) (QualityProfile, error)
+	CreateReleaseProfile(ctx context.Context, arg CreateReleaseProfileParams) (ReleaseProfile, error)
+	CreateRemotePathMapping(ctx context.Context, arg CreateRemotePathMappingParams) (RemotePathMapping, error)
 	CreateSeason(ctx context.Context, arg CreateSeasonParams) (Season, error)
 	CreateSeries(ctx context.Context, arg CreateSeriesParams) (Series, error)
 	DeleteAnimeCourMonitoredBySeriesID(ctx context.Context, seriesID string) error
@@ -57,7 +67,11 @@ type Querier interface {
 	DeleteLibrary(ctx context.Context, id string) error
 	DeleteMediaServerConfig(ctx context.Context, id string) error
 	DeleteNotificationConfig(ctx context.Context, id string) error
+	DeletePendingRelease(ctx context.Context, id string) error
+	DeletePendingReleaseByEpisode(ctx context.Context, episodeID string) error
 	DeleteQualityProfile(ctx context.Context, id string) error
+	DeleteReleaseProfile(ctx context.Context, id string) error
+	DeleteRemotePathMapping(ctx context.Context, id string) error
 	DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error
 	DeleteSeries(ctx context.Context, id string) error
 	DeleteSetting(ctx context.Context, key string) error
@@ -78,6 +92,8 @@ type Querier interface {
 	GetMediaServerConfig(ctx context.Context, id string) (MediaServerConfig, error)
 	GetNotificationConfig(ctx context.Context, id string) (NotificationConfig, error)
 	GetQualityProfile(ctx context.Context, id string) (QualityProfile, error)
+	GetReleaseProfile(ctx context.Context, id string) (ReleaseProfile, error)
+	GetRemotePathMapping(ctx context.Context, id string) (RemotePathMapping, error)
 	GetSeason(ctx context.Context, id string) (Season, error)
 	GetSeries(ctx context.Context, id string) (Series, error)
 	GetSeriesByTMDBID(ctx context.Context, tmdbID int64) (Series, error)
@@ -105,12 +121,17 @@ type Querier interface {
 	ListAllTMDBIDs(ctx context.Context) ([]int64, error)
 	ListAnimeCourMonitored(ctx context.Context, seriesID string) ([]AnimeCourMonitored, error)
 	ListBlocklist(ctx context.Context, arg ListBlocklistParams) ([]ListBlocklistRow, error)
+	// Grabs still present on a download client whose import outcome is known --
+	// the download_cleanup job removes them (with data) once the seed target
+	// is met (imported) or immediately (failed + blocklisted garbage).
+	ListCleanupCandidateGrabs(ctx context.Context, limit int64) ([]GrabHistory, error)
 	ListDownloadClientConfigs(ctx context.Context) ([]DownloadClientConfig, error)
 	ListEnabledDownloadClients(ctx context.Context) ([]DownloadClientConfig, error)
 	ListEnabledImportLists(ctx context.Context) ([]ImportListConfig, error)
 	ListEnabledIndexers(ctx context.Context) ([]IndexerConfig, error)
 	ListEnabledMediaServers(ctx context.Context) ([]MediaServerConfig, error)
 	ListEnabledNotifications(ctx context.Context) ([]NotificationConfig, error)
+	ListEnabledReleaseProfiles(ctx context.Context) ([]ReleaseProfile, error)
 	// Batched episode + file counts for a page of series, so the series list can
 	// populate counts in a single round-trip instead of two queries per series.
 	ListEpisodeCountsBySeriesIDs(ctx context.Context, seriesIds []string) ([]ListEpisodeCountsBySeriesIDsRow, error)
@@ -122,6 +143,9 @@ type Querier interface {
 	ListEpisodesBySeasonID(ctx context.Context, seasonID string) ([]Episode, error)
 	ListEpisodesBySeriesID(ctx context.Context, seriesID string) ([]Episode, error)
 	ListExcludedTMDBIDs(ctx context.Context) ([]int64, error)
+	// Completed downloads whose import failed and that still have retry
+	// budget. Oldest attempt first so a backlog drains fairly.
+	ListFailedImports(ctx context.Context, arg ListFailedImportsParams) ([]GrabHistory, error)
 	ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams) ([]GrabHistory, error)
 	ListGrabHistoryByEpisode(ctx context.Context, episodeID *string) ([]GrabHistory, error)
 	ListGrabHistoryBySeries(ctx context.Context, seriesID string) ([]GrabHistory, error)
@@ -135,12 +159,15 @@ type Querier interface {
 	ListLibraries(ctx context.Context) ([]Library, error)
 	ListManagedQualityProfiles(ctx context.Context) ([]QualityProfile, error)
 	ListMediaServerConfigs(ctx context.Context) ([]MediaServerConfig, error)
-	ListMissingEpisodes(ctx context.Context, arg ListMissingEpisodesParams) ([]Episode, error)
 	ListMissingEpisodesWithSeries(ctx context.Context, arg ListMissingEpisodesWithSeriesParams) ([]ListMissingEpisodesWithSeriesRow, error)
 	ListMonitoredSeries(ctx context.Context) ([]Series, error)
 	ListNotificationConfigs(ctx context.Context) ([]NotificationConfig, error)
+	ListPendingReleases(ctx context.Context) ([]PendingRelease, error)
+	ListPendingReleasesWithSeries(ctx context.Context) ([]ListPendingReleasesWithSeriesRow, error)
 	ListQualityDefinitions(ctx context.Context) ([]QualityDefinition, error)
 	ListQualityProfiles(ctx context.Context) ([]QualityProfile, error)
+	ListReleaseProfiles(ctx context.Context) ([]ReleaseProfile, error)
+	ListRemotePathMappings(ctx context.Context) ([]RemotePathMapping, error)
 	ListSeasonsBySeriesID(ctx context.Context, seriesID string) ([]Season, error)
 	ListSeries(ctx context.Context, arg ListSeriesParams) ([]Series, error)
 	ListSeriesByLibrary(ctx context.Context, arg ListSeriesByLibraryParams) ([]Series, error)
@@ -160,8 +187,13 @@ type Querier interface {
 	ListStatsSnapshots(ctx context.Context, limit int64) ([]StatsSnapshot, error)
 	ListStorageSnapshots(ctx context.Context, limit int64) ([]ListStorageSnapshotsRow, error)
 	MarkGrabRemoved(ctx context.Context, id string) error
+	// Bookkeeping for automatic import retry, written alongside
+	// SetGrabImportState. content_path is only overwritten with a non-empty
+	// value; min_attempts lets a hard failure exhaust the retry budget.
+	NoteGrabImportAttempt(ctx context.Context, arg NoteGrabImportAttemptParams) error
 	PruneActivities(ctx context.Context, createdAt string) error
 	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (int64, error)
+	SetGrabImportState(ctx context.Context, arg SetGrabImportStateParams) error
 	SetSetting(ctx context.Context, arg SetSettingParams) error
 	SumEpisodeFileSize(ctx context.Context) (interface{}, error)
 	UpdateDownloadClientConfig(ctx context.Context, arg UpdateDownloadClientConfigParams) (DownloadClientConfig, error)
@@ -189,10 +221,13 @@ type Querier interface {
 	UpdateNotificationConfig(ctx context.Context, arg UpdateNotificationConfigParams) (NotificationConfig, error)
 	UpdateQualityDefinitionSizes(ctx context.Context, arg UpdateQualityDefinitionSizesParams) error
 	UpdateQualityProfile(ctx context.Context, arg UpdateQualityProfileParams) (QualityProfile, error)
+	UpdateReleaseProfile(ctx context.Context, arg UpdateReleaseProfileParams) (ReleaseProfile, error)
+	UpdateRemotePathMapping(ctx context.Context, arg UpdateRemotePathMappingParams) (RemotePathMapping, error)
 	UpdateSeasonMonitored(ctx context.Context, arg UpdateSeasonMonitoredParams) error
 	UpdateSeries(ctx context.Context, arg UpdateSeriesParams) (Series, error)
 	UpdateSeriesMetadata(ctx context.Context, arg UpdateSeriesMetadataParams) (Series, error)
 	UpsertAnimeCourMonitored(ctx context.Context, arg UpsertAnimeCourMonitoredParams) error
+	UpsertPendingRelease(ctx context.Context, arg UpsertPendingReleaseParams) error
 }
 
 var _ Querier = (*Queries)(nil)

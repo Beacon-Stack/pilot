@@ -13,9 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	// Import pgx stdlib for database/sql compatibility (Postgres support).
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	// Register indexer plugins so they self-register with registry.Default.
 	_ "github.com/beacon-stack/pilot/plugins/indexers/newznab"
 	_ "github.com/beacon-stack/pilot/plugins/indexers/torznab"
@@ -53,13 +50,23 @@ import (
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_popular_tv"
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_trending_tv"
 
+	beaconlog "github.com/beacon-stack/pulse/pkg/log"
+	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
+	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
+
 	"github.com/beacon-stack/pilot/internal/api"
+	"github.com/beacon-stack/pilot/internal/api/middleware"
+	apiv1 "github.com/beacon-stack/pilot/internal/api/v1"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/appinfo"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/activity"
+	"github.com/beacon-stack/pilot/internal/core/backup"
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
+	"github.com/beacon-stack/pilot/internal/core/failedgrab"
+	"github.com/beacon-stack/pilot/internal/core/firstrun"
+	"github.com/beacon-stack/pilot/internal/core/health"
 	"github.com/beacon-stack/pilot/internal/core/importer"
 	"github.com/beacon-stack/pilot/internal/core/importlist"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
@@ -70,6 +77,10 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
+	"github.com/beacon-stack/pilot/internal/core/recyclebin"
+	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
+	"github.com/beacon-stack/pilot/internal/core/remotepath"
+	"github.com/beacon-stack/pilot/internal/core/seriesbulk"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stallwatcher"
 	"github.com/beacon-stack/pilot/internal/core/stats"
@@ -86,9 +97,6 @@ import (
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
 	"github.com/beacon-stack/pilot/internal/trakt"
 	"github.com/beacon-stack/pilot/internal/version"
-	beaconlog "github.com/beacon-stack/pulse/pkg/log"
-	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
-	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
 )
 
 func main() {
@@ -198,6 +206,16 @@ func run() error {
 		logger.Info("API key loaded", "key_prefix", masked, "source", "config/env")
 	}
 
+	switch {
+	case cfg.Auth.Required == middleware.AuthEnabled && (cfg.Auth.Username == "" || cfg.Auth.PasswordHash.IsEmpty()):
+		logger.Warn("auth.required is \"enabled\" but no username/password is set — allowing local addresses without a login so you aren't locked out",
+			"hint", "set a login in Settings → App Settings")
+	case cfg.Auth.Required == middleware.AuthEnabled:
+		logger.Info("authentication required for every address")
+	default:
+		logger.Info("authentication disabled for local addresses — browsers on your network open the UI without logging in")
+	}
+
 	// ── Startup banner ────────────────────────────────────────────────────────
 	configFile := cfg.ConfigFile
 	if configFile == "" {
@@ -213,13 +231,10 @@ func run() error {
 
 	// ── Database restore staging check ────────────────────────────────────────
 	if cfg.Database.Path != "" {
-		stagingPath := cfg.Database.Path + ".restore"
-		if _, statErr := os.Stat(stagingPath); statErr == nil {
-			if renameErr := os.Rename(stagingPath, cfg.Database.Path); renameErr == nil {
-				logger.Info("database restored from backup")
-			} else {
-				logger.Warn("failed to swap restore file into place", "error", renameErr)
-			}
+		if applied, restoreErr := backup.ApplyStagedRestore(cfg.Database.Path); restoreErr != nil {
+			logger.Warn("failed to swap restore file into place", "error", restoreErr)
+		} else if applied {
+			logger.Info("database restored from backup")
 		}
 	}
 
@@ -246,6 +261,9 @@ func run() error {
 
 	qualitySvc := quality.NewService(queries, bus)
 	librarySvc := library.NewService(queries, bus)
+	if err := firstrun.Run(context.Background(), qualitySvc, librarySvc, firstrun.Options{}, logger); err != nil {
+		logger.Warn("first-run defaults failed", "error", err)
+	}
 
 	// Resolve the effective TMDB key: Settings-UI override wins over the
 	// baked default. Changes made in the UI take effect at next Pilot
@@ -294,11 +312,17 @@ func run() error {
 	mediaServerSvc := mediaserver.NewService(queries, registry.Default)
 	blocklistSvc := blocklist.NewService(queries)
 	mediaManagementSvc := mediamanagement.NewService(queries)
+	recycleSvc := recyclebin.New(mediaManagementSvc, logger)
+	showSvc.SetRecycler(recycleSvc)
 	qualityDefSvc := quality.NewDefinitionService(queries)
 	queueSvc := queue.NewService(queries, downloaderSvc, bus, logger)
+	// Failed downloads: blocklist + request a re-search (all clients).
+	queueSvc.SetFailureHandler(failedgrab.New(blocklistSvc, bus, logger))
+	remotePathSvc := remotepath.NewService(queries)
+	queueSvc.SetPathMapper(remotePathSvc)
 	stallWatcher := stallwatcher.NewService(queries, blocklistSvc, downloaderSvc, bus, logger)
 
-	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc, animeListSvc)
+	importerSvc := importer.NewService(queries, bus, logger, mediaManagementSvc, animeListSvc, blocklistSvc)
 	importerSvc.Subscribe()
 
 	activitySvc := activity.NewService(queries, logger)
@@ -315,19 +339,32 @@ func run() error {
 
 	sonarrImportSvc := sonarrimport.NewService(showSvc, qualitySvc, librarySvc, indexerSvc, downloaderSvc)
 
-	wsHub := ws.NewHub(logger, []byte(cfg.Auth.APIKey.Value()))
+	wsHub := ws.NewHub(logger)
 	bus.Subscribe(wsHub.HandleEvent)
+	// Re-search after the stall watcher or failed-download handler
+	// blocklists a dead automatic grab.
+	bus.Subscribe(apiv1.NewAutoSearchRetryHandler(showSvc, indexerSvc, downloaderSvc, blocklistSvc, qualitySvc, logger))
 
 	// ── Scheduler ─────────────────────────────────────────────────────────────
 	sched := scheduler.New(logger)
 	sched.Add(jobs.QueuePoll(queueSvc, 30*time.Second, logger))
 	sched.Add(jobs.LibraryScan(librarySvc, showSvc, queries, logger))
-	sched.Add(jobs.RSSSync(indexerSvc, queries, downloaderSvc, logger))
+	sched.Add(jobs.RSSSync(indexerSvc, queries, downloaderSvc, blocklistSvc, qualitySvc, logger))
+	sched.Add(jobs.DownloadCleanup(queries, downloaderSvc, blocklistSvc, logger))
 	sched.Add(jobs.RefreshMetadata(showSvc, logger))
 	sched.Add(jobs.StatsSnapshot(statsSvc, logger))
 	sched.Add(jobs.ImportListSync(importListSvc, logger))
 	sched.Add(jobs.ActivityPrune(activitySvc, logger))
 	sched.Add(jobs.FileExistenceReconciler(queries, bus, logger))
+	sched.Add(jobs.ImportRetry(importerSvc, logger))
+	healthSvc := health.NewService(queries, downloaderSvc, indexerSvc)
+	var backupSvc *backup.Service
+	if cfg.Database.Path != "" {
+		backupSvc = backup.NewService(database.SQL, queries, cfg.Database.Path)
+		sched.Add(jobs.ScheduledBackup(backupSvc, logger))
+	}
+	sched.Add(jobs.HealthCheck(healthSvc))
+	sched.Add(jobs.RecycleBinCleanup(recycleSvc, logger))
 
 	// ── Pulse integration (optional) ──────────────────────────────────────────
 	pulseIntegration, err := pulseint.New(cfg.Pulse, cfg.Server.Host, cfg.Server.Port, cfg.Auth.APIKey.Value(), logger)
@@ -341,7 +378,12 @@ func run() error {
 	// ── HTTP router ───────────────────────────────────────────────────────────
 	startTime := time.Now()
 	router := api.NewRouter(api.RouterConfig{
-		Auth:                   cfg.Auth.APIKey,
+		Auth: cfg.Auth.APIKey,
+		AuthSettings: middleware.AuthSettings{
+			Required:     cfg.Auth.Required,
+			Username:     cfg.Auth.Username,
+			PasswordHash: cfg.Auth.PasswordHash.Value(),
+		},
 		Logger:                 logger,
 		StartTime:              startTime,
 		DB:                     database.SQL,
@@ -370,8 +412,14 @@ func run() error {
 		ImportListService:      importListSvc,
 		SonarrImportService:    sonarrImportSvc,
 		ProviderResolver:       providerResolver,
+		ReleaseProfileService:  releaseprofile.NewService(queries),
+		RemotePathService:      remotePathSvc,
 		WSHub:                  wsHub,
 		Scheduler:              sched,
+		HealthService:          healthSvc,
+		BackupService:          backupSvc,
+		RecycleBinService:      recycleSvc,
+		SeriesBulkService:      seriesbulk.New(database.SQL, recycleSvc, bus, logger),
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),
 	})
 

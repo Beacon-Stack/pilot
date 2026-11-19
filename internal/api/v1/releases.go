@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -14,11 +15,13 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
+	"github.com/beacon-stack/pilot/internal/core/decision"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/show"
+	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
@@ -56,6 +59,9 @@ type releaseBody struct {
 	// grab anyway" button. The release can still be grabbed via the
 	// normal grab endpoint if the user overrides.
 	FilterReasons []string `json:"filter_reasons,omitempty"`
+	// Languages are the audio languages tagged in the title. Empty when
+	// the title has none (treated as English by the language preference).
+	Languages []string `json:"languages,omitempty"`
 	// AlreadyGrabbedAt, when set, means a grab_history row exists for
 	// this release's GUID. The UI badges the row "already grabbed" and
 	// asks for confirmation before grabbing again. The other AlreadyGrabbed*
@@ -67,8 +73,40 @@ type releaseBody struct {
 	AlreadyGrabbedStatus string `json:"already_grabbed_status,omitempty"`
 }
 
+// indexerOutcomeBody is the per-indexer search breakdown: how many
+// results each enabled indexer contributed, or why it failed.
+type indexerOutcomeBody struct {
+	IndexerID   string `json:"indexer_id"`
+	IndexerName string `json:"indexer_name"`
+	Results     int    `json:"results"`
+	Error       string `json:"error,omitempty"`
+	// Pending: the indexer's scrape is still running server-side and will
+	// be cached — re-searching shortly returns its results. Rendered as
+	// "still searching", never as a failure.
+	Pending bool `json:"pending,omitempty"`
+}
+
+type releaseListBody struct {
+	Releases []*releaseBody       `json:"releases"`
+	Indexers []indexerOutcomeBody `json:"indexers,omitempty"`
+}
+
 type releaseListOutput struct {
-	Body []*releaseBody
+	Body releaseListBody
+}
+
+func outcomesToBodies(outcomes []indexer.Outcome) []indexerOutcomeBody {
+	out := make([]indexerOutcomeBody, len(outcomes))
+	for i, oc := range outcomes {
+		out[i] = indexerOutcomeBody{
+			IndexerID:   oc.IndexerID,
+			IndexerName: oc.IndexerName,
+			Results:     oc.Results,
+			Error:       oc.Error,
+			Pending:     oc.Pending,
+		}
+	}
+	return out
 }
 
 // episodeReleasesInput describes the path and optional query parameters for
@@ -192,6 +230,7 @@ func indexerResultToReleaseBody(r indexer.SearchResult) *releaseBody {
 		PackType:      string(r.PackType),
 		EpisodeCount:  r.EpisodeCount,
 		FilterReasons: append([]string(nil), r.FilterReasons...),
+		Languages:     r.Languages,
 	}
 }
 
@@ -255,20 +294,14 @@ func applyQualityProfile(results []indexer.SearchResult, profile *quality.Profil
 	if profile == nil {
 		return
 	}
-	// Score formula is resolution*100 + source*10 + codec, so integer-
-	// dividing by 100 isolates the resolution score. Anything below the
-	// cutoff's resolution digit is stamped as below_quality_profile.
-	cutoffResScore := profile.Cutoff.Score() / 100
-	if cutoffResScore == 0 {
-		return // cutoff not meaningfully set
-	}
+	// One rule shared with RSS sync: see decision.MeetsProfileMinimum.
 	for i := range results {
 		q := results[i].Quality
 		if q.Resolution == "" && q.Source == "" {
 			q = plugin.ParseQualityFromTitle(results[i].Title)
 		}
-		if q.Score()/100 < cutoffResScore {
-			results[i].FilterReasons = append(results[i].FilterReasons, "below_quality_profile")
+		if !decision.MeetsProfileMinimum(q, profile) {
+			results[i].FilterReasons = append(results[i].FilterReasons, decision.ReasonBelowProfile)
 		}
 	}
 }
@@ -284,10 +317,11 @@ func applyQualityProfile(results []indexer.SearchResult, profile *quality.Profil
 // the number of query variations. Season searches typically issue 3+
 // variations ("Show", "Show S01", "Show Season 1"), so the serial
 // loop turned a 30s worst case into 90s+.
-func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries []string, season, episode int) ([]indexer.SearchResult, error) {
+func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries []string, season, episode int) ([]indexer.SearchResult, []indexer.Outcome, error) {
 	type queryResult struct {
-		results []indexer.SearchResult
-		err     error
+		results  []indexer.SearchResult
+		outcomes []indexer.Outcome
+		err      error
 	}
 	out := make([]queryResult, len(queries))
 	var wg sync.WaitGroup
@@ -297,32 +331,49 @@ func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries 
 		go func() {
 			defer wg.Done()
 			sq := plugin.SearchQuery{Query: query, Season: season, Episode: episode}
-			res, err := indexerSvc.Search(ctx, sq)
-			out[i] = queryResult{results: res, err: err}
+			res, outcomes, err := indexerSvc.SearchWithOutcomes(ctx, sq)
+			out[i] = queryResult{results: res, outcomes: outcomes, err: err}
 		}()
 	}
 	wg.Wait()
 
-	seen := make(map[string]struct{})
-	var merged []indexer.SearchResult
+	var perQuery [][]indexer.SearchResult
 	var errs []string
+	// Per-indexer outcomes merged across query variants: results are
+	// summed; an error in ANY variant marks the indexer as failed (the
+	// error string from the first failing variant wins).
+	outcomeByID := make(map[string]*indexer.Outcome)
+	var outcomeOrder []string
 	for _, qr := range out {
 		if qr.err != nil {
 			errs = append(errs, qr.err.Error())
 		}
-		for _, r := range qr.results {
-			if _, ok := seen[r.GUID]; ok {
+		for _, oc := range qr.outcomes {
+			existing, ok := outcomeByID[oc.IndexerID]
+			if !ok {
+				copied := oc
+				outcomeByID[oc.IndexerID] = &copied
+				outcomeOrder = append(outcomeOrder, oc.IndexerID)
 				continue
 			}
-			seen[r.GUID] = struct{}{}
-			merged = append(merged, r)
+			existing.Results += oc.Results
+			if existing.Error == "" {
+				existing.Error = oc.Error
+			}
+			existing.Pending = existing.Pending || oc.Pending
 		}
+		perQuery = append(perQuery, qr.results)
+	}
+	merged := mergeQueryResults(perQuery)
+	outcomes := make([]indexer.Outcome, 0, len(outcomeOrder))
+	for _, id := range outcomeOrder {
+		outcomes = append(outcomes, *outcomeByID[id])
 	}
 	var combined error
 	if len(errs) > 0 {
 		combined = fmt.Errorf("%d search(es) failed: %v", len(errs), errs)
 	}
-	return merged, combined
+	return merged, outcomes, combined
 }
 
 // ── Route registration ───────────────────────────────────────────────────────
@@ -365,17 +416,20 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		}
 		queries := buildEpisodeQueries(series.Title, input.Season, input.Episode, absoluteEp, isAnime)
 
-		// Hard interactive-search cut-off. A single dead/walled indexer
-		// can otherwise hold the search at the per-indexer client timeout
-		// (~30s). Empirically healthy indexers come back in 0.2–10s
-		// (Cloudflare-walled torznab providers tend to be the slow tail);
-		// 12s leaves room for those while killing genuinely dead ones
-		// quickly. Stragglers show up in pilot logs as `indexer search
-		// failed duration_ms=12000+ error=context deadline exceeded`.
-		searchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+		// Hard interactive-search cut-off. This was 12s when half the
+		// fleet failed instantly (masked HTTP 400s) and dead indexers were
+		// the thing to kill quickly. With the 2026-08-17 engine fixes all
+		// indexers genuinely scrape — 2 query variants × N indexers queue
+		// behind the global semaphore and Pulse's per-site rate limiting,
+		// so a cold-cache season search legitimately needs 20s+. Failures
+		// are now fast and honest (torznab <error> docs, no hangs), so the
+		// budget matches the 25s per-indexer timeout plus queue headroom.
+		// Stragglers show up in pilot logs as `indexer search failed
+		// duration_ms=30000+ error=context deadline exceeded`.
+		searchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
-		results, searchErr := searchAllQueries(searchCtx, indexerSvc, queries, input.Season, input.Episode)
+		results, outcomes, searchErr := searchAllQueries(searchCtx, indexerSvc, queries, input.Season, input.Episode)
 
 		// Filter results to only include the requested series and season/episode.
 		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Season, input.Episode, absoluteEp, tvdbToAbs)
@@ -437,11 +491,15 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			bodies[i] = b
 		}
 
-		if len(bodies) == 0 && searchErr != nil {
-			return nil, huma.NewError(http.StatusBadGateway, searchErr.Error())
-		}
-
-		return &releaseListOutput{Body: bodies}, nil
+		// Indexer failures no longer fail the request or vanish: the
+		// per-indexer breakdown ships in the envelope so the UI can render
+		// "3 of 10 indexers failed" instead of a bare "No releases found."
+		// (searchErr is redundant with the outcomes' Error fields.)
+		_ = searchErr
+		return &releaseListOutput{Body: releaseListBody{
+			Releases: bodies,
+			Indexers: outcomesToBodies(outcomes),
+		}}, nil
 	})
 
 	// GET /api/v1/series/{id}/grab-history
@@ -648,6 +706,57 @@ type autoSearchParams struct {
 	Source    string
 }
 
+// mergeQueryResults merges the results of several query variations,
+// keeping the first occurrence of each GUID, and re-ranks the whole list.
+// Each query's results arrive ranked, but concatenating them is not: a
+// better release found only by a later variation would sit below the
+// first query's results, and auto-search (which takes the top viable
+// result) would never pick it.
+func mergeQueryResults(perQuery [][]indexer.SearchResult) []indexer.SearchResult {
+	seen := make(map[string]struct{})
+	var merged []indexer.SearchResult
+	for _, results := range perQuery {
+		for _, r := range results {
+			if _, ok := seen[r.GUID]; ok {
+				continue
+			}
+			seen[r.GUID] = struct{}{}
+			merged = append(merged, r)
+		}
+	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		return indexer.RanksAbove(merged[i], merged[j])
+	})
+	return merged
+}
+
+// pickBestViable returns the release to grab from viable, which is in
+// ranking order. Among releases of the top quality and revision, it
+// prefers one listed by several indexers (more confidence its seed count
+// is real). That preference used to look across all qualities, so a 720p
+// on two indexers could beat a 2160p on one.
+func pickBestViable(viable []indexer.SearchResult) indexer.SearchResult {
+	best := viable[0]
+	sameTier := func(r indexer.SearchResult) bool {
+		return r.QualityScore == best.QualityScore && r.Quality.EffectiveRevision() == best.Quality.EffectiveRevision()
+	}
+	titleCounts := make(map[string]int)
+	for _, r := range viable {
+		if sameTier(r) {
+			titleCounts[r.Title]++
+		}
+	}
+	for _, r := range viable {
+		if !sameTier(r) {
+			break // viable is ranked; nothing later is in the top tier
+		}
+		if titleCounts[r.Title] > 1 && titleCounts[r.Title] > titleCounts[best.Title] {
+			return r
+		}
+	}
+	return best
+}
+
 // autoSearchResultBody is shared between the public auto-search
 // handler and the research handler.
 type autoSearchResultBody struct {
@@ -695,7 +804,7 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 		}
 	}
 	queries := buildEpisodeQueries(series.Title, p.Season, p.Episode, absoluteEp, isAnime)
-	results, searchErr := searchAllQueries(ctx, indexerSvc, queries, p.Season, p.Episode)
+	results, _, searchErr := searchAllQueries(ctx, indexerSvc, queries, p.Season, p.Episode)
 
 	// Filter results to only include the requested series and season/episode.
 	results = filterByEpisode(results, series.Title, series.AlternateTitles, p.Season, p.Episode, absoluteEp, tvdbToAbs)
@@ -703,9 +812,25 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 	// Tag releases outside the series' quality profile. For auto-search
 	// these tags also gate the viable set further down, so the auto-grab
 	// never picks a release rejected by the profile.
+	var profile *quality.Profile
 	if qualitySvc != nil && series.QualityProfileID != "" {
-		if profile, err := qualitySvc.Get(ctx, series.QualityProfileID); err == nil {
-			applyQualityProfile(results, &profile)
+		if prof, err := qualitySvc.Get(ctx, series.QualityProfileID); err == nil {
+			profile = &prof
+			applyQualityProfile(results, profile)
+		}
+	}
+
+	// When the episode already has a file of known quality, only real
+	// upgrades (or a PROPER of the same quality) are viable. Without this
+	// an auto-search for an episode on disk grabbed the top result even if
+	// it was worse than the file. A file of unknown quality doesn't gate:
+	// the user asked for this search explicitly.
+	var current *plugin.Quality
+	if p.EpisodeID != "" && p.Episode > 0 {
+		if files, err := showSvc.ListFiles(ctx, p.SeriesID); err == nil {
+			if cur := wanted.BestFileQuality(files, p.EpisodeID); cur != nil && cur.Score() > 0 {
+				current = cur
+			}
 		}
 	}
 
@@ -729,6 +854,11 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 		if len(r.FilterReasons) > 0 {
 			continue
 		}
+		if current != nil {
+			if ok, _ := decision.Evaluate(r.Quality, current, profile); !ok {
+				continue
+			}
+		}
 		if blocklistSvc != nil {
 			ok, bErr := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, r.GUID, "")
 			if bErr == nil && ok {
@@ -739,27 +869,17 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 	}
 
 	if len(viable) == 0 {
+		reason := fmt.Sprintf("found %d results but all were filtered (below min_seeders or on blocklist)", len(results))
+		if current != nil {
+			reason = fmt.Sprintf("found %d results but none is an upgrade over the current %s file", len(results), current.Name)
+		}
 		return &autoSearchResultBody{
 			Result: "no_match",
-			Reason: fmt.Sprintf("found %d results but all were filtered (below min_seeders or on blocklist)", len(results)),
+			Reason: reason,
 		}, nil
 	}
 
-	// Prefer results that appear on multiple indexers (higher confidence
-	// that the seed count is accurate).
-	best := viable[0]
-	if len(viable) > 1 {
-		titleCounts := make(map[string]int)
-		for _, r := range viable {
-			titleCounts[r.Title]++
-		}
-		for _, r := range viable {
-			if titleCounts[r.Title] > 1 && titleCounts[r.Title] > titleCounts[best.Title] {
-				best = r
-				break
-			}
-		}
-	}
+	best := pickBestViable(viable)
 
 	// Look up series for TMDB id + title (used by Haul's history
 	// index and rename-on-complete). Best-effort; fall back to

@@ -22,7 +22,6 @@ import MediaServerList from "@/pages/settings/media-servers/MediaServerList";
 import BlocklistPage from "@/pages/settings/blocklist/BlocklistPage";
 import MediaManagementPage from "@/pages/settings/media-management/MediaManagementPage";
 import QualityDefinitionsPage from "@/pages/settings/quality-definitions/QualityDefinitionsPage";
-import CustomFormatsPage from "@/pages/settings/custom-formats/CustomFormatsPage";
 import ImportListList from "@/pages/settings/import-lists/ImportListList";
 import ImportExclusions from "@/pages/settings/import-lists/ImportExclusions";
 import ImportPage from "@/pages/settings/import/ImportPage";
@@ -31,10 +30,16 @@ import CalendarPage from "@/pages/calendar/CalendarPage";
 import WantedPage from "@/pages/wanted/WantedPage";
 import HistoryPage from "@/pages/history/HistoryPage";
 import ActivityPage from "@/pages/activity/ActivityPage";
+import ManualImportPage from "@/pages/manual-import/ManualImportPage";
 import StatsPage from "@/pages/stats/StatsPage";
 import DiscoverPage from "@/pages/discover/DiscoverPage";
 import DiscoverDetailPage from "@/pages/discover/DiscoverDetailPage";
 import PersonDetailPage from "@/pages/people/PersonDetailPage";
+import LoginPage from "@/pages/login/LoginPage";
+import ReleaseProfilesPage from "@/pages/settings/release-profiles/ReleaseProfilesPage";
+import DelayProfilePage from "@/pages/settings/delay-profile/DelayProfilePage";
+import LanguagePage from "@/pages/settings/languages/LanguagePage";
+import RemotePathMappingsPage from "@/pages/settings/remote-path-mappings/RemotePathMappingsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -47,6 +52,7 @@ export default function App() {
       <BrowserRouter>
         <ErrorBoundary>
         <Routes>
+          <Route path="login" element={<LoginPage />} />
           <Route element={<Shell />}>
             {/* Main */}
             <Route index element={<Dashboard />} />
@@ -63,13 +69,14 @@ export default function App() {
             <Route path="stats" element={<StatsPage />} />
             <Route path="queue" element={<Queue />} />
             <Route path="history" element={<HistoryPage />} />
+            <Route path="manual-import" element={<ManualImportPage />} />
 
             {/* Settings — flat, no nested layout (matches Pilot) */}
             <Route path="settings/libraries" element={<LibraryList />} />
             <Route path="settings/media-management" element={<MediaManagementPage />} />
             <Route path="settings/quality-profiles" element={<QualityProfileList />} />
             <Route path="settings/quality-definitions" element={<QualityDefinitionsPage />} />
-            <Route path="settings/custom-formats" element={<CustomFormatsPage />} />
+            {/* settings/custom-formats is hidden until the backend exists (plans/sonarr-parity.md, Phase D). */}
             <Route path="settings/indexers" element={<IndexerList />} />
             <Route path="settings/download-clients" element={<DownloadClientList />} />
             <Route path="settings/notifications" element={<NotificationList />} />
@@ -77,6 +84,10 @@ export default function App() {
             <Route path="settings/import-lists" element={<ImportListList />} />
             <Route path="settings/import-exclusions" element={<ImportExclusions />} />
             <Route path="settings/blocklist" element={<BlocklistPage />} />
+            <Route path="settings/release-profiles" element={<ReleaseProfilesPage />} />
+            <Route path="settings/delay-profile" element={<DelayProfilePage />} />
+            <Route path="settings/languages" element={<LanguagePage />} />
+            <Route path="settings/remote-path-mappings" element={<RemotePathMappingsPage />} />
             <Route path="settings/import" element={<ImportPage />} />
             <Route path="settings/system" element={<SystemSettings />} />
             <Route path="settings/system/logs" element={<LogsPage />} />

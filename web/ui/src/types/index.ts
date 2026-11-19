@@ -183,12 +183,33 @@ export interface ReleaseResult {
   // safety filter (below min_seeders, previously stalled, ...). The UI
   // renders such rows grayed at the bottom with an "override" button.
   filter_reasons?: string[];
+  // Audio languages tagged in the title. Absent when untagged.
+  languages?: string[];
   // already_grabbed_at, when set, means the user has previously grabbed
   // this exact release (by GUID match in grab_history). The UI badges
   // the row and asks for confirmation before re-grabbing.
   already_grabbed_at?: string;
   already_grabbed_id?: string;
   already_grabbed_status?: string;
+}
+
+// Per-indexer search breakdown: how many results each enabled indexer
+// contributed, or why it failed. Lets the UI distinguish "nothing
+// matched" from "half the indexers are broken".
+export interface IndexerSearchOutcome {
+  indexer_id: string;
+  indexer_name: string;
+  results: number;
+  error?: string;
+  // The indexer's scrape is still running server-side (Cloudflare
+  // solving) and will be cached — re-searching shortly returns its
+  // results. Rendered as "still searching", never as a failure.
+  pending?: boolean;
+}
+
+export interface ReleaseSearchResponse {
+  releases: ReleaseResult[];
+  indexers?: IndexerSearchOutcome[];
 }
 
 // ── Download Clients ────────────────────────────────────────────────────────
@@ -215,26 +236,6 @@ export interface DownloadClientRequest {
 export interface TestResult {
   ok: boolean;
   message?: string;
-}
-
-export interface DownloadHandling {
-  enable_completed: boolean;
-  check_interval_minutes: number;
-  redownload_failed: boolean;
-  redownload_failed_interactive: boolean;
-}
-
-export interface RemotePathMapping {
-  id: string;
-  host: string;
-  remote_path: string;
-  local_path: string;
-}
-
-export interface CreateRemotePathMappingRequest {
-  host: string;
-  remote_path: string;
-  local_path: string;
 }
 
 // ── Notifications ───────────────────────────────────────────────────────────
@@ -371,16 +372,25 @@ export interface CalendarEpisode {
 
 // ── Wanted ────────────────────────────────────────────────────────────────────
 
+// Matches wantedEpisodeBody in internal/api/v1/wanted.go.
 export interface WantedEpisode {
-  id: string;
+  episode_id: string;
   series_id: string;
   series_title: string;
   season_number: number;
   episode_number: number;
-  title: string;
+  episode_title: string;
   air_date?: string;
   has_file: boolean;
   monitored: boolean;
+  /** Cutoff-unmet list only. */
+  current_quality?: string;
+  cutoff_quality?: string;
+}
+
+export interface WantedSearchResult {
+  queued: number;
+  message: string;
 }
 
 export interface WantedResponse {
@@ -403,6 +413,10 @@ export interface MediaManagement {
   import_extra_files: boolean;
   extra_file_extensions: string;
   unmonitor_deleted_episodes: boolean;
+  /** Folder replaced and deleted episode files go to; "" deletes them permanently. */
+  recycle_bin_path: string;
+  /** Files older than this in the recycle bin are deleted; 0 = never. */
+  recycle_bin_cleanup_days: number;
 }
 
 // ── Import Lists ─────────────────────────────────────────────────────────
@@ -515,4 +529,101 @@ export interface FsBrowseResult {
   path: string;
   parent: string | null;
   dirs: FsDirEntry[];
+}
+
+// Matches releaseProfileBody in internal/api/v1/release_profiles.go.
+export interface ReleaseProfile {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** Must contain: a release must match at least one. */
+  required: string[];
+  /** Must not contain: a release must match none. */
+  ignored: string[];
+  /** "" = all indexers. */
+  indexer_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReleaseProfileRequest {
+  name: string;
+  enabled: boolean;
+  required: string[];
+  ignored: string[];
+  indexer_id: string;
+}
+
+// Matches delayProfileBody in internal/api/v1/delay_profile.go.
+export interface RemotePathMapping {
+  id: string;
+  /** "" = any download client. */
+  download_client_id: string;
+  remote_path: string;
+  local_path: string;
+}
+
+export type RemotePathMappingRequest = Omit<RemotePathMapping, "id">;
+
+export interface BackupInfo {
+  name: string;
+  kind: "scheduled" | "manual";
+  size: number;
+  created_at: string;
+}
+
+export interface BackupList {
+  /** Newest first. */
+  backups: BackupInfo[];
+  folder: string;
+}
+
+export interface BackupSettings {
+  /** 0 turns scheduled backups off. */
+  interval_days: number;
+  retention_days: number;
+}
+
+export interface HealthIssue {
+  source: "library" | "download_client" | "indexer";
+  level: "error" | "warning";
+  message: string;
+}
+
+export interface HealthReport {
+  /** Errors first. Empty when healthy. */
+  issues: HealthIssue[];
+  /** When clients and indexers were last tested (RFC3339); "" if never. */
+  connectivity_checked_at: string;
+}
+
+export interface LanguagePreference {
+  /** Wanted audio languages; empty means any language. */
+  languages: string[];
+  /** Languages that can be chosen (GET only). */
+  available: string[];
+}
+
+export interface DelayProfile {
+  usenet_enabled: boolean;
+  torrent_enabled: boolean;
+  preferred_protocol: "usenet" | "torrent";
+  usenet_delay_minutes: number;
+  torrent_delay_minutes: number;
+  bypass_if_highest_quality: boolean;
+}
+
+// Matches pendingReleaseBody in internal/api/v1/delay_profile.go.
+export interface PendingRelease {
+  id: string;
+  series_id: string;
+  series_title: string;
+  episode_id: string;
+  season_number: number;
+  episode_number: number;
+  release_title: string;
+  protocol: string;
+  quality: string;
+  eligible_at: string;
+  added_at: string;
 }

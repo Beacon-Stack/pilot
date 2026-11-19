@@ -56,8 +56,16 @@ type Client struct {
 	http *http.Client
 }
 
+// DefaultCategory is used when no category is configured. Haul saves a
+// category without its own save path in <download dir>/<category>, so on
+// a fresh install Pilot's downloads land in /data/torrents/tv.
+const DefaultCategory = "tv"
+
 // New creates a new Haul client.
 func New(cfg Config) *Client {
+	if strings.TrimSpace(cfg.Category) == "" {
+		cfg.Category = DefaultCategory
+	}
 	return &Client{
 		cfg:  cfg,
 		http: &http.Client{Timeout: 30 * time.Second, Transport: safedialer.LANTransport()},
@@ -285,7 +293,10 @@ func (c *Client) GetQueue(ctx context.Context) ([]plugin.QueueItem, error) {
 	return items, nil
 }
 
-// Remove deletes a torrent from Haul.
+// Remove deletes a torrent from Haul. A 404 maps to ErrItemNotFound —
+// the item is already gone, which removal callers (download_cleanup,
+// queue removal) treat as success; returning a plain error left such
+// grabs permanently stuck as cleanup candidates.
 func (c *Client) Remove(ctx context.Context, clientItemID string, deleteFiles bool) error {
 	url := fmt.Sprintf("/api/v1/torrents/%s?delete_files=%t", clientItemID, deleteFiles)
 	resp, err := c.delete(ctx, url)
@@ -293,6 +304,9 @@ func (c *Client) Remove(ctx context.Context, clientItemID string, deleteFiles bo
 		return fmt.Errorf("haul: remove failed: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return plugin.ErrItemNotFound
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("haul: remove returned status %d", resp.StatusCode)
 	}

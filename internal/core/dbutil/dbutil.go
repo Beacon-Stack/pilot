@@ -130,10 +130,15 @@ func FormatTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
+// maskedSecret is the JSON value plugin sanitizers substitute for secrets.
+const maskedSecret = `"***"`
+
 // MergeSettings returns newSettings with any keys absent from newSettings
-// filled in from existing. Keys present in newSettings always win.
-// This is used to preserve secret fields (passwords, API keys) when the
-// frontend omits them from an update request.
+// filled in from existing. Keys present in newSettings win, except the
+// masked placeholder "***": API responses mask secrets that way, so a
+// client that echoes a response back must not overwrite the real secret.
+// This preserves secret fields (passwords, API keys) when the frontend
+// omits them, or round-trips them masked, in an update request.
 func MergeSettings(existing, newSettings json.RawMessage) json.RawMessage {
 	if len(newSettings) == 0 {
 		return existing
@@ -146,7 +151,8 @@ func MergeSettings(existing, newSettings json.RawMessage) json.RawMessage {
 		return newSettings
 	}
 	for k, v := range existingMap {
-		if _, ok := newMap[k]; !ok {
+		nv, ok := newMap[k]
+		if !ok || string(nv) == maskedSecret {
 			newMap[k] = v
 		}
 	}
