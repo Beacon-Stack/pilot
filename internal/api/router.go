@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"net/http"
@@ -39,6 +40,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/seriesbulk"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/stats"
+	"github.com/beacon-stack/pilot/internal/core/unmapped"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/scheduler"
@@ -87,6 +89,7 @@ type RouterConfig struct {
 	BackupService          *backup.Service
 	RecycleBinService      *recyclebin.Service
 	SeriesBulkService      *seriesbulk.Service
+	UnmappedService        *unmapped.Service
 	PulseSyncHandler       http.HandlerFunc
 }
 
@@ -237,6 +240,13 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.RecycleBinService != nil {
 		v1.RegisterRecycleBinRoutes(humaAPI, cfg.RecycleBinService)
+	}
+	if cfg.UnmappedService != nil {
+		var scan func()
+		if cfg.Scheduler != nil {
+			scan = func() { _ = cfg.Scheduler.RunNow(context.Background(), "library_scan") }
+		}
+		v1.RegisterUnmappedFolderRoutes(humaAPI, cfg.UnmappedService, scan, cfg.Logger)
 	}
 	if cfg.SeriesBulkService != nil {
 		v1.RegisterSeriesBulkRoutes(humaAPI, cfg.SeriesBulkService)

@@ -75,6 +75,7 @@ type Querier interface {
 	DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error
 	DeleteSeries(ctx context.Context, id string) error
 	DeleteSetting(ctx context.Context, key string) error
+	DeleteUnmappedFolder(ctx context.Context, id string) error
 	DetachQualityProfileFromPulse(ctx context.Context, id string) error
 	GetDownloadClientConfig(ctx context.Context, id string) (DownloadClientConfig, error)
 	GetEpisode(ctx context.Context, id string) (Episode, error)
@@ -100,8 +101,10 @@ type Querier interface {
 	GetSeriesYearDistribution(ctx context.Context) ([]GetSeriesYearDistributionRow, error)
 	GetSetting(ctx context.Context, key string) (string, error)
 	GetTopIndexers(ctx context.Context) ([]GetTopIndexersRow, error)
+	GetUnmappedFolder(ctx context.Context, id string) (UnmappedFolder, error)
 	InsertActivity(ctx context.Context, arg InsertActivityParams) error
 	InsertStatsSnapshot(ctx context.Context, arg InsertStatsSnapshotParams) error
+	InsertUnmappedFolder(ctx context.Context, arg InsertUnmappedFolderParams) error
 	IsBlocklisted(ctx context.Context, releaseGuid string) (int64, error)
 	// Two-keyed dedup: a release can be on the blocklist under either its
 	// original indexer GUID OR its content info hash (which is stable across
@@ -186,6 +189,8 @@ type Querier interface {
 	ListStaleActiveGrabs(ctx context.Context, olderThan string) ([]GrabHistory, error)
 	ListStatsSnapshots(ctx context.Context, limit int64) ([]StatsSnapshot, error)
 	ListStorageSnapshots(ctx context.Context, limit int64) ([]ListStorageSnapshotsRow, error)
+	ListUnmappedFolders(ctx context.Context) ([]UnmappedFolder, error)
+	ListUnmappedFoldersByLibrary(ctx context.Context, libraryID string) ([]UnmappedFolder, error)
 	MarkGrabRemoved(ctx context.Context, id string) error
 	// Bookkeeping for automatic import retry, written alongside
 	// SetGrabImportState. content_path is only overwritten with a non-empty
@@ -195,6 +200,7 @@ type Querier interface {
 	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (int64, error)
 	SetGrabImportState(ctx context.Context, arg SetGrabImportStateParams) error
 	SetSetting(ctx context.Context, arg SetSettingParams) error
+	SetUnmappedFolderIgnored(ctx context.Context, arg SetUnmappedFolderIgnoredParams) error
 	SumEpisodeFileSize(ctx context.Context) (interface{}, error)
 	UpdateDownloadClientConfig(ctx context.Context, arg UpdateDownloadClientConfigParams) (DownloadClientConfig, error)
 	UpdateEpisode(ctx context.Context, arg UpdateEpisodeParams) (Episode, error)
