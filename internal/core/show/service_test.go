@@ -666,7 +666,7 @@ func (m *addMock) CreateSeries(_ context.Context, p db.CreateSeriesParams) (db.S
 }
 
 func (m *addMock) CreateSeason(_ context.Context, p db.CreateSeasonParams) (db.Season, error) {
-	return db.Season{ID: p.ID, SeriesID: p.SeriesID, SeasonNumber: p.SeasonNumber, Monitored: p.Monitored}, nil
+	return db.Season(p), nil
 }
 
 func (m *addMock) CreateEpisode(_ context.Context, p db.CreateEpisodeParams) (db.Episode, error) {
