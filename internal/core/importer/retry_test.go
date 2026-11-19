@@ -20,10 +20,12 @@ import (
 	"time"
 
 	"github.com/beacon-stack/pilot/internal/config"
+	"github.com/beacon-stack/pilot/internal/core/mediacheck"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	dbpkg "github.com/beacon-stack/pilot/internal/db"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 type retryFixture struct {
@@ -357,5 +359,26 @@ func TestRetry_UnimportableContentIsNeverRetried(t *testing.T) {
 	}
 	if res != (RetryResult{}) {
 		t.Fatalf("retry run: %+v, want no-op", res)
+	}
+}
+
+// A zero-filled file (an incomplete, preallocated download) must not be
+// attached: it would mark the episode as downloaded and nothing would ever
+// fetch it again.
+func TestAttachFile_RejectsAllZeroFile(t *testing.T) {
+	f := newRetryFixture(t)
+	src := filepath.Join(f.packDir, "Show.S01E01.1080p.WEB.mkv")
+	if err := os.WriteFile(src, make([]byte, 1<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := f.svc.AttachFile(context.Background(), "ep-1", "series-1", src, 1<<20, plugin.Quality{})
+	if !errors.Is(err, mediacheck.ErrNoData) {
+		t.Fatalf("AttachFile of an all-zero file: err = %v, want mediacheck.ErrNoData", err)
+	}
+	if n := f.episodeFileCount(); n != 0 {
+		t.Fatalf("episode_files rows = %d, want 0", n)
+	}
+	if ep, _ := f.q.GetEpisode(context.Background(), "ep-1"); ep.HasFile {
+		t.Fatal("episode marked has_file for an all-zero file")
 	}
 }

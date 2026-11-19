@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
+	"github.com/beacon-stack/pilot/internal/core/mediacheck"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/recyclebin"
@@ -455,6 +456,12 @@ func (s *Service) importSingleFile(
 // AttachFile transfers srcPath into the library, applying rename if configured.
 // Creates the episode_files record and marks the episode as having a file.
 func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath string, sizeBytes int64, quality plugin.Quality) error {
+	// A file with no data (an incomplete, preallocated download) would mark
+	// the episode as having a file, and it would never be downloaded again.
+	if err := mediacheck.Check(filePath); err != nil {
+		return fmt.Errorf("not importing: %w", err)
+	}
+
 	// Load media management settings.
 	mm, err := s.mm.Get(ctx)
 	if err != nil {

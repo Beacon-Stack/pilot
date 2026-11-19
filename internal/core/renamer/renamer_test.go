@@ -75,14 +75,46 @@ func TestApplyEpisodeFormat(t *testing.T) {
 			qual:   quality, colon: ColonSpaceDash,
 			want: "Family Guy - 2024-01-01 - Test",
 		},
-		// Colon in raw title — preserved (use CleanTitle to strip)
+		// Colons in raw titles follow the colon setting: a ":" in a filename
+		// is illegal on SMB/NTFS shares, and used to be written as is.
 		{
-			name:   "colon in raw title preserved",
+			name:   "colon in raw title follows colon setting (delete)",
 			format: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}",
 			series: Series{Title: "CSI: Vegas", Year: 2021},
 			ep:     Episode{SeasonNumber: 1, EpisodeNumber: 1, Title: "Legacy: Part 1"},
 			qual:   quality, colon: ColonDelete,
-			want: "CSI: Vegas - S01E01 - Legacy: Part 1",
+			want: "CSI Vegas - S01E01 - Legacy Part 1",
+		},
+		{
+			name:   "colon in raw title follows colon setting (space-dash)",
+			format: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title} {Quality Full}",
+			series: Series{Title: "Star Wars: Maul - Shadow Lord", Year: 2026},
+			ep:     Episode{SeasonNumber: 1, EpisodeNumber: 7, Title: "Chapter 7: Call to Oblivion"},
+			qual:   quality, colon: ColonSpaceDash,
+			want: "Star Wars - Maul - Shadow Lord - S01E07 - Chapter 7 - Call to Oblivion WEBDL-720p",
+		},
+		{
+			name:   "smart colon behaves as space-dash",
+			format: "{Series Title} - S{Season:00}E{Episode:00}",
+			series: Series{Title: "CSI: Vegas", Year: 2021},
+			ep:     episode, qual: quality, colon: ColonSmart,
+			want: "CSI - Vegas - S09E08",
+		},
+		{
+			name:   "characters illegal on Windows are removed",
+			format: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}",
+			series: Series{Title: "Silo", Year: 2023},
+			ep:     Episode{SeasonNumber: 3, EpisodeNumber: 2, Title: `Who Are You? <"A|B*">`},
+			qual:   quality, colon: ColonSpaceDash,
+			want: "Silo - S03E02 - Who Are You AB",
+		},
+		{
+			name:   "trailing dots are trimmed",
+			format: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}",
+			series: Series{Title: "Show", Year: 2020},
+			ep:     Episode{SeasonNumber: 1, EpisodeNumber: 1, Title: "And Then..."},
+			qual:   quality, colon: ColonSpaceDash,
+			want: "Show - S01E01 - And Then",
 		},
 		// CleanTitle applies colon strategy
 		{
@@ -115,14 +147,14 @@ func TestApplyEpisodeFormat(t *testing.T) {
 			ep:     episode, qual: quality, colon: ColonSpaceDash,
 			want: "Unknown Show ()",
 		},
-		// Special characters in episode title
+		// "?" is illegal on SMB/NTFS shares: removed (as Sonarr does)
 		{
 			name:   "special chars in episode title",
 			format: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}",
 			series: series,
 			ep:     Episode{SeasonNumber: 1, EpisodeNumber: 1, Title: "Who Killed Sara?"},
 			qual:   quality, colon: ColonSpaceDash,
-			want: "Family Guy - S01E01 - Who Killed Sara?",
+			want: "Family Guy - S01E01 - Who Killed Sara",
 		},
 		// Forward slash in title (must be removed)
 		{
@@ -200,11 +232,17 @@ func TestApplyFolderFormat(t *testing.T) {
 			series: Series{Title: "His/Her Story"},
 			want:   "HisHer Story",
 		},
+		{
+			name:   "colon in raw series title",
+			format: "{Series Title} ({Year})",
+			series: Series{Title: "The Lord of the Rings: The Rings of Power", Year: 2022},
+			want:   "The Lord of the Rings - The Rings of Power (2022)",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ApplyFolderFormat(tt.format, tt.series)
+			got := ApplyFolderFormat(tt.format, tt.series, ColonSpaceDash)
 			if got != tt.want {
 				t.Errorf("ApplyFolderFormat(%q)\n  got  %q\n  want %q", tt.format, got, tt.want)
 			}
