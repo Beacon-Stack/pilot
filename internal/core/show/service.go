@@ -51,7 +51,16 @@ type RenamePreview struct {
 type MetadataProvider interface {
 	SearchSeries(ctx context.Context, query string, year int) ([]tmdbtv.SearchResult, error)
 	GetSeries(ctx context.Context, tmdbID int) (*tmdbtv.SeriesDetail, error)
+	GetSeriesExtended(ctx context.Context, tmdbID int) (*tmdbtv.SeriesDetail, error)
+	GetPerson(ctx context.Context, personID int) (*tmdbtv.Person, error)
+	GetPersonTVCredits(ctx context.Context, personID int, personType string) ([]tmdbtv.PersonCredit, error)
 	GetSeasonEpisodes(ctx context.Context, tmdbID int, seasonNum int) ([]tmdbtv.EpisodeDetail, error)
+	GetTrendingTV(ctx context.Context, window string, page int) (*tmdbtv.PaginatedSeries, error)
+	GetPopularTV(ctx context.Context, page int) (*tmdbtv.PaginatedSeries, error)
+	GetTopRatedTV(ctx context.Context, page int) (*tmdbtv.PaginatedSeries, error)
+	GetOnTheAirTV(ctx context.Context, page int) (*tmdbtv.PaginatedSeries, error)
+	DiscoverTVByGenre(ctx context.Context, genreID, page int) (*tmdbtv.PaginatedSeries, error)
+	GetTVGenres(ctx context.Context) ([]tmdbtv.Genre, error)
 	GetAlternativeTitles(ctx context.Context, tmdbID int) ([]string, error)
 }
 
@@ -318,6 +327,21 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 	fanartURL := toNullString(detail.BackdropPath)
 	network := toNullString(detail.Network)
 
+	// Resolve the quality profile. The Add form's "Any Quality" option
+	// (and any caller that omits the field) sends an empty
+	// quality_profile_id, but series.quality_profile_id is NOT NULL with a
+	// FK to quality_profiles(id) — inserting "" violates the constraint and
+	// surfaces as a foreign-key error in the UI. Fall back to the library's
+	// configured default profile, which the schema guarantees is a valid row.
+	qualityProfileID := req.QualityProfileID
+	if qualityProfileID == "" {
+		lib, err := s.q.GetLibrary(ctx, req.LibraryID)
+		if err != nil {
+			return Series{}, fmt.Errorf("resolve default quality profile: %w", err)
+		}
+		qualityProfileID = lib.DefaultQualityProfileID
+	}
+
 	row, err := s.q.CreateSeries(ctx, db.CreateSeriesParams{
 		ID:                  seriesID,
 		TmdbID:              int64(detail.ID),
@@ -338,7 +362,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 		Certification:       nil,
 		Monitored:           req.Monitored,
 		LibraryID:           req.LibraryID,
-		QualityProfileID:    req.QualityProfileID,
+		QualityProfileID:    qualityProfileID,
 		Path:                nil,
 		AddedAt:             now,
 		UpdatedAt:           now,
@@ -761,6 +785,139 @@ func (s *Service) Lookup(ctx context.Context, req LookupRequest) ([]tmdbtv.Searc
 		return nil, fmt.Errorf("search series: %w", err)
 	}
 	return results, nil
+}
+
+// LookupDetail fetches full series metadata (including cast, crew, and
+// recommendations) for a single TMDB ID without adding anything to the
+// library. It also reports whether the series already exists in the
+// library and, if so, its library series ID — so the Discover detail page
+// can link straight to it instead of offering an add flow.
+func (s *Service) LookupDetail(ctx context.Context, tmdbID int) (*tmdbtv.SeriesDetail, bool, string, error) {
+	if s.meta == nil {
+		return nil, false, "", ErrMetadataNotConfigured
+	}
+
+	detail, err := s.meta.GetSeriesExtended(ctx, tmdbID)
+	if err != nil {
+		return nil, false, "", fmt.Errorf("fetch series detail: %w", err)
+	}
+
+	// Library membership is best-effort: a lookup failure here shouldn't
+	// fail the whole detail fetch, so treat any error as "not in library".
+	var inLibrary bool
+	var librarySeriesID string
+	if row, err := s.q.GetSeriesByTMDBID(ctx, int64(tmdbID)); err == nil {
+		inLibrary = true
+		librarySeriesID = row.ID
+	}
+
+	return detail, inLibrary, librarySeriesID, nil
+}
+
+// PersonCredit is a single TV-series credit for a person, annotated with
+// whether the series is in the library.
+type PersonCredit struct {
+	tmdbtv.PersonCredit
+	InLibrary       bool
+	LibrarySeriesID string
+}
+
+// GetPerson fetches a TMDB person and the TV series they are credited on,
+// sorted most-recent-first and cross-referenced against the library.
+func (s *Service) GetPerson(ctx context.Context, personID int) (*tmdbtv.Person, []PersonCredit, error) {
+	if s.meta == nil {
+		return nil, nil, ErrMetadataNotConfigured
+	}
+
+	person, err := s.meta.GetPerson(ctx, personID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetch person: %w", err)
+	}
+
+	personType := "actor"
+	if person.KnownForDepartment == "Directing" {
+		personType = "director"
+	}
+
+	raw, err := s.meta.GetPersonTVCredits(ctx, personID, personType)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetch person tv credits: %w", err)
+	}
+
+	// Dedupe by series (a person can be both cast and crew on a show),
+	// keeping the highest episode count.
+	bySeries := make(map[int]tmdbtv.PersonCredit, len(raw))
+	for _, c := range raw {
+		if existing, ok := bySeries[c.TMDBID]; !ok || c.EpisodeCount > existing.EpisodeCount {
+			bySeries[c.TMDBID] = c
+		}
+	}
+	deduped := make([]tmdbtv.PersonCredit, 0, len(bySeries))
+	for _, c := range bySeries {
+		deduped = append(deduped, c)
+	}
+
+	// Rank by screen time (episode count), then most-recent-first, so the
+	// shows a person is actually known for surface above one-off talk-show
+	// or self appearances. Cap to a focused "known for" list.
+	sort.Slice(deduped, func(i, j int) bool {
+		if deduped[i].EpisodeCount != deduped[j].EpisodeCount {
+			return deduped[i].EpisodeCount > deduped[j].EpisodeCount
+		}
+		return deduped[i].Year > deduped[j].Year
+	})
+	const maxCredits = 24
+	if len(deduped) > maxCredits {
+		deduped = deduped[:maxCredits]
+	}
+
+	credits := make([]PersonCredit, 0, len(deduped))
+	for _, c := range deduped {
+		credit := PersonCredit{PersonCredit: c}
+		if row, lookupErr := s.q.GetSeriesByTMDBID(ctx, int64(c.TMDBID)); lookupErr == nil {
+			credit.InLibrary = true
+			credit.LibrarySeriesID = row.ID
+		}
+		credits = append(credits, credit)
+	}
+
+	return person, credits, nil
+}
+
+// DiscoverList returns a page of series for a browse category
+// ("trending", "popular", "top-rated", "on-the-air").
+func (s *Service) DiscoverList(ctx context.Context, category string, page int) (*tmdbtv.PaginatedSeries, error) {
+	if s.meta == nil {
+		return nil, ErrMetadataNotConfigured
+	}
+	switch category {
+	case "trending":
+		return s.meta.GetTrendingTV(ctx, "week", page)
+	case "popular":
+		return s.meta.GetPopularTV(ctx, page)
+	case "top-rated":
+		return s.meta.GetTopRatedTV(ctx, page)
+	case "on-the-air":
+		return s.meta.GetOnTheAirTV(ctx, page)
+	default:
+		return nil, fmt.Errorf("unknown discover category %q", category)
+	}
+}
+
+// DiscoverByGenre returns a page of series in the given TMDB genre.
+func (s *Service) DiscoverByGenre(ctx context.Context, genreID, page int) (*tmdbtv.PaginatedSeries, error) {
+	if s.meta == nil {
+		return nil, ErrMetadataNotConfigured
+	}
+	return s.meta.DiscoverTVByGenre(ctx, genreID, page)
+}
+
+// DiscoverGenres returns the list of TMDB TV genres.
+func (s *Service) DiscoverGenres(ctx context.Context) ([]tmdbtv.Genre, error) {
+	if s.meta == nil {
+		return nil, ErrMetadataNotConfigured
+	}
+	return s.meta.GetTVGenres(ctx)
 }
 
 // GetSeasons returns all seasons for the given series ID, annotated with

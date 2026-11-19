@@ -33,6 +33,8 @@ import ActivityPage from "@/pages/activity/ActivityPage";
 import ManualImportPage from "@/pages/manual-import/ManualImportPage";
 import StatsPage from "@/pages/stats/StatsPage";
 import DiscoverPage from "@/pages/discover/DiscoverPage";
+import DiscoverDetailPage from "@/pages/discover/DiscoverDetailPage";
+import PersonDetailPage from "@/pages/people/PersonDetailPage";
 import LoginPage from "@/pages/login/LoginPage";
 import ReleaseProfilesPage from "@/pages/settings/release-profiles/ReleaseProfilesPage";
 import DelayProfilePage from "@/pages/settings/delay-profile/DelayProfilePage";
@@ -55,6 +57,8 @@ export default function App() {
             {/* Main */}
             <Route index element={<Dashboard />} />
             <Route path="discover" element={<DiscoverPage />} />
+            <Route path="discover/:tmdbId" element={<DiscoverDetailPage />} />
+            <Route path="people/:id" element={<PersonDetailPage />} />
             <Route path="series/:id" element={<SeriesDetail />} />
             <Route path="series/:id/episodes/:episodeId" element={<EpisodeDetail />} />
 

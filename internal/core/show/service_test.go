@@ -309,6 +309,33 @@ func (s *stubMeta) SearchSeries(context.Context, string, int) ([]tmdbtv.SearchRe
 func (s *stubMeta) GetSeries(context.Context, int) (*tmdbtv.SeriesDetail, error) {
 	return s.getSeriesResult, s.getSeriesErr
 }
+func (s *stubMeta) GetSeriesExtended(context.Context, int) (*tmdbtv.SeriesDetail, error) {
+	return s.getSeriesResult, s.getSeriesErr
+}
+func (s *stubMeta) GetPerson(context.Context, int) (*tmdbtv.Person, error) {
+	return nil, nil
+}
+func (s *stubMeta) GetPersonTVCredits(context.Context, int, string) ([]tmdbtv.PersonCredit, error) {
+	return nil, nil
+}
+func (s *stubMeta) GetTrendingTV(context.Context, string, int) (*tmdbtv.PaginatedSeries, error) {
+	return &tmdbtv.PaginatedSeries{}, nil
+}
+func (s *stubMeta) GetPopularTV(context.Context, int) (*tmdbtv.PaginatedSeries, error) {
+	return &tmdbtv.PaginatedSeries{}, nil
+}
+func (s *stubMeta) GetTopRatedTV(context.Context, int) (*tmdbtv.PaginatedSeries, error) {
+	return &tmdbtv.PaginatedSeries{}, nil
+}
+func (s *stubMeta) GetOnTheAirTV(context.Context, int) (*tmdbtv.PaginatedSeries, error) {
+	return &tmdbtv.PaginatedSeries{}, nil
+}
+func (s *stubMeta) DiscoverTVByGenre(context.Context, int, int) (*tmdbtv.PaginatedSeries, error) {
+	return &tmdbtv.PaginatedSeries{}, nil
+}
+func (s *stubMeta) GetTVGenres(context.Context) ([]tmdbtv.Genre, error) {
+	return nil, nil
+}
 func (s *stubMeta) GetSeasonEpisodes(context.Context, int, int) ([]tmdbtv.EpisodeDetail, error) {
 	return nil, nil
 }
@@ -588,6 +615,187 @@ func TestRefreshMetadata_AnimeBackfill_IsIdempotent(t *testing.T) {
 	}
 	if len(mock.gotAbsoluteUpdates) != 0 {
 		t.Errorf("expected zero writes when absolute_number already correct; got %d", len(mock.gotAbsoluteUpdates))
+	}
+}
+
+// ── Add: quality-profile FK resolution ───────────────────────────────────────
+
+// addMock implements just the queries Service.Add touches. It records the
+// CreateSeries params so tests can assert the quality_profile_id that gets
+// written, and lets tests control what GetLibrary returns.
+type addMock struct {
+	db.Querier
+
+	library     db.Library
+	libraryErr  error
+	getLibCalls int
+
+	createSeriesParams *db.CreateSeriesParams
+}
+
+func (m *addMock) GetSeriesByTMDBID(_ context.Context, _ int64) (db.Series, error) {
+	// No existing series — Add proceeds past the duplicate check.
+	return db.Series{}, sql.ErrNoRows
+}
+
+func (m *addMock) GetLibrary(_ context.Context, _ string) (db.Library, error) {
+	m.getLibCalls++
+	return m.library, m.libraryErr
+}
+
+func (m *addMock) CreateSeries(_ context.Context, p db.CreateSeriesParams) (db.Series, error) {
+	m.createSeriesParams = &p
+	// Echo the params back as a row so buildSeries has something to work with.
+	return db.Series{
+		ID:               p.ID,
+		TmdbID:           p.TmdbID,
+		Title:            p.Title,
+		SortTitle:        p.SortTitle,
+		Year:             p.Year,
+		GenresJson:       p.GenresJson,
+		Status:           p.Status,
+		SeriesType:       p.SeriesType,
+		MonitorType:      p.MonitorType,
+		Monitored:        p.Monitored,
+		LibraryID:        p.LibraryID,
+		QualityProfileID: p.QualityProfileID,
+		AddedAt:          p.AddedAt,
+		UpdatedAt:        p.UpdatedAt,
+		AlternateTitles:  p.AlternateTitles,
+	}, nil
+}
+
+func (m *addMock) CreateSeason(_ context.Context, p db.CreateSeasonParams) (db.Season, error) {
+	return db.Season(p), nil
+}
+
+func (m *addMock) CreateEpisode(_ context.Context, p db.CreateEpisodeParams) (db.Episode, error) {
+	return db.Episode{ID: p.ID, SeriesID: p.SeriesID, SeasonID: p.SeasonID, SeasonNumber: p.SeasonNumber, EpisodeNumber: p.EpisodeNumber}, nil
+}
+
+func (m *addMock) UpdateEpisodeMonitored(_ context.Context, _ db.UpdateEpisodeMonitoredParams) error {
+	return nil
+}
+
+func (m *addMock) UpdateSeasonMonitored(_ context.Context, _ db.UpdateSeasonMonitoredParams) error {
+	return nil
+}
+
+func (m *addMock) CountEpisodesBySeriesID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
+func (m *addMock) CountEpisodesWithFileBySeriesID(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
+// addStubMeta is a MetadataProvider that returns a single season's worth of
+// metadata for the Add flow. Embeds stubMeta so only the Add-relevant hooks
+// need overriding.
+type addStubMeta struct {
+	stubMeta
+}
+
+func (m *addStubMeta) GetSeries(context.Context, int) (*tmdbtv.SeriesDetail, error) {
+	return &tmdbtv.SeriesDetail{
+		ID:     42,
+		Title:  "Test Series",
+		Year:   2024,
+		Status: "continuing",
+		Genres: []string{"Drama"},
+		Seasons: []tmdbtv.SeasonSummary{
+			{SeasonNumber: 1, EpisodeCount: 1},
+		},
+	}, nil
+}
+
+func (m *addStubMeta) GetAlternativeTitles(context.Context, int) ([]string, error) {
+	return []string{}, nil
+}
+
+func (m *addStubMeta) GetSeasonEpisodes(context.Context, int, int) ([]tmdbtv.EpisodeDetail, error) {
+	return []tmdbtv.EpisodeDetail{
+		{SeasonNumber: 1, EpisodeNumber: 1, Title: "Pilot"},
+	}, nil
+}
+
+// Regression: adding a series with an empty quality_profile_id (the Discover
+// panel's "Any Quality" option) must NOT write "" into the NOT NULL FK
+// column. Instead it falls back to the library's default profile. Before the
+// fix this surfaced as a foreign-key failure popup in the UI.
+func TestAdd_EmptyQualityProfileFallsBackToLibraryDefault(t *testing.T) {
+	mock := &addMock{
+		library: db.Library{ID: "lib-1", DefaultQualityProfileID: "qp-default"},
+	}
+	svc := NewService(mock, &addStubMeta{}, nil, nil, discardLogger())
+
+	got, err := svc.Add(context.Background(), AddRequest{
+		TMDBID:           42,
+		LibraryID:        "lib-1",
+		QualityProfileID: "", // "Any Quality"
+		Monitored:        true,
+		MonitorType:      "all",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if mock.createSeriesParams == nil {
+		t.Fatal("CreateSeries was never called")
+	}
+	if mock.createSeriesParams.QualityProfileID != "qp-default" {
+		t.Errorf("quality_profile_id written = %q, want %q (library default)",
+			mock.createSeriesParams.QualityProfileID, "qp-default")
+	}
+	if got.QualityProfileID != "qp-default" {
+		t.Errorf("returned series quality_profile_id = %q, want %q", got.QualityProfileID, "qp-default")
+	}
+}
+
+// When the caller supplies an explicit quality profile, it must be used
+// verbatim and the library default must NOT be consulted.
+func TestAdd_ExplicitQualityProfileIsRespected(t *testing.T) {
+	mock := &addMock{
+		library: db.Library{ID: "lib-1", DefaultQualityProfileID: "qp-default"},
+	}
+	svc := NewService(mock, &addStubMeta{}, nil, nil, discardLogger())
+
+	_, err := svc.Add(context.Background(), AddRequest{
+		TMDBID:           42,
+		LibraryID:        "lib-1",
+		QualityProfileID: "qp-chosen",
+		Monitored:        true,
+		MonitorType:      "all",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if mock.createSeriesParams.QualityProfileID != "qp-chosen" {
+		t.Errorf("quality_profile_id written = %q, want %q (explicit)",
+			mock.createSeriesParams.QualityProfileID, "qp-chosen")
+	}
+	if mock.getLibCalls != 0 {
+		t.Errorf("GetLibrary called %d times; should not be consulted when profile is explicit", mock.getLibCalls)
+	}
+}
+
+// If the library lookup fails while resolving the default profile, Add must
+// surface the error rather than fall through and attempt an invalid insert.
+func TestAdd_EmptyQualityProfileLibraryLookupError(t *testing.T) {
+	mock := &addMock{
+		libraryErr: errors.New("library gone"),
+	}
+	svc := NewService(mock, &addStubMeta{}, nil, nil, discardLogger())
+
+	_, err := svc.Add(context.Background(), AddRequest{
+		TMDBID:      42,
+		LibraryID:   "lib-1",
+		MonitorType: "all",
+	})
+	if err == nil {
+		t.Fatal("expected error when library lookup fails, got nil")
+	}
+	if mock.createSeriesParams != nil {
+		t.Error("CreateSeries must not be called when the default-profile lookup fails")
 	}
 }
 
