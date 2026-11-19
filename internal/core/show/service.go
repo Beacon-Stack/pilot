@@ -20,7 +20,6 @@ import (
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
-	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // RenameSettings holds the format configuration for renaming files.
@@ -43,6 +42,14 @@ var (
 // when dry_run=true).
 type RenamePreview struct {
 	FileID  string
+	OldPath string
+	NewPath string
+	// Extras are subtitle files that move with the episode file.
+	Extras []RenameMove
+}
+
+// RenameMove is one extra file (a subtitle) moved alongside a rename.
+type RenameMove struct {
 	OldPath string
 	NewPath string
 }
@@ -1610,6 +1617,15 @@ func (s *Service) RenameFiles(ctx context.Context, seriesID string, settings Ren
 		return nil, nil
 	}
 
+	// Library-level format overrides win, as they do on import; otherwise
+	// a rename would undo the names the importer just gave.
+	if lib.NamingFormat != nil && *lib.NamingFormat != "" {
+		settings.EpisodeFormat = *lib.NamingFormat
+	}
+	if lib.FolderFormat != nil && *lib.FolderFormat != "" {
+		settings.SeriesFolderFormat = *lib.FolderFormat
+	}
+
 	rSeries := renamer.Series{Title: series.Title, Year: int(series.Year)}
 	colon := settings.ColonReplacement
 
@@ -1642,7 +1658,7 @@ func (s *Service) RenameFiles(ctx context.Context, seriesID string, settings Ren
 				Title:         ep.Title,
 				AirDate:       airDate,
 			},
-			plugin.Quality{}, // Quality is not re-parsed for rename; filename is clean already.
+			renameQuality(f),
 			colon,
 			ext,
 		)
@@ -1651,10 +1667,12 @@ func (s *Service) RenameFiles(ctx context.Context, seriesID string, settings Ren
 			continue // already correct
 		}
 
+		extras := subtitleMoves(f.Path, newPath)
 		previews = append(previews, RenamePreview{
 			FileID:  f.ID,
 			OldPath: f.Path,
 			NewPath: newPath,
+			Extras:  extras,
 		})
 
 		if !dryRun {
@@ -1684,6 +1702,20 @@ func (s *Service) RenameFiles(ctx context.Context, seriesID string, settings Ren
 			}
 
 			s.logger.Info("renamed episode file", "old", f.Path, "new", newPath)
+
+			// Subtitles follow their episode. Never overwrite: an existing
+			// target is reported and the subtitle stays where it is.
+			for _, m := range extras {
+				if _, statErr := os.Lstat(m.NewPath); statErr == nil {
+					renameErrors = append(renameErrors, fmt.Sprintf("subtitle target already exists: %s", m.NewPath))
+					continue
+				}
+				if mvErr := os.Rename(m.OldPath, m.NewPath); mvErr != nil {
+					renameErrors = append(renameErrors, fmt.Sprintf("rename %s → %s: %v", m.OldPath, m.NewPath, mvErr))
+					continue
+				}
+				s.logger.Info("moved subtitle with episode", "old", m.OldPath, "new", m.NewPath)
+			}
 		}
 	}
 

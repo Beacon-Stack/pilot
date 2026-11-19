@@ -29,9 +29,15 @@ type episodeFileBody struct {
 }
 
 type renamePreviewBody struct {
-	FileID  string `json:"file_id"  doc:"Episode file UUID"`
+	FileID  string           `json:"file_id"  doc:"Episode file UUID"`
+	OldPath string           `json:"old_path" doc:"Current path on disk"`
+	NewPath string           `json:"new_path" doc:"Proposed path after rename"`
+	Extras  []renameMoveBody `json:"extra_files,omitempty" doc:"Subtitle files that move with this file"`
+}
+
+type renameMoveBody struct {
 	OldPath string `json:"old_path" doc:"Current path on disk"`
-	NewPath string `json:"new_path" doc:"Proposed path after rename"`
+	NewPath string `json:"new_path" doc:"Path after rename"`
 }
 
 // ── Input shapes ──────────────────────────────────────────────────────────────
@@ -144,6 +150,9 @@ func RegisterEpisodeFileRoutes(api huma.API, svc *show.Service, mmSvc *mediamana
 				FileID:  item.FileID,
 				OldPath: item.OldPath,
 				NewPath: item.NewPath,
+			}
+			for _, m := range item.Extras {
+				out.Body.Renamed[i].Extras = append(out.Body.Renamed[i].Extras, renameMoveBody{OldPath: m.OldPath, NewPath: m.NewPath})
 			}
 		}
 		return out, nil
