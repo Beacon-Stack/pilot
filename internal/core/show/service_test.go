@@ -262,6 +262,12 @@ type refreshMetadataMock struct {
 	gotSeriesUpdates   []db.UpdateSeriesParams
 	episodes           []db.Episode // returned by ListEpisodesBySeriesID
 	gotAbsoluteUpdates []db.UpdateEpisodeAbsoluteNumberParams
+	gotEpisodeUpdates  []db.UpdateEpisodeParams
+}
+
+func (m *refreshMetadataMock) UpdateEpisode(_ context.Context, p db.UpdateEpisodeParams) (db.Episode, error) {
+	m.gotEpisodeUpdates = append(m.gotEpisodeUpdates, p)
+	return db.Episode{}, nil
 }
 
 func (m *refreshMetadataMock) GetSeries(_ context.Context, _ string) (db.Series, error) {
@@ -301,6 +307,7 @@ type stubMeta struct {
 	getSeriesErr    error
 	altTitles       []string
 	altErr          error
+	seasonEpisodes  []tmdbtv.EpisodeDetail
 }
 
 func (s *stubMeta) SearchSeries(context.Context, string, int) ([]tmdbtv.SearchResult, error) {
@@ -337,7 +344,7 @@ func (s *stubMeta) GetTVGenres(context.Context) ([]tmdbtv.Genre, error) {
 	return nil, nil
 }
 func (s *stubMeta) GetSeasonEpisodes(context.Context, int, int) ([]tmdbtv.EpisodeDetail, error) {
-	return nil, nil
+	return s.seasonEpisodes, nil
 }
 func (s *stubMeta) GetAlternativeTitles(context.Context, int) ([]string, error) {
 	return s.altTitles, s.altErr
@@ -844,3 +851,45 @@ func TestService_TVDBSeasonToAbsolute_NilLookupIsSafe(t *testing.T) {
 
 // silence unused-import alarm for time when only used elsewhere
 var _ = time.Now
+
+func TestRefreshEpisodeMetadata_ReplacesPlaceholderTitles(t *testing.T) {
+	aired := "2026-07-04"
+	mock := &refreshMetadataMock{episodes: []db.Episode{
+		// Added before it aired: placeholder title, no overview or date.
+		{ID: "e1", SeasonNumber: 3, EpisodeNumber: 1, Title: "Episode 1", HasFile: true},
+		// Already up to date: must not be written.
+		{ID: "e2", SeasonNumber: 3, EpisodeNumber: 2, Title: "It's All Good", Overview: "o2", AirDate: &aired, StillPath: "/s2.jpg", RuntimeMinutes: 50},
+	}}
+	meta := &stubMeta{seasonEpisodes: []tmdbtv.EpisodeDetail{
+		{SeasonNumber: 3, EpisodeNumber: 1, Title: "The Engineer", Overview: "o1", AirDate: "2026-07-04", StillPath: "/s1.jpg", RuntimeMinutes: 52},
+		{SeasonNumber: 3, EpisodeNumber: 2, Title: "It's All Good", Overview: "o2", AirDate: "2026-07-04", StillPath: "/s2.jpg", RuntimeMinutes: 50},
+	}}
+	svc := NewService(mock, meta, nil, nil, discardLogger())
+
+	if err := svc.RefreshEpisodeMetadata(context.Background(), "s1", 125988); err != nil {
+		t.Fatal(err)
+	}
+	if len(mock.gotEpisodeUpdates) != 1 {
+		t.Fatalf("got %d episode updates, want 1 (only the stale episode)", len(mock.gotEpisodeUpdates))
+	}
+	got := mock.gotEpisodeUpdates[0]
+	if got.ID != "e1" || got.Title != "The Engineer" || got.Overview != "o1" ||
+		got.AirDate == nil || *got.AirDate != "2026-07-04" || got.StillPath != "/s1.jpg" || got.RuntimeMinutes != 52 {
+		t.Errorf("update = %+v, want TMDB's title, overview, air date, still and runtime", got)
+	}
+	if !got.HasFile {
+		t.Error("refresh must keep has_file as stored")
+	}
+}
+
+func TestRefreshedEpisode_EmptyTMDBFieldsKeepStoredValues(t *testing.T) {
+	aired := "2023-05-05"
+	ep := db.Episode{ID: "e1", Title: "Freedom Day", Overview: "stored", AirDate: &aired, StillPath: "/a.jpg", RuntimeMinutes: 60}
+	p, changed := refreshedEpisode(ep, tmdbtv.EpisodeDetail{EpisodeNumber: 1})
+	if changed {
+		t.Errorf("empty TMDB detail reported a change: %+v", p)
+	}
+	if p.Title != "Freedom Day" || p.Overview != "stored" || p.AirDate == nil || *p.AirDate != aired || p.StillPath != "/a.jpg" || p.RuntimeMinutes != 60 {
+		t.Errorf("stored values were blanked: %+v", p)
+	}
+}
