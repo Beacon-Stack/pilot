@@ -205,11 +205,15 @@ export interface IndexerSearchOutcome {
   // solving) and will be cached — re-searching shortly returns its
   // results. Rendered as "still searching", never as a failure.
   pending?: boolean;
+  // No answer yet — only while a search is still streaming.
+  searching?: boolean;
 }
 
 export interface ReleaseSearchResponse {
   releases: ReleaseResult[];
   indexers?: IndexerSearchOutcome[];
+  // False on the partial results sent while indexers are still answering.
+  done?: boolean;
 }
 
 // ── Download Clients ────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/beacon-stack/pilot/internal/redact"
@@ -57,7 +58,34 @@ type Config struct {
 type Indexer struct {
 	cfg    Config
 	client *http.Client
+
+	// What the caps document says searches may carry, read once and
+	// reused. See searchCaps.
+	capsMu      sync.Mutex
+	caps        *searchCaps
+	capsCheckAt time.Time
 }
+
+// searchCaps is the part of an indexer's caps document a search needs.
+type searchCaps struct {
+	// tvParams are the tv-search supportedParams, lowercased ("q",
+	// "season", "imdbid", ...). Empty when the indexer didn't list them.
+	tvParams map[string]bool
+	// tvCategories are the indexer's TV categories (5000-5999).
+	tvCategories []int
+}
+
+const (
+	// capsTTL is how long a caps document is trusted. Caps change only
+	// when the indexer's definition does.
+	capsTTL = 6 * time.Hour
+	// capsRetryAfter is how long to search without caps after the caps
+	// request failed, before asking again.
+	capsRetryAfter = 10 * time.Minute
+	// capsTimeout bounds the caps request made ahead of a search, so an
+	// indexer whose caps hang costs that search seconds, not its budget.
+	capsTimeout = 5 * time.Second
+)
 
 // New creates a new Torznab Indexer from the given config.
 //
@@ -83,24 +111,9 @@ func (idx *Indexer) Protocol() plugin.Protocol { return plugin.ProtocolTorrent }
 
 // Capabilities fetches and parses the indexer's capabilities document.
 func (idx *Indexer) Capabilities(ctx context.Context) (plugin.Capabilities, error) {
-	u := idx.buildURL("caps", url.Values{})
-	resp, err := idx.get(ctx, u)
+	caps, err := idx.fetchCaps(ctx)
 	if err != nil {
 		return plugin.Capabilities{}, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return plugin.Capabilities{}, fmt.Errorf("torznab: capabilities returned HTTP %d", resp.StatusCode)
-	}
-
-	var caps capsResponse
-	if err := decodeXML(resp.Body, &caps); err != nil {
-		var terr *torznabError
-		if errors.As(err, &terr) {
-			return plugin.Capabilities{}, fmt.Errorf("torznab: %w", terr)
-		}
-		return plugin.Capabilities{}, fmt.Errorf("torznab: decoding capabilities: %w", err)
 	}
 
 	categories := make([]int, 0, len(caps.Categories.Items))
@@ -114,6 +127,89 @@ func (idx *Indexer) Capabilities(ctx context.Context) (plugin.Capabilities, erro
 		MovieSearch:       caps.Searching.MovieSearch.Available == "yes",
 		Categories:        categories,
 	}, nil
+}
+
+func (idx *Indexer) fetchCaps(ctx context.Context) (capsResponse, error) {
+	u := idx.buildURL("caps", url.Values{})
+	resp, err := idx.get(ctx, u)
+	if err != nil {
+		return capsResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return capsResponse{}, fmt.Errorf("torznab: capabilities returned HTTP %d", resp.StatusCode)
+	}
+
+	var caps capsResponse
+	if err := decodeXML(resp.Body, &caps); err != nil {
+		var terr *torznabError
+		if errors.As(err, &terr) {
+			return capsResponse{}, fmt.Errorf("torznab: %w", terr)
+		}
+		return capsResponse{}, fmt.Errorf("torznab: decoding capabilities: %w", err)
+	}
+	return caps, nil
+}
+
+// searchCaps returns the cached caps, fetching them when there are none
+// or they are old. Nil when the indexer can't say: searches then go out
+// as they always did, with no IDs and no category filter.
+func (idx *Indexer) searchCaps(ctx context.Context) *searchCaps {
+	idx.capsMu.Lock()
+	defer idx.capsMu.Unlock()
+	if time.Now().Before(idx.capsCheckAt) {
+		return idx.caps
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, capsTimeout)
+	defer cancel()
+	doc, err := idx.fetchCaps(cctx)
+	if err != nil {
+		// Keep whatever we had; a caps hiccup must not change searches.
+		idx.capsCheckAt = time.Now().Add(capsRetryAfter)
+		return idx.caps
+	}
+	idx.caps = parseSearchCaps(doc)
+	idx.capsCheckAt = time.Now().Add(capsTTL)
+	return idx.caps
+}
+
+func parseSearchCaps(doc capsResponse) *searchCaps {
+	sc := &searchCaps{tvParams: map[string]bool{}}
+	for _, p := range strings.Split(doc.Searching.TVSearch.SupportedParams, ",") {
+		if p = strings.ToLower(strings.TrimSpace(p)); p != "" {
+			sc.tvParams[p] = true
+		}
+	}
+	// Top-level TV categories only. Subcategory IDs are often the site's
+	// own ("50TV-X265", "501_0" on Pulse) rather than standard numbers,
+	// and every implementation treats the parent as including them.
+	for _, c := range doc.Categories.Items {
+		if c.ID >= 5000 && c.ID < 6000 {
+			sc.tvCategories = append(sc.tvCategories, c.ID)
+		}
+	}
+	return sc
+}
+
+// supports reports whether a tv-search may carry param. IDs are only
+// sent when the indexer lists them: an indexer that doesn't know an ID
+// can answer an ID search with nothing, which costs a text fallback.
+func (sc *searchCaps) supports(param string) bool {
+	return sc != nil && sc.tvParams[param]
+}
+
+// categories is the cat= value for a TV search, or "" to send none.
+func (sc *searchCaps) categories() string {
+	if sc == nil || len(sc.tvCategories) == 0 {
+		return ""
+	}
+	parts := make([]string, len(sc.tvCategories))
+	for i, c := range sc.tvCategories {
+		parts[i] = strconv.Itoa(c)
+	}
+	return strings.Join(parts, ",")
 }
 
 // Search queries the indexer for releases matching q.
@@ -136,18 +232,36 @@ func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.
 	// "Andor" → "Anderson / Andrea" substring garbage. The downside of
 	// duplication (text gate + structured gate stacking) is strictly
 	// less harmful than losing 95% of results from a healthy indexer.
+	//
+	// IDs and the TV category filter come from the indexer's caps: an
+	// ID lets the indexer match the show exactly, and the category keeps
+	// it from returning (and scraping pages of) movies, music and games.
+	caps := idx.searchCaps(ctx)
+	cats := caps.categories()
+
 	var tvSearchErr error
-	if q.Season > 0 || q.TVDBID != 0 {
+	hasID := q.TVDBID != 0 || (q.IMDBID != "" && caps.supports("imdbid")) ||
+		(q.TMDBID != 0 && caps.supports("tmdbid"))
+	if q.Season > 0 || hasID {
 		params := url.Values{}
 		params.Set("q", q.Query)
 		if q.TVDBID != 0 {
 			params.Set("tvdbid", strconv.Itoa(q.TVDBID))
+		}
+		if q.IMDBID != "" && caps.supports("imdbid") {
+			params.Set("imdbid", q.IMDBID)
+		}
+		if q.TMDBID != 0 && caps.supports("tmdbid") {
+			params.Set("tmdbid", strconv.Itoa(q.TMDBID))
 		}
 		if q.Season > 0 {
 			params.Set("season", strconv.Itoa(q.Season))
 		}
 		if q.Episode > 0 {
 			params.Set("ep", strconv.Itoa(q.Episode))
+		}
+		if cats != "" {
+			params.Set("cat", cats)
 		}
 		u := idx.buildURL("tvsearch", params)
 		releases, err := idx.fetchReleases(ctx, u)
@@ -163,6 +277,9 @@ func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.
 	// 2. Free-text search — universally supported fallback.
 	params := url.Values{}
 	params.Set("q", q.Query)
+	if cats != "" {
+		params.Set("cat", cats)
+	}
 	u := idx.buildURL("search", params)
 	releases, err := idx.fetchReleases(ctx, u)
 	if err != nil {
@@ -459,13 +576,17 @@ type capsSearching struct {
 }
 
 type capsSearchType struct {
-	Available string `xml:"available,attr"`
+	Available       string `xml:"available,attr"`
+	SupportedParams string `xml:"supportedParams,attr"`
 }
 
 type capsCategories struct {
 	Items []capsCategory `xml:"category"`
 }
 
+// capsCategory is a top-level category. Subcategories aren't read: their
+// IDs need not be numbers (see parseSearchCaps), and an int field would
+// fail the whole document on the first one that isn't.
 type capsCategory struct {
 	ID   int    `xml:"id,attr"`
 	Name string `xml:"name,attr"`

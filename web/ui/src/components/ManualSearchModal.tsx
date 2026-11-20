@@ -472,6 +472,11 @@ export default function ManualSearchModal({
   const indexerOutcomes = data?.indexers ?? [];
   const failedIndexers = indexerOutcomes.filter((o) => o.error);
   const pendingIndexers = indexerOutcomes.filter((o) => o.pending && !o.error);
+  // Results stream in as indexers answer; the last update has done=true.
+  const streaming = isFetching && data !== undefined && !data.done;
+  const waitingOn = streaming ? indexerOutcomes.filter((o) => o.searching) : [];
+  const answered = indexerOutcomes.length - waitingOn.length;
+  const nothingYet = isLoading || (streaming && (!releases || releases.length === 0));
 
   // While Cloudflare-walled indexers are still solving server-side,
   // silently re-search every 30s — their results land in Pulse's cache
@@ -738,7 +743,7 @@ export default function ManualSearchModal({
       {/* Body */}
       <div style={{ overflow: "auto", flex: 1 }}>
         {/* Loading */}
-        {isLoading && (
+        {nothingYet && !isError && (
           <div
             style={{
               display: "flex",
@@ -759,7 +764,9 @@ export default function ManualSearchModal({
                 animation: "spin 1s linear infinite",
               }}
             />
-            Searching indexers...
+            {indexerOutcomes.length > 0
+              ? `Searching indexers… ${answered} of ${indexerOutcomes.length} answered`
+              : "Searching indexers..."}
           </div>
         )}
 
@@ -839,6 +846,25 @@ export default function ManualSearchModal({
           </div>
         )}
 
+        {/* Results so far, with the indexers still being waited on. */}
+        {!nothingYet && !isError && waitingOn.length > 0 && (
+          <div
+            style={{
+              margin: "12px 20px 0",
+              fontSize: 12,
+              color: "var(--color-text-muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <Loader2 size={13} style={{ color: "var(--color-accent)", animation: "spin 1s linear infinite", flexShrink: 0 }} />
+            <span>
+              Waiting on {waitingOn.map((o) => o.indexer_name).join(", ")}. More results are added as they arrive.
+            </span>
+          </div>
+        )}
+
         {/* Per-indexer failures — shown whenever any indexer errored, so
             partial results never silently hide a broken fleet. */}
         {!isLoading && !isError && failedIndexers.length > 0 && (
@@ -865,7 +891,7 @@ export default function ManualSearchModal({
         )}
 
         {/* Empty */}
-        {!isLoading && !isError && releases && releases.length === 0 && (
+        {!isLoading && !streaming && !isError && releases && releases.length === 0 && (
           <div
             style={{
               display: "flex",
@@ -902,7 +928,7 @@ export default function ManualSearchModal({
         )}
 
         {/* Empty filter */}
-        {!isLoading && !isError && releases && releases.length > 0 && packFiltered.length === 0 && (
+        {!isLoading && !streaming && !isError && releases && releases.length > 0 && packFiltered.length === 0 && (
           <div
             style={{
               display: "flex",

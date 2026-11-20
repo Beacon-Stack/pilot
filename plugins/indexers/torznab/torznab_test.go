@@ -27,6 +27,9 @@ import (
 func TestSearch_TVSearchSendsQVerbatim(t *testing.T) {
 	var capturedURLs []*url.URL
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("t") == "caps" {
+			return // caps are read once per indexer; these tests count searches
+		}
 		u := *r.URL
 		capturedURLs = append(capturedURLs, &u)
 		w.Header().Set("Content-Type", "application/xml")
@@ -61,6 +64,9 @@ func TestSearch_TVSearchSendsQVerbatim(t *testing.T) {
 func TestSearch_TextSearchSingleRequest(t *testing.T) {
 	var capturedURLs []*url.URL
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("t") == "caps" {
+			return // caps are read once per indexer; these tests count searches
+		}
 		u := *r.URL
 		capturedURLs = append(capturedURLs, &u)
 		w.Header().Set("Content-Type", "application/xml")
@@ -93,6 +99,9 @@ func TestSearch_TextSearchSingleRequest(t *testing.T) {
 func TestSearch_FallsBackToTextSearchOnZeroTVResults(t *testing.T) {
 	var capturedURLs []*url.URL
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("t") == "caps" {
+			return // caps are read once per indexer; these tests count searches
+		}
 		u := *r.URL
 		capturedURLs = append(capturedURLs, &u)
 		w.Header().Set("Content-Type", "application/xml")
@@ -216,5 +225,147 @@ func TestTest_EmptyBodyStillPasses(t *testing.T) {
 
 	if err := idx.Test(context.Background()); err != nil {
 		t.Fatalf("Test() on empty 200 body = %v, want nil", err)
+	}
+}
+
+// ── Caps-driven IDs and categories ──────────────────────────────────────────
+
+const capsWithIDs = `<?xml version="1.0"?><caps>
+<searching>
+  <search available="yes" supportedParams="q"/>
+  <tv-search available="yes" supportedParams="q,season,ep,imdbid,tmdbid"/>
+</searching>
+<categories>
+  <category id="2000" name="Movies"/>
+  <category id="5000" name="TV"><subcat id="5070" name="TV/Anime"/></category>
+</categories>
+</caps>`
+
+const capsQOnly = `<?xml version="1.0"?><caps>
+<searching><tv-search available="yes" supportedParams="q,season,ep"/></searching>
+<categories><category id="5000" name="TV"/></categories>
+</caps>`
+
+const oneItemFeed = `<?xml version="1.0"?><rss><channel><item><title>Andor.S01.1080p</title>` +
+	`<guid>g1</guid><link>http://x/1</link></item></channel></rss>`
+
+// capsServer serves caps from capsDoc (or fails caps when capsDoc is "")
+// and one result for every search, recording search URLs and caps hits.
+func capsServer(t *testing.T, capsDoc string) (*httptest.Server, *[]*url.URL, *int) {
+	t.Helper()
+	var searches []*url.URL
+	capsHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		if r.URL.Query().Get("t") == "caps" {
+			capsHits++
+			if capsDoc == "" {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write([]byte(capsDoc))
+			return
+		}
+		u := *r.URL
+		searches = append(searches, &u)
+		_, _ = w.Write([]byte(oneItemFeed))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &searches, &capsHits
+}
+
+func TestSearch_SendsIDsAndTVCategoriesFromCaps(t *testing.T) {
+	srv, searches, _ := capsServer(t, capsWithIDs)
+	idx := New(Config{URL: srv.URL})
+
+	_, err := idx.Search(context.Background(), plugin.SearchQuery{
+		Query: "Andor S01", Season: 1, IMDBID: "tt9253284", TMDBID: 83867,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := (*searches)[0].Query()
+	if got.Get("imdbid") != "tt9253284" || got.Get("tmdbid") != "83867" {
+		t.Errorf("ids = imdbid %q tmdbid %q, want both sent", got.Get("imdbid"), got.Get("tmdbid"))
+	}
+	if got.Get("cat") != "5000" {
+		t.Errorf("cat = %q, want the top-level TV category only (5000)", got.Get("cat"))
+	}
+	if got.Get("q") != "Andor S01" {
+		t.Errorf("q = %q, must still be sent verbatim", got.Get("q"))
+	}
+}
+
+// An indexer that doesn't list an ID param must not get it: one that
+// can't match by ID may answer with nothing and force a text fallback.
+func TestSearch_OmitsIDsTheIndexerDoesNotList(t *testing.T) {
+	srv, searches, _ := capsServer(t, capsQOnly)
+	idx := New(Config{URL: srv.URL})
+
+	_, _ = idx.Search(context.Background(), plugin.SearchQuery{
+		Query: "Andor S01", Season: 1, IMDBID: "tt9253284", TMDBID: 83867,
+	})
+	got := (*searches)[0].Query()
+	if got.Has("imdbid") || got.Has("tmdbid") {
+		t.Errorf("sent ids the indexer doesn't support: %v", got)
+	}
+	if got.Get("cat") != "5000" {
+		t.Errorf("cat = %q, want 5000", got.Get("cat"))
+	}
+}
+
+// Without caps a search goes out exactly as before: no IDs, no cat.
+func TestSearch_NoCapsSendsPlainSearch(t *testing.T) {
+	srv, searches, capsHits := capsServer(t, "")
+	idx := New(Config{URL: srv.URL})
+
+	for i := 0; i < 2; i++ {
+		_, _ = idx.Search(context.Background(), plugin.SearchQuery{
+			Query: "Andor S01", Season: 1, IMDBID: "tt9253284",
+		})
+	}
+	for _, u := range *searches {
+		if u.Query().Has("imdbid") || u.Query().Has("cat") {
+			t.Errorf("search without caps carried ids or cat: %v", u.Query())
+		}
+	}
+	if *capsHits != 1 {
+		t.Errorf("caps requested %d times, want 1 (failures are retried after a pause)", *capsHits)
+	}
+}
+
+func TestSearch_CapsReadOnce(t *testing.T) {
+	srv, _, capsHits := capsServer(t, capsWithIDs)
+	idx := New(Config{URL: srv.URL})
+
+	for i := 0; i < 3; i++ {
+		_, _ = idx.Search(context.Background(), plugin.SearchQuery{Query: "Andor S01", Season: 1})
+	}
+	if *capsHits != 1 {
+		t.Errorf("caps requested %d times over 3 searches, want 1", *capsHits)
+	}
+}
+
+// Pulse's caps, verbatim in shape: subcategory IDs that aren't numbers.
+// They must not fail the document, or IDs and categories silently stop.
+const pulseCaps = `<?xml version="1.0" encoding="UTF-8"?>
+<caps><server title="Torrent[CORE]"></server><limits max="100" default="50"></limits>
+<searching><search available="yes" supportedParams="q"></search>
+<tv-search available="yes" supportedParams="q,season,ep"></tv-search></searching>
+<categories><category id="3000" name="Audio"><subcat id="30FLAC" name="Music FLAC"></subcat></category>
+<category id="5000" name="TV"><subcat id="50TV-X265" name="TV X265"></subcat><subcat id="501_0" name="Anime"></subcat></category>
+</categories></caps>`
+
+func TestSearch_PulseCapsWithNonNumericSubcats(t *testing.T) {
+	srv, searches, _ := capsServer(t, pulseCaps)
+	idx := New(Config{URL: srv.URL})
+
+	_, _ = idx.Search(context.Background(), plugin.SearchQuery{Query: "Andor S01", Season: 1, IMDBID: "tt9253284"})
+	got := (*searches)[0].Query()
+	if got.Get("cat") != "5000" {
+		t.Errorf("cat = %q, want 5000 (caps must parse despite non-numeric subcat IDs)", got.Get("cat"))
+	}
+	if got.Has("imdbid") {
+		t.Error("Pulse lists q,season,ep only; imdbid must not be sent")
 	}
 }
