@@ -546,7 +546,7 @@ func streamReleases(hctx huma.Context, indexerSvc *indexer.Service, rs *releaseS
 		done    = make(chan indexer.Snapshot, 1)
 	)
 	go func() {
-		snap, _ := indexerSvc.SearchStream(searchCtx, rs.groups, func(s indexer.Snapshot) {
+		snap, _ := indexerSvc.SearchInteractive(searchCtx, rs.groups, func(s indexer.Snapshot) {
 			mu.Lock()
 			latest = s
 			mu.Unlock()
@@ -597,7 +597,7 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		searchCtx, cancel := context.WithTimeout(ctx, interactiveSearchTimeout)
 		defer cancel()
 		// Indexer errors are in the outcomes; the combined error is redundant.
-		snap, _ := indexerSvc.SearchStream(searchCtx, rs.groups, nil)
+		snap, _ := indexerSvc.SearchInteractive(searchCtx, rs.groups, nil)
 		return &releaseListOutput{Body: rs.list(ctx, snap)}, nil
 	})
 

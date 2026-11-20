@@ -145,6 +145,55 @@ var errSearchTimedOut = errors.New("timed out — slow (Cloudflare-protected) in
 // indexer from starving the pool when the caller passes a long-lived context.
 const perIndexerSearchTimeout = 25 * time.Second
 
+// struggleTimeout is how long an interactive search waits on an indexer
+// that keeps missing (see indexerHealth) — typically a Cloudflare-walled
+// site whose challenge FlareSolverr often can't solve. Its request still
+// goes out: Pulse keeps scraping after we stop waiting and caches what it
+// finds, and the search modal's automatic re-search picks that up. What
+// changes is that everyone else's results don't sit behind it for 25s.
+// A var so tests can shorten it.
+var struggleTimeout = 6 * time.Second
+
+// indexerHealth remembers each indexer's last few search outcomes.
+// An indexer that missed (timed out or failed) struggleMisses of its
+// last healthWindow searches is "struggling". A window rather than a
+// streak, because a struggling indexer's cached answers come back fast
+// and would otherwise reset a streak between every two cold misses.
+type indexerHealth struct {
+	mu     sync.Mutex
+	recent map[string][]bool // true = miss, oldest first
+}
+
+const (
+	healthWindow   = 3
+	struggleMisses = 2
+)
+
+func (h *indexerHealth) record(id string, miss bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.recent == nil {
+		h.recent = make(map[string][]bool)
+	}
+	r := append(h.recent[id], miss)
+	if len(r) > healthWindow {
+		r = r[len(r)-healthWindow:]
+	}
+	h.recent[id] = r
+}
+
+func (h *indexerHealth) struggling(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	misses := 0
+	for _, miss := range h.recent[id] {
+		if miss {
+			misses++
+		}
+	}
+	return misses >= struggleMisses
+}
+
 type Service struct {
 	q      db.Querier
 	reg    *registry.Registry
@@ -153,6 +202,7 @@ type Service struct {
 	logger *slog.Logger
 	cache  sync.Map      // config ID → plugin.Indexer
 	sem    chan struct{} // bounds concurrent indexer searches
+	health indexerHealth // recent outcomes per indexer; see struggleTimeout
 }
 
 // NewService creates a new Service. A nil logger falls back to slog.Default()
@@ -650,7 +700,23 @@ func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) 
 // time an indexer finishes a group, with everything found so far, so a
 // caller can show results while slower indexers are still working.
 // onUpdate calls are serialized and arrive in order; keep them quick.
+//
+// Every indexer gets the full per-indexer timeout. Use SearchInteractive
+// when a person is waiting.
 func (s *Service) SearchStream(ctx context.Context, groups []SearchGroup, onUpdate func(Snapshot)) (Snapshot, error) {
+	return s.search(ctx, groups, onUpdate, false)
+}
+
+// SearchInteractive is SearchStream for a person watching the results:
+// an indexer that keeps missing is waited on for struggleTimeout rather
+// than the full timeout, and reported pending if it hasn't answered.
+// Automatic searches keep the full wait, so they don't lose a slow
+// indexer's results — nobody re-searches for them a minute later.
+func (s *Service) SearchInteractive(ctx context.Context, groups []SearchGroup, onUpdate func(Snapshot)) (Snapshot, error) {
+	return s.search(ctx, groups, onUpdate, true)
+}
+
+func (s *Service) search(ctx context.Context, groups []SearchGroup, onUpdate func(Snapshot), interactive bool) (Snapshot, error) {
 	rows, err := s.q.ListEnabledIndexers(ctx)
 	if err != nil {
 		return Snapshot{Done: true}, fmt.Errorf("listing enabled indexers: %w", err)
@@ -708,7 +774,7 @@ func (s *Service) SearchStream(ctx context.Context, groups []SearchGroup, onUpda
 			wg.Add(1)
 			go func(cfg Config, g SearchGroup) {
 				defer wg.Done()
-				found, err := s.runGroup(ctx, cfg, g)
+				found, err := s.runGroup(ctx, cfg, g, interactive)
 
 				mu.Lock()
 				defer mu.Unlock()
@@ -764,7 +830,7 @@ func (s *Service) SearchStream(ctx context.Context, groups []SearchGroup, onUpda
 // results are enough. It holds one concurrency slot throughout, so a
 // fallback query doesn't queue behind every other indexer again. The
 // error is nil whenever anything was found.
-func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup) ([]SearchResult, error) {
+func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup, interactive bool) ([]SearchResult, error) {
 	// Bound global concurrency so queries×indexers can't all hit the
 	// network at once; release the slot when this indexer finishes.
 	if s.sem != nil {
@@ -787,7 +853,7 @@ func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup) ([]Se
 		if ctx.Err() != nil {
 			break
 		}
-		releases, err := s.searchOne(ctx, cfg, idx, q)
+		releases, err := s.searchOne(ctx, cfg, idx, q, interactive)
 		if err != nil {
 			lastErr = err
 			// A timeout means this indexer is still scraping (Pulse
@@ -821,11 +887,16 @@ func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup) ([]Se
 }
 
 // searchOne sends one query to one indexer, under the indexer's rate
-// limit and the per-indexer timeout, and logs how long it took.
-func (s *Service) searchOne(ctx context.Context, cfg Config, idx plugin.Indexer, q plugin.SearchQuery) ([]plugin.Release, error) {
+// limit and the per-indexer timeout, logs how long it took, and records
+// the outcome in the indexer's health.
+func (s *Service) searchOne(ctx context.Context, cfg Config, idx plugin.Indexer, q plugin.SearchQuery, interactive bool) ([]plugin.Release, error) {
 	// Per-indexer timeout so one hung provider can't hold its slot for
 	// the whole parent budget. Inherits any earlier parent deadline.
-	sctx, cancel := context.WithTimeout(ctx, perIndexerSearchTimeout)
+	timeout := perIndexerSearchTimeout
+	if interactive && s.health.struggling(cfg.ID) {
+		timeout = struggleTimeout
+	}
+	sctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	started := time.Now()
@@ -834,6 +905,11 @@ func (s *Service) searchOne(ctx context.Context, cfg Config, idx plugin.Indexer,
 	}
 	releases, err := idx.Search(sctx, q)
 	elapsed := time.Since(started)
+	// A search the caller ended (modal closed, request budget spent) says
+	// nothing about this indexer; anything else does.
+	if ctx.Err() == nil {
+		s.health.record(cfg.ID, err != nil)
+	}
 	// Per-indexer timing on every search so a slow indexer is
 	// visible in `scripts/logs pilot | grep indexer.search`. Errors
 	// log at warn level (typical: timeout, Cloudflare 403, dead host);
@@ -844,6 +920,7 @@ func (s *Service) searchOne(ctx context.Context, cfg Config, idx plugin.Indexer,
 			"kind", cfg.Kind,
 			"query", q.Query,
 			"duration_ms", elapsed.Milliseconds(),
+			"timeout_ms", timeout.Milliseconds(),
 			"error", err)
 	} else {
 		s.logger.Info("indexer search ok",
