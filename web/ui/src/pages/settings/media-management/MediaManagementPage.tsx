@@ -4,6 +4,7 @@ import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import PageHeader from "@/components/PageHeader";
 import { DOCS_URLS } from "@/lib/docsUrls";
 import type { MediaManagement } from "@/types";
+import { hasQualityToken, setQualityToken } from "@/lib/qualityToken";
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -71,6 +72,9 @@ function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
       </div>
       <button
         type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
         style={{
           flexShrink: 0,
@@ -227,6 +231,18 @@ export default function MediaManagementPage() {
 
   const dimmed = !form.rename_episodes;
 
+  const episodeFormatKeys = ["standard_episode_format", "daily_episode_format", "anime_episode_format"] as const;
+  const includeQuality = episodeFormatKeys.some((k) => hasQualityToken(form[k]));
+  function setIncludeQuality(include: boolean) {
+    setForm((f) => {
+      if (!f) return f;
+      const next = { ...f };
+      for (const k of episodeFormatKeys) next[k] = setQualityToken(f[k], include);
+      return next;
+    });
+    setDirty(true);
+  }
+
   return (
     <div style={{ padding: "24px 32px", display: "flex", flexDirection: "column", gap: 20, maxWidth: 720 }}>
       <PageHeader
@@ -262,6 +278,13 @@ export default function MediaManagementPage() {
           description="Rename imported episode files using the format templates below"
           checked={form.rename_episodes}
           onChange={(v) => set("rename_episodes", v)}
+        />
+
+        <ToggleRow
+          label="Include Quality in File Names"
+          description="Add the quality (e.g. WEBDL-1080p x265) to the end of episode file names"
+          checked={includeQuality}
+          onChange={setIncludeQuality}
         />
 
         <FormatField
