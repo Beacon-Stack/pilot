@@ -605,6 +605,29 @@ type Outcome struct {
 	// the result) — a retry shortly will be served from cache. NOT a
 	// failure; the UI shows "still searching", not an error.
 	Pending bool
+	// Searching means the indexer hasn't answered yet. Only seen in the
+	// snapshots of a search still running (see SearchStream).
+	Searching bool
+}
+
+// SearchGroup is one search every indexer runs. Its Queries are tried in
+// order on each indexer, a later one only while the results so far fall
+// short of Enough — so a second phrasing ("Show Season 1" after "Show
+// S01") costs a request only on the indexers where the first didn't
+// find what was wanted. Results from every query tried are kept.
+type SearchGroup struct {
+	Queries []plugin.SearchQuery
+	// Enough reports whether one indexer's results so far suffice. Nil
+	// means any result is enough.
+	Enough func([]SearchResult) bool
+}
+
+// Snapshot is a search's results so far: ranked and tagged exactly as
+// the finished search will be, with where each indexer stands.
+type Snapshot struct {
+	Results  []SearchResult
+	Outcomes []Outcome
+	Done     bool
 }
 
 // Search queries all enabled indexers with the given search query and returns
@@ -618,147 +641,114 @@ func (s *Service) Search(ctx context.Context, q plugin.SearchQuery) ([]SearchRes
 
 // SearchWithOutcomes is Search plus the per-indexer outcome list.
 func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) ([]SearchResult, []Outcome, error) {
+	snap, err := s.SearchStream(ctx, []SearchGroup{{Queries: []plugin.SearchQuery{q}}}, nil)
+	return snap.Results, snap.Outcomes, err
+}
+
+// SearchStream runs every group on every enabled indexer and returns the
+// merged, ranked, tagged results. When onUpdate is set it is called each
+// time an indexer finishes a group, with everything found so far, so a
+// caller can show results while slower indexers are still working.
+// onUpdate calls are serialized and arrive in order; keep them quick.
+func (s *Service) SearchStream(ctx context.Context, groups []SearchGroup, onUpdate func(Snapshot)) (Snapshot, error) {
 	rows, err := s.q.ListEnabledIndexers(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("listing enabled indexers: %w", err)
+		return Snapshot{Done: true}, fmt.Errorf("listing enabled indexers: %w", err)
+	}
+	if len(rows) == 0 || len(groups) == 0 {
+		return Snapshot{Done: true}, nil
 	}
 
-	if len(rows) == 0 {
-		return nil, nil, nil
+	// Loaded once for the whole search, not once per snapshot or query.
+	fin := s.newFinisher(ctx, rows)
+
+	type tally struct {
+		outcome   Outcome
+		remaining int
+	}
+	var (
+		mu      sync.Mutex
+		raw     []SearchResult
+		seen    = make(map[string]struct{})
+		tallies = make([]*tally, len(rows))
+		byID    = make(map[string]*tally, len(rows))
+		errs    []error
+	)
+	for i, row := range rows {
+		tallies[i] = &tally{
+			outcome:   Outcome{IndexerID: row.ID, IndexerName: row.Name, Searching: true},
+			remaining: len(groups),
+		}
+		byID[row.ID] = tallies[i]
 	}
 
-	type indexerResult struct {
-		indexerID   string
-		indexerName string
-		releases    []plugin.Release
-		err         error
+	snapshot := func(done bool) Snapshot {
+		results := make([]SearchResult, len(raw))
+		for i, r := range raw {
+			r.FilterReasons = append([]string(nil), r.FilterReasons...)
+			results[i] = r
+		}
+		fin.apply(results)
+		outcomes := make([]Outcome, len(tallies))
+		for i, t := range tallies {
+			outcomes[i] = t.outcome
+		}
+		return Snapshot{Results: results, Outcomes: outcomes, Done: done}
 	}
 
-	resultsCh := make(chan indexerResult, len(rows))
+	// First update before anyone answers: which indexers are searching.
+	if onUpdate != nil {
+		onUpdate(snapshot(false))
+	}
+
 	var wg sync.WaitGroup
-
 	for _, row := range rows {
-		wg.Add(1)
-		go func(row db.IndexerConfig) {
-			defer wg.Done()
-			cfg, _ := rowToConfig(row)
+		cfg, _ := rowToConfig(row)
+		for _, g := range groups {
+			wg.Add(1)
+			go func(cfg Config, g SearchGroup) {
+				defer wg.Done()
+				found, err := s.runGroup(ctx, cfg, g)
 
-			// Bound global concurrency so queries×indexers can't all hit the
-			// network at once; release the slot when this indexer finishes.
-			if s.sem != nil {
-				select {
-				case s.sem <- struct{}{}:
-					defer func() { <-s.sem }()
-				case <-ctx.Done():
-					resultsCh <- indexerResult{indexerID: cfg.ID, indexerName: cfg.Name, err: ctx.Err()}
-					return
+				mu.Lock()
+				defer mu.Unlock()
+				t := byID[cfg.ID]
+				t.remaining--
+				t.outcome.Searching = t.remaining > 0
+				switch {
+				case err == nil:
+					for _, r := range found {
+						key := r.IndexerID + "\x00" + r.GUID
+						if _, dup := seen[key]; dup {
+							continue
+						}
+						seen[key] = struct{}{}
+						raw = append(raw, r)
+						t.outcome.Results++
+					}
+				case errors.Is(err, errSearchTimedOut):
+					// Deadline hits are "pending", not failures: the scrape
+					// continues server-side and its result will be cached.
+					t.outcome.Pending = true
+				default:
+					// An error in any group marks the indexer failed; the
+					// first error's message wins.
+					errs = append(errs, fmt.Errorf("indexer %q: %w", cfg.Name, err))
+					if t.outcome.Error == "" {
+						t.outcome.Error = err.Error()
+					}
 				}
-			}
-
-			// Per-indexer timeout so one hung provider can't hold its slot for
-			// the whole parent budget. Inherits any earlier parent deadline.
-			sctx, cancel := context.WithTimeout(ctx, perIndexerSearchTimeout)
-			defer cancel()
-
-			started := time.Now()
-			if err := s.rl.Wait(sctx, cfg.ID, extractRateLimit(cfg.Settings)); err != nil {
-				resultsCh <- indexerResult{indexerID: cfg.ID, indexerName: cfg.Name, err: err}
-				return
-			}
-			idx, err := s.cachedIndexer(cfg.Kind, cfg.ID, cfg.Settings)
-			if err != nil {
-				resultsCh <- indexerResult{indexerID: cfg.ID, indexerName: cfg.Name, err: err}
-				return
-			}
-			releases, err := idx.Search(sctx, q)
-			elapsed := time.Since(started)
-			// Per-indexer timing on every search so a slow indexer is
-			// visible in `scripts/logs pilot | grep indexer.search`. Errors
-			// log at warn level (typical: timeout, Cloudflare 403, dead host);
-			// success at info.
-			if err != nil {
-				s.logger.Warn("indexer search failed",
-					"indexer", cfg.Name,
-					"kind", cfg.Kind,
-					"query", q.Query,
-					"duration_ms", elapsed.Milliseconds(),
-					"error", err)
-			} else {
-				s.logger.Info("indexer search ok",
-					"indexer", cfg.Name,
-					"kind", cfg.Kind,
-					"query", q.Query,
-					"duration_ms", elapsed.Milliseconds(),
-					"results", len(releases))
-			}
-			// A deadline hit is almost always a Cloudflare-walled indexer
-			// mid-solve: Pulse keeps scraping after we hang up and caches
-			// the result, so a retry shortly succeeds instantly. Say that
-			// instead of a bare "context deadline exceeded".
-			if err != nil && errors.Is(err, context.DeadlineExceeded) {
-				err = errSearchTimedOut
-			}
-			resultsCh <- indexerResult{
-				indexerID:   cfg.ID,
-				indexerName: cfg.Name,
-				releases:    releases,
-				err:         err,
-			}
-		}(row)
+				if onUpdate != nil {
+					onUpdate(snapshot(false))
+				}
+			}(cfg, g)
+		}
 	}
-
 	wg.Wait()
-	close(resultsCh)
 
-	var allResults []SearchResult
-	var errs []error
-	var outcomes []Outcome
-
-	for res := range resultsCh {
-		if res.err != nil {
-			// Deadline hits are "pending", not failures: the scrape
-			// continues server-side and its result will be cached. Only
-			// genuine errors (torznab <error> docs, connection failures)
-			// count as failed.
-			if errors.Is(res.err, errSearchTimedOut) {
-				outcomes = append(outcomes, Outcome{
-					IndexerID:   res.indexerID,
-					IndexerName: res.indexerName,
-					Pending:     true,
-				})
-				continue
-			}
-			errs = append(errs, fmt.Errorf("indexer %q: %w", res.indexerName, res.err))
-			outcomes = append(outcomes, Outcome{
-				IndexerID:   res.indexerID,
-				IndexerName: res.indexerName,
-				Error:       res.err.Error(),
-			})
-			continue
-		}
-		outcomes = append(outcomes, Outcome{
-			IndexerID:   res.indexerID,
-			IndexerName: res.indexerName,
-			Results:     len(res.releases),
-		})
-		for _, r := range res.releases {
-			allResults = append(allResults, newSearchResult(r, res.indexerID, res.indexerName))
-		}
-	}
-
-	sort.Slice(allResults, func(i, j int) bool {
-		return searchResultLess(allResults[i], allResults[j])
-	})
-
-	// Build per-indexer min_seeders lookup from the rows we already fetched.
-	minByIndexer := make(map[string]int, len(rows))
-	for _, r := range rows {
-		minByIndexer[r.ID] = int(r.MinSeeders)
-	}
-	applyMinSeedersFilter(allResults, minByIndexer)
-	s.applyReleaseProfiles(ctx, allResults)
-	s.applyLanguagePreference(ctx, allResults)
-
+	mu.Lock()
+	defer mu.Unlock()
+	final := snapshot(true)
 	var combinedErr error
 	if len(errs) > 0 {
 		msgs := make([]string, len(errs))
@@ -767,8 +757,155 @@ func (s *Service) SearchWithOutcomes(ctx context.Context, q plugin.SearchQuery) 
 		}
 		combinedErr = fmt.Errorf("%d indexer(s) failed: %v", len(errs), msgs)
 	}
+	return final, combinedErr
+}
 
-	return allResults, outcomes, combinedErr
+// runGroup runs one group's queries on one indexer, in order, until the
+// results are enough. It holds one concurrency slot throughout, so a
+// fallback query doesn't queue behind every other indexer again. The
+// error is nil whenever anything was found.
+func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup) ([]SearchResult, error) {
+	// Bound global concurrency so queries×indexers can't all hit the
+	// network at once; release the slot when this indexer finishes.
+	if s.sem != nil {
+		select {
+		case s.sem <- struct{}{}:
+			defer func() { <-s.sem }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	idx, err := s.cachedIndexer(cfg.Kind, cfg.ID, cfg.Settings)
+	if err != nil {
+		return nil, err
+	}
+
+	var found []SearchResult
+	var lastErr error
+	for _, q := range g.Queries {
+		if ctx.Err() != nil {
+			break
+		}
+		releases, err := s.searchOne(ctx, cfg, idx, q)
+		if err != nil {
+			lastErr = err
+			// A timeout means this indexer is still scraping (Pulse
+			// finishes and caches it). Another phrasing now would only
+			// start a second slow scrape it has no time left to finish.
+			if errors.Is(err, errSearchTimedOut) {
+				break
+			}
+		}
+		for _, r := range releases {
+			found = append(found, newSearchResult(r, cfg.ID, cfg.Name))
+		}
+		enough := len(found) > 0
+		if g.Enough != nil {
+			enough = g.Enough(found)
+		}
+		if enough {
+			break
+		}
+	}
+	if len(found) > 0 {
+		return found, nil
+	}
+	if lastErr == nil && ctx.Err() != nil {
+		lastErr = ctx.Err()
+		if errors.Is(lastErr, context.DeadlineExceeded) {
+			lastErr = errSearchTimedOut
+		}
+	}
+	return nil, lastErr
+}
+
+// searchOne sends one query to one indexer, under the indexer's rate
+// limit and the per-indexer timeout, and logs how long it took.
+func (s *Service) searchOne(ctx context.Context, cfg Config, idx plugin.Indexer, q plugin.SearchQuery) ([]plugin.Release, error) {
+	// Per-indexer timeout so one hung provider can't hold its slot for
+	// the whole parent budget. Inherits any earlier parent deadline.
+	sctx, cancel := context.WithTimeout(ctx, perIndexerSearchTimeout)
+	defer cancel()
+
+	started := time.Now()
+	if err := s.rl.Wait(sctx, cfg.ID, extractRateLimit(cfg.Settings)); err != nil {
+		return nil, err
+	}
+	releases, err := idx.Search(sctx, q)
+	elapsed := time.Since(started)
+	// Per-indexer timing on every search so a slow indexer is
+	// visible in `scripts/logs pilot | grep indexer.search`. Errors
+	// log at warn level (typical: timeout, Cloudflare 403, dead host);
+	// success at info.
+	if err != nil {
+		s.logger.Warn("indexer search failed",
+			"indexer", cfg.Name,
+			"kind", cfg.Kind,
+			"query", q.Query,
+			"duration_ms", elapsed.Milliseconds(),
+			"error", err)
+	} else {
+		s.logger.Info("indexer search ok",
+			"indexer", cfg.Name,
+			"kind", cfg.Kind,
+			"query", q.Query,
+			"duration_ms", elapsed.Milliseconds(),
+			"results", len(releases))
+	}
+	// A deadline hit is almost always a Cloudflare-walled indexer
+	// mid-solve: Pulse keeps scraping after we hang up and caches
+	// the result, so a retry shortly succeeds instantly. Say that
+	// instead of a bare "context deadline exceeded".
+	if err != nil && errors.Is(err, context.DeadlineExceeded) {
+		err = errSearchTimedOut
+	}
+	return releases, err
+}
+
+// finisher ranks and tags a result set: the ordering and the min-seeders,
+// release-profile and language tags every search applies. Its inputs are
+// loaded once per search.
+type finisher struct {
+	minByIndexer map[string]int
+	profiles     *releaseprofile.Matcher
+	language     *language.Preference
+}
+
+func (s *Service) newFinisher(ctx context.Context, rows []db.IndexerConfig) finisher {
+	f := finisher{minByIndexer: make(map[string]int, len(rows))}
+	for _, r := range rows {
+		f.minByIndexer[r.ID] = int(r.MinSeeders)
+	}
+	if s.q == nil {
+		return f
+	}
+	// A load failure tags nothing: a database hiccup must not empty
+	// every search.
+	if m, err := releaseprofile.LoadMatcher(ctx, s.q); err == nil {
+		f.profiles = m
+	} else if s.logger != nil {
+		s.logger.Warn("could not load release profiles; not applying them", "error", err)
+	}
+	if pref, err := language.NewStore(s.q).Get(ctx); err == nil {
+		f.language = &pref
+	} else if s.logger != nil {
+		s.logger.Warn("could not load the language preference; not applying it", "error", err)
+	}
+	return f
+}
+
+func (f finisher) apply(results []SearchResult) {
+	sort.Slice(results, func(i, j int) bool {
+		return searchResultLess(results[i], results[j])
+	})
+	applyMinSeedersFilter(results, f.minByIndexer)
+	if f.profiles != nil {
+		applyReleaseProfiles(results, f.profiles)
+	}
+	if f.language != nil {
+		applyLanguagePreference(results, *f.language)
+	}
 }
 
 // GetRecent fetches the most recent releases from all enabled indexers via

@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -84,11 +85,17 @@ type indexerOutcomeBody struct {
 	// be cached — re-searching shortly returns its results. Rendered as
 	// "still searching", never as a failure.
 	Pending bool `json:"pending,omitempty"`
+	// Searching: no answer yet. Only in the partial results the stream
+	// endpoint sends while a search is running.
+	Searching bool `json:"searching,omitempty"`
 }
 
 type releaseListBody struct {
 	Releases []*releaseBody       `json:"releases"`
 	Indexers []indexerOutcomeBody `json:"indexers,omitempty"`
+	// Done is false on the partial results the stream endpoint sends
+	// while indexers are still answering, and true on the last.
+	Done bool `json:"done"`
 }
 
 type releaseListOutput struct {
@@ -104,6 +111,7 @@ func outcomesToBodies(outcomes []indexer.Outcome) []indexerOutcomeBody {
 			Results:     oc.Results,
 			Error:       oc.Error,
 			Pending:     oc.Pending,
+			Searching:   oc.Searching,
 		}
 	}
 	return out
@@ -306,74 +314,266 @@ func applyQualityProfile(results []indexer.SearchResult, profile *quality.Profil
 	}
 }
 
-// searchAllQueries fans out each query to indexerSvc in parallel and
-// merges results, deduping by GUID. The first occurrence of a GUID wins;
-// query order is preserved by walking `queries` in input order during
-// the merge. Errors from individual searches are collected into a
-// combined error; partial results are still returned alongside.
+// searchPlan turns a series search into the groups every indexer runs.
 //
-// Parallel because each query already calls every indexer in parallel
-// internally — running queries serially multiplied total wait time by
-// the number of query variations. Season searches typically issue 3+
-// variations ("Show", "Show S01", "Show Season 1"), so the serial
-// loop turned a 30s worst case into 90s+.
-func searchAllQueries(ctx context.Context, indexerSvc *indexer.Service, queries []string, season, episode int) ([]indexer.SearchResult, []indexer.Outcome, error) {
-	type queryResult struct {
-		results  []indexer.SearchResult
-		outcomes []indexer.Outcome
-		err      error
+// A season search is ONE group: "Show S01" first, and "Show Season 1"
+// only on an indexer whose "S01" results hold no pack for this season
+// (Sonarr #3934: indexers tag packs under one naming convention or the
+// other). Asking every indexer both, side by side, doubled the scrapes
+// of every season search and queued half of them behind the global
+// concurrency cap. Episode and anime-absolute variants stay separate
+// groups, unioned as before: they find differently named releases of
+// the same episode, not the same pack under two names.
+//
+// Every query carries the series' IMDb and TMDB IDs; an indexer that
+// lists them in its caps matches the show by ID.
+func searchPlan(series show.Series, season, episode, absolute int, isAnime bool) []indexer.SearchGroup {
+	queries := buildEpisodeQueries(series.Title, season, episode, absolute, isAnime)
+	mk := func(text string) plugin.SearchQuery {
+		return plugin.SearchQuery{
+			Query:   text,
+			IMDBID:  series.IMDBID,
+			TMDBID:  series.TMDBID,
+			Season:  season,
+			Episode: episode,
+		}
 	}
-	out := make([]queryResult, len(queries))
-	var wg sync.WaitGroup
-	for i, query := range queries {
-		i, query := i, query
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sq := plugin.SearchQuery{Query: query, Season: season, Episode: episode}
-			res, outcomes, err := indexerSvc.SearchWithOutcomes(ctx, sq)
-			out[i] = queryResult{results: res, outcomes: outcomes, err: err}
-		}()
+	if season > 0 && episode == 0 {
+		group := indexer.SearchGroup{Enough: seasonPackFound(series.Title, series.AlternateTitles, season)}
+		for _, q := range queries {
+			group.Queries = append(group.Queries, mk(q))
+		}
+		return []indexer.SearchGroup{group}
 	}
-	wg.Wait()
+	groups := make([]indexer.SearchGroup, len(queries))
+	for i, q := range queries {
+		groups[i] = indexer.SearchGroup{Queries: []plugin.SearchQuery{mk(q)}}
+	}
+	return groups
+}
 
-	var perQuery [][]indexer.SearchResult
-	var errs []string
-	// Per-indexer outcomes merged across query variants: results are
-	// summed; an error in ANY variant marks the indexer as failed (the
-	// error string from the first failing variant wins).
-	outcomeByID := make(map[string]*indexer.Outcome)
-	var outcomeOrder []string
-	for _, qr := range out {
-		if qr.err != nil {
-			errs = append(errs, qr.err.Error())
-		}
-		for _, oc := range qr.outcomes {
-			existing, ok := outcomeByID[oc.IndexerID]
-			if !ok {
-				copied := oc
-				outcomeByID[oc.IndexerID] = &copied
-				outcomeOrder = append(outcomeOrder, oc.IndexerID)
-				continue
+// seasonPackFound reports whether results include a pack of this
+// series' season — what a season search is for, and the only reason to
+// try a second phrasing on the same indexer.
+func seasonPackFound(title string, alternates []string, season int) func([]indexer.SearchResult) bool {
+	return func(results []indexer.SearchResult) bool {
+		for _, r := range filterByEpisode(results, title, alternates, season, 0, 0, nil) {
+			if r.PackType == indexer.PackTypeSeason {
+				return true
 			}
-			existing.Results += oc.Results
-			if existing.Error == "" {
-				existing.Error = oc.Error
-			}
-			existing.Pending = existing.Pending || oc.Pending
 		}
-		perQuery = append(perQuery, qr.results)
+		return false
 	}
-	merged := mergeQueryResults(perQuery)
-	outcomes := make([]indexer.Outcome, 0, len(outcomeOrder))
-	for _, id := range outcomeOrder {
-		outcomes = append(outcomes, *outcomeByID[id])
+}
+
+// interactiveSearchTimeout is the hard interactive-search cut-off. This
+// was 12s when half the fleet failed instantly (masked HTTP 400s) and
+// dead indexers were the thing to kill quickly. With the 2026-08-17
+// engine fixes all indexers genuinely scrape and queue behind the
+// global semaphore and Pulse's per-site rate limiting, so a cold-cache
+// season search legitimately needs 20s+. Failures are now fast and
+// honest (torznab <error> docs, no hangs), so the budget matches the
+// 25s per-indexer timeout plus queue headroom. Stragglers show up in
+// pilot logs as `indexer search failed duration_ms=30000+ error=context
+// deadline exceeded`. The stream endpoint shows results long before.
+const interactiveSearchTimeout = 30 * time.Second
+
+// releaseSearch is one interactive search: what it looks for, and what
+// turns raw indexer results into release rows. Built once, then applied
+// to every partial result set the search produces.
+type releaseSearch struct {
+	series    show.Series
+	season    int
+	episode   int
+	absolute  int
+	tvdbToAbs func(int, int) int
+	groups    []indexer.SearchGroup
+	profile   *quality.Profile
+	grabs     map[string]db.GrabHistory
+	blocklist *blocklist.Service
+	// blocked remembers blocklist answers by GUID, so the many partial
+	// result sets of one stream don't ask the database again for
+	// releases they already asked about. One goroutine uses it.
+	blocked map[string]bool
+}
+
+// episodeContext returns the anime absolute-episode number and the
+// TVDB→absolute converter for a search. Only fetched when the series is
+// flagged anime AND a specific episode is searched (absolute is
+// meaningless for season-pack or whole-series searches); skipping it
+// for everything else saves a DB hit on every search.
+func episodeContext(ctx context.Context, showSvc *show.Service, series show.Series, season, episode int) (int, func(int, int) int) {
+	if series.SeriesType != "anime" || season <= 0 || episode <= 0 {
+		return 0, nil
 	}
-	var combined error
-	if len(errs) > 0 {
-		combined = fmt.Errorf("%d search(es) failed: %v", len(errs), errs)
+	absolute, _ := showSvc.GetEpisodeAbsoluteNumber(ctx, series.ID, season, episode)
+	tmdbID := series.TMDBID
+	return absolute, func(s, e int) int {
+		abs, _ := showSvc.TVDBSeasonToAbsolute(tmdbID, s, e)
+		return abs
 	}
-	return merged, outcomes, combined
+}
+
+func newReleaseSearch(ctx context.Context, input *episodeReleasesInput, indexerSvc *indexer.Service, showSvc *show.Service, blocklistSvc *blocklist.Service, qualitySvc *quality.Service) (*releaseSearch, error) {
+	series, err := showSvc.Get(ctx, input.SeriesID)
+	if err != nil {
+		if errors.Is(err, show.ErrNotFound) {
+			return nil, huma.Error404NotFound("series not found")
+		}
+		return nil, huma.NewError(http.StatusInternalServerError, "failed to get series", err)
+	}
+	rs := &releaseSearch{
+		series:    series,
+		season:    input.Season,
+		episode:   input.Episode,
+		blocklist: blocklistSvc,
+		blocked:   make(map[string]bool),
+	}
+	rs.absolute, rs.tvdbToAbs = episodeContext(ctx, showSvc, series, input.Season, input.Episode)
+	rs.groups = searchPlan(series, input.Season, input.Episode, rs.absolute, series.SeriesType == "anime")
+
+	if qualitySvc != nil && series.QualityProfileID != "" {
+		if profile, err := qualitySvc.Get(ctx, series.QualityProfileID); err == nil {
+			rs.profile = &profile
+		}
+	}
+	// guid → most-recent grab, to badge releases the user has already
+	// grabbed. The guardrail covers the common "I forgot, did I already
+	// grab this?" case; it does not gate the grab — the UI just shows a
+	// confirmation prompt.
+	if grabRows, gErr := indexerSvc.GrabHistory(ctx, input.SeriesID); gErr == nil {
+		rs.grabs = indexLatestGrabsByGUID(grabRows)
+	}
+	return rs, nil
+}
+
+func (rs *releaseSearch) isBlocklisted(ctx context.Context, guid string) bool {
+	if rs.blocklist == nil {
+		return false
+	}
+	if hit, ok := rs.blocked[guid]; ok {
+		return hit
+	}
+	hit, err := rs.blocklist.IsBlocklistedGUIDOrInfoHash(ctx, guid, "")
+	if err != nil {
+		return false // not remembered: ask again next time
+	}
+	rs.blocked[guid] = hit
+	return hit
+}
+
+// list turns a (partial or final) search snapshot into the response body.
+func (rs *releaseSearch) list(ctx context.Context, snap indexer.Snapshot) releaseListBody {
+	// Only the requested series and season/episode.
+	results := filterByEpisode(snap.Results, rs.series.Title, rs.series.AlternateTitles, rs.season, rs.episode, rs.absolute, rs.tvdbToAbs)
+
+	// Tag releases outside the series' quality profile so the UI greys
+	// them with an "override and grab anyway" button (same UX as the
+	// blocklist and min_seeders filters).
+	applyQualityProfile(results, rs.profile)
+
+	// Count how many indexers each title appears on.
+	titleIndexers := make(map[string]map[string]bool)
+	for _, r := range results {
+		if titleIndexers[r.Title] == nil {
+			titleIndexers[r.Title] = make(map[string]bool)
+		}
+		titleIndexers[r.Title][r.IndexerName] = true
+	}
+
+	bodies := make([]*releaseBody, len(results))
+	for i, r := range results {
+		b := indexerResultToReleaseBody(r)
+		// Mark multi-indexer results (found on 2+ indexers with high seeds).
+		if len(titleIndexers[r.Title]) > 1 && r.Seeds >= 5 {
+			b.MultiIndexer = true
+		}
+		// Mark low-confidence results (< 5 seeds — indexer count may be stale).
+		if r.Seeds < 5 {
+			b.LowConfidence = true
+		}
+		// Blocklist filter: any release that's been previously stalled
+		// gets tagged with a filter reason so the UI can render it
+		// grayed with an override button.
+		if rs.isBlocklisted(ctx, r.GUID) {
+			b.FilterReasons = append(b.FilterReasons, "previously stalled (on blocklist)")
+		}
+		if prior, ok := rs.grabs[r.GUID]; ok {
+			b.AlreadyGrabbedAt = prior.GrabbedAt
+			b.AlreadyGrabbedID = prior.ID
+			b.AlreadyGrabbedStatus = prior.DownloadStatus
+		}
+		bodies[i] = b
+	}
+
+	// Indexer failures don't fail the request or vanish: the per-indexer
+	// breakdown ships in the envelope so the UI can render "3 of 10
+	// indexers failed" instead of a bare "No releases found."
+	return releaseListBody{
+		Releases: bodies,
+		Indexers: outcomesToBodies(snap.Outcomes),
+		Done:     snap.Done,
+	}
+}
+
+// streamReleases runs the search and writes one JSON line per update:
+// everything found so far, then a last line with done=true. Updates
+// that arrive while a line is being written are coalesced into the next.
+func streamReleases(hctx huma.Context, indexerSvc *indexer.Service, rs *releaseSearch) {
+	ctx := hctx.Context()
+	hctx.SetHeader("Content-Type", "application/x-ndjson")
+	hctx.SetHeader("Cache-Control", "no-store")
+	hctx.SetHeader("X-Accel-Buffering", "no") // don't let a proxy hold the lines back
+	w := hctx.BodyWriter()
+	enc := json.NewEncoder(w)
+	send := func(snap indexer.Snapshot) error {
+		if err := enc.Encode(rs.list(ctx, snap)); err != nil {
+			return err
+		}
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return nil
+	}
+
+	searchCtx, cancel := context.WithTimeout(ctx, interactiveSearchTimeout)
+	defer cancel()
+
+	var (
+		mu      sync.Mutex
+		latest  indexer.Snapshot
+		updates = make(chan struct{}, 1)
+		done    = make(chan indexer.Snapshot, 1)
+	)
+	go func() {
+		snap, _ := indexerSvc.SearchStream(searchCtx, rs.groups, func(s indexer.Snapshot) {
+			mu.Lock()
+			latest = s
+			mu.Unlock()
+			select {
+			case updates <- struct{}{}:
+			default: // one already waiting; it will carry this snapshot
+			}
+		})
+		done <- snap
+	}()
+
+	for {
+		select {
+		case <-updates:
+			mu.Lock()
+			snap := latest
+			mu.Unlock()
+			if err := send(snap); err != nil {
+				cancel() // the client has gone; stop asking indexers
+				<-done
+				return
+			}
+		case snap := <-done:
+			_ = send(snap)
+			return
+		}
+	}
 }
 
 // ── Route registration ───────────────────────────────────────────────────────
@@ -390,115 +590,36 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 		Summary:     "Search for releases for a series episode across all enabled indexers",
 		Tags:        []string{"Releases"},
 	}, func(ctx context.Context, input *episodeReleasesInput) (*releaseListOutput, error) {
-		series, err := showSvc.Get(ctx, input.SeriesID)
+		rs, err := newReleaseSearch(ctx, input, indexerSvc, showSvc, blocklistSvc, qualitySvc)
 		if err != nil {
-			if errors.Is(err, show.ErrNotFound) {
-				return nil, huma.Error404NotFound("series not found")
-			}
-			return nil, huma.NewError(http.StatusInternalServerError, "failed to get series", err)
+			return nil, err
 		}
-
-		// Anime context: only fetch the absolute episode number when the
-		// series is flagged anime AND we're searching for a specific
-		// episode (absolute is meaningless for season-pack or whole-series
-		// searches). Skipping this lookup for non-anime series saves a DB
-		// hit on every manual search.
-		var absoluteEp int
-		var tvdbToAbs func(int, int) int
-		isAnime := series.SeriesType == "anime"
-		if isAnime && input.Season > 0 && input.Episode > 0 {
-			absoluteEp, _ = showSvc.GetEpisodeAbsoluteNumber(ctx, input.SeriesID, input.Season, input.Episode)
-			tmdbID := series.TMDBID
-			tvdbToAbs = func(s, e int) int {
-				abs, _ := showSvc.TVDBSeasonToAbsolute(tmdbID, s, e)
-				return abs
-			}
-		}
-		queries := buildEpisodeQueries(series.Title, input.Season, input.Episode, absoluteEp, isAnime)
-
-		// Hard interactive-search cut-off. This was 12s when half the
-		// fleet failed instantly (masked HTTP 400s) and dead indexers were
-		// the thing to kill quickly. With the 2026-08-17 engine fixes all
-		// indexers genuinely scrape — 2 query variants × N indexers queue
-		// behind the global semaphore and Pulse's per-site rate limiting,
-		// so a cold-cache season search legitimately needs 20s+. Failures
-		// are now fast and honest (torznab <error> docs, no hangs), so the
-		// budget matches the 25s per-indexer timeout plus queue headroom.
-		// Stragglers show up in pilot logs as `indexer search failed
-		// duration_ms=30000+ error=context deadline exceeded`.
-		searchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		searchCtx, cancel := context.WithTimeout(ctx, interactiveSearchTimeout)
 		defer cancel()
+		// Indexer errors are in the outcomes; the combined error is redundant.
+		snap, _ := indexerSvc.SearchStream(searchCtx, rs.groups, nil)
+		return &releaseListOutput{Body: rs.list(ctx, snap)}, nil
+	})
 
-		results, outcomes, searchErr := searchAllQueries(searchCtx, indexerSvc, queries, input.Season, input.Episode)
-
-		// Filter results to only include the requested series and season/episode.
-		results = filterByEpisode(results, series.Title, series.AlternateTitles, input.Season, input.Episode, absoluteEp, tvdbToAbs)
-
-		// Tag releases outside the series' quality profile so the UI greys
-		// them with an "override and grab anyway" button (same UX as the
-		// blocklist and min_seeders filters).
-		if qualitySvc != nil && series.QualityProfileID != "" {
-			if profile, err := qualitySvc.Get(ctx, series.QualityProfileID); err == nil {
-				applyQualityProfile(results, &profile)
-			}
+	// GET /api/v1/series/{id}/releases/stream?season=1&episode=5
+	//
+	// The same search, sent as it happens: newline-delimited JSON, one
+	// releaseListBody per line, each holding everything found so far.
+	// Fast indexers' results show in a second or two instead of waiting
+	// out the slowest one. The last line has done=true.
+	huma.Register(api, huma.Operation{
+		OperationID: "stream-series-releases",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/series/{id}/releases/stream",
+		Summary:     "Search for releases, streaming results as each indexer answers (NDJSON)",
+		Tags:        []string{"Releases"},
+	}, func(ctx context.Context, input *episodeReleasesInput) (*huma.StreamResponse, error) {
+		rs, err := newReleaseSearch(ctx, input, indexerSvc, showSvc, blocklistSvc, qualitySvc)
+		if err != nil {
+			return nil, err
 		}
-
-		// Count how many indexers each title appears on.
-		titleIndexers := make(map[string]map[string]bool)
-		for _, r := range results {
-			if titleIndexers[r.Title] == nil {
-				titleIndexers[r.Title] = make(map[string]bool)
-			}
-			titleIndexers[r.Title][r.IndexerName] = true
-		}
-
-		// Build a guid → most-recent grab map so we can badge releases
-		// the user has already grabbed before. Cheap: one query per
-		// search, hash-map lookup per release. The guardrail covers the
-		// common "I forgot, did I already grab this?" case; it does not
-		// gate the grab — the UI just shows a confirmation prompt.
-		var grabsByGUID map[string]db.GrabHistory
-		if grabRows, gErr := indexerSvc.GrabHistory(ctx, input.SeriesID); gErr == nil {
-			grabsByGUID = indexLatestGrabsByGUID(grabRows)
-		}
-
-		bodies := make([]*releaseBody, len(results))
-		for i, r := range results {
-			b := indexerResultToReleaseBody(r)
-			// Mark multi-indexer results (found on 2+ indexers with high seeds).
-			if len(titleIndexers[r.Title]) > 1 && r.Seeds >= 5 {
-				b.MultiIndexer = true
-			}
-			// Mark low-confidence results (< 5 seeds — indexer count may be stale).
-			if r.Seeds < 5 {
-				b.LowConfidence = true
-			}
-			// Blocklist filter: any release that's been previously stalled
-			// gets tagged with a filter reason so the UI can render it
-			// grayed with an override button. Two-keyed dedup: check by
-			// both release GUID and info_hash.
-			if blocklistSvc != nil {
-				ok, bErr := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, r.GUID, "")
-				if bErr == nil && ok {
-					b.FilterReasons = append(b.FilterReasons, "previously stalled (on blocklist)")
-				}
-			}
-			if prior, ok := grabsByGUID[r.GUID]; ok {
-				b.AlreadyGrabbedAt = prior.GrabbedAt
-				b.AlreadyGrabbedID = prior.ID
-				b.AlreadyGrabbedStatus = prior.DownloadStatus
-			}
-			bodies[i] = b
-		}
-
-		// Indexer failures no longer fail the request or vanish: the
-		// per-indexer breakdown ships in the envelope so the UI can render
-		// "3 of 10 indexers failed" instead of a bare "No releases found."
-		// (searchErr is redundant with the outcomes' Error fields.)
-		_ = searchErr
-		return &releaseListOutput{Body: releaseListBody{
-			Releases: bodies,
-			Indexers: outcomesToBodies(outcomes),
+		return &huma.StreamResponse{Body: func(hctx huma.Context) {
+			streamReleases(hctx, indexerSvc, rs)
 		}}, nil
 	})
 
@@ -789,25 +910,12 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 		return nil, huma.NewError(http.StatusInternalServerError, "failed to get series", err)
 	}
 
-	// Anime context: same rationale as the manual-search path above —
-	// only fetch absolute number when the series is anime AND a
-	// specific episode is being searched.
-	var absoluteEp int
-	var tvdbToAbs func(int, int) int
-	isAnime := series.SeriesType == "anime"
-	if isAnime && p.Season > 0 && p.Episode > 0 {
-		absoluteEp, _ = showSvc.GetEpisodeAbsoluteNumber(ctx, p.SeriesID, p.Season, p.Episode)
-		tmdbID := series.TMDBID
-		tvdbToAbs = func(s, e int) int {
-			abs, _ := showSvc.TVDBSeasonToAbsolute(tmdbID, s, e)
-			return abs
-		}
-	}
-	queries := buildEpisodeQueries(series.Title, p.Season, p.Episode, absoluteEp, isAnime)
-	results, _, searchErr := searchAllQueries(ctx, indexerSvc, queries, p.Season, p.Episode)
+	absoluteEp, tvdbToAbs := episodeContext(ctx, showSvc, series, p.Season, p.Episode)
+	groups := searchPlan(series, p.Season, p.Episode, absoluteEp, series.SeriesType == "anime")
+	snap, searchErr := indexerSvc.SearchStream(ctx, groups, nil)
 
 	// Filter results to only include the requested series and season/episode.
-	results = filterByEpisode(results, series.Title, series.AlternateTitles, p.Season, p.Episode, absoluteEp, tvdbToAbs)
+	results := filterByEpisode(snap.Results, series.Title, series.AlternateTitles, p.Season, p.Episode, absoluteEp, tvdbToAbs)
 
 	// Tag releases outside the series' quality profile. For auto-search
 	// these tags also gate the viable set further down, so the auto-grab
