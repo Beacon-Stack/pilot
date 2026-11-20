@@ -118,6 +118,20 @@ func runFileExistenceReconciler(
 					"file_id", f.ID, "error", dErr)
 				continue
 			}
+			// The episode may have another file (a second copy, or the
+			// one an upgrade left behind) that is still on disk; it keeps
+			// has_file. If that file is gone too, its own row comes up in
+			// this same loop and flips the flag then.
+			if remaining, lErr := q.ListEpisodeFilesByEpisodeID(ctx, f.EpisodeID); lErr == nil && len(remaining) > 0 {
+				missingCount++
+				logger.Warn("file_reconciler: file missing on disk; episode keeps its other file",
+					"episode_id", f.EpisodeID,
+					"series_id", f.SeriesID,
+					"path", f.Path,
+					"remaining_files", len(remaining),
+				)
+				continue
+			}
 			if hErr := q.UpdateEpisodeHasFile(ctx, db.UpdateEpisodeHasFileParams{
 				HasFile: false,
 				ID:      f.EpisodeID,

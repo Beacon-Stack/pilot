@@ -63,6 +63,23 @@ func (m *reconcilerMockQuerier) UpdateEpisodeHasFile(_ context.Context, p db.Upd
 	return nil
 }
 
+// ListEpisodeFilesByEpisodeID returns the episode's rows not yet deleted.
+func (m *reconcilerMockQuerier) ListEpisodeFilesByEpisodeID(_ context.Context, episodeID string) ([]db.EpisodeFile, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	gone := map[string]bool{}
+	for _, id := range m.deletedFiles {
+		gone[id] = true
+	}
+	var out []db.EpisodeFile
+	for _, f := range m.files {
+		if f.EpisodeID == episodeID && !gone[f.ID] {
+			out = append(out, db.EpisodeFile{ID: f.ID, EpisodeID: f.EpisodeID, SeriesID: f.SeriesID, Path: f.Path})
+		}
+	}
+	return out, nil
+}
+
 func (m *reconcilerMockQuerier) ListGrabHistoryByStatusSince(_ context.Context, _ db.ListGrabHistoryByStatusSinceParams) ([]db.GrabHistory, error) {
 	if m.listGrabsErr != nil {
 		return nil, m.listGrabsErr
@@ -341,5 +358,53 @@ func TestFileReconciler_ListFilesErrorReturns(t *testing.T) {
 	_, _, err := runFileExistenceReconciler(context.Background(), q, events.New(nullLogger()), nullLogger(), time.Now().UTC())
 	if err == nil {
 		t.Fatal("expected error when ListAllEpisodeFiles fails; got nil")
+	}
+}
+
+// An episode with two files, one deleted and one still on disk, keeps
+// has_file. Before, the missing copy flipped the episode to "no file"
+// although its other file was fine (Raised by Wolves S01E01: an empty
+// WEB-DL copy deleted, the BluRay copy kept).
+func TestFileReconciler_OtherFileStillPresentKeepsHasFile(t *testing.T) {
+	tmp := t.TempDir()
+	kept := filepath.Join(tmp, "kept.mp4")
+	if err := os.WriteFile(kept, []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	q := &reconcilerMockQuerier{
+		files: []db.ListAllEpisodeFilesRow{
+			{ID: "ef-gone", EpisodeID: "ep-1", SeriesID: "show-1", Path: filepath.Join(tmp, "gone.mkv")},
+			{ID: "ef-kept", EpisodeID: "ep-1", SeriesID: "show-1", Path: kept},
+		},
+	}
+	missing, retry, err := runFileExistenceReconciler(context.Background(), q, events.New(nullLogger()), nullLogger(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := q.deleted(); len(got) != 1 || got[0] != "ef-gone" {
+		t.Errorf("deleted = %v, want [ef-gone]", got)
+	}
+	if got := q.flipped(); len(got) != 0 {
+		t.Errorf("has_file flipped %+v, want untouched (episode still has kept.mp4)", got)
+	}
+	if missing != 1 || retry != 0 {
+		t.Errorf("missing=%d retry=%d, want 1 and 0", missing, retry)
+	}
+}
+
+// Both copies gone: the second row flips the flag.
+func TestFileReconciler_AllFilesGoneFlipsHasFile(t *testing.T) {
+	tmp := t.TempDir()
+	q := &reconcilerMockQuerier{
+		files: []db.ListAllEpisodeFilesRow{
+			{ID: "ef-a", EpisodeID: "ep-1", SeriesID: "show-1", Path: filepath.Join(tmp, "a.mkv")},
+			{ID: "ef-b", EpisodeID: "ep-1", SeriesID: "show-1", Path: filepath.Join(tmp, "b.mkv")},
+		},
+	}
+	if _, _, err := runFileExistenceReconciler(context.Background(), q, events.New(nullLogger()), nullLogger(), time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if got := q.flipped(); len(got) != 1 || got[0].ID != "ep-1" || got[0].HasFile {
+		t.Errorf("flipped = %+v, want ep-1 → false once", got)
 	}
 }
