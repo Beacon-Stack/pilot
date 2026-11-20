@@ -101,20 +101,20 @@ func TestApplyEpisodeFormat(t *testing.T) {
 			want: "CSI - Vegas - S09E08",
 		},
 		{
-			name:   "characters illegal on Windows are removed",
+			name:   "real title punctuation is kept",
 			format: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}",
 			series: Series{Title: "Silo", Year: 2023},
-			ep:     Episode{SeasonNumber: 3, EpisodeNumber: 2, Title: `Who Are You? <"A|B*">`},
+			ep:     Episode{SeasonNumber: 3, EpisodeNumber: 1, Title: "Who Are You?"},
 			qual:   quality, colon: ColonSpaceDash,
-			want: "Silo - S03E02 - Who Are You AB",
+			want: "Silo - S03E01 - Who Are You?",
 		},
 		{
-			name:   "trailing dots are trimmed",
+			name:   "trailing dots are kept",
 			format: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}",
 			series: Series{Title: "Show", Year: 2020},
 			ep:     Episode{SeasonNumber: 1, EpisodeNumber: 1, Title: "And Then..."},
 			qual:   quality, colon: ColonSpaceDash,
-			want: "Show - S01E01 - And Then",
+			want: "Show - S01E01 - And Then...",
 		},
 		// CleanTitle applies colon strategy
 		{
@@ -147,14 +147,14 @@ func TestApplyEpisodeFormat(t *testing.T) {
 			ep:     episode, qual: quality, colon: ColonSpaceDash,
 			want: "Unknown Show ()",
 		},
-		// "?" is illegal on SMB/NTFS shares: removed (as Sonarr does)
+		// "?" is part of the title: kept
 		{
 			name:   "special chars in episode title",
 			format: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}",
 			series: series,
 			ep:     Episode{SeasonNumber: 1, EpisodeNumber: 1, Title: "Who Killed Sara?"},
 			qual:   quality, colon: ColonSpaceDash,
-			want: "Family Guy - S01E01 - Who Killed Sara",
+			want: "Family Guy - S01E01 - Who Killed Sara?",
 		},
 		// Forward slash in title (must be removed)
 		{

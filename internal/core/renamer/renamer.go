@@ -133,32 +133,37 @@ func DestPath(
 // while preserving readability. The colon strategy controls how colons
 // in the title are handled.
 func CleanTitle(title string, colon ColonReplacement) string {
-	switch colon {
-	case ColonDash:
-		title = strings.ReplaceAll(title, ":", "-")
-	case ColonSpaceDash, ColonSmart:
-		title = strings.ReplaceAll(title, ": ", " - ")
-		title = strings.ReplaceAll(title, ":", "-")
-	default: // ColonDelete
-		title = strings.ReplaceAll(title, ":", " ")
-	}
+	title = applyColon(title, colon)
 	title = invalidCharsRe.ReplaceAllString(title, "")
 	title = multiSpaceRe.ReplaceAllString(title, " ")
 	return strings.TrimSpace(title)
 }
 
-// sanitize makes a formatted name safe as a single file or folder name on
-// every filesystem a library is likely to live on (ext4, NFS, and the
-// SMB/NTFS shares media servers read from): colons follow the colon
-// setting, the characters Windows forbids (<>:"/\|?*) and control
-// characters are removed, and trailing dots and spaces are trimmed
-// (Windows drops them, so the name would not round-trip).
+// sanitize makes a formatted name usable as a single file or folder name.
+// Titles keep their real punctuation ("Who Are You?", "Curiouser and
+// Curiouser!"): only colons are changed, following the colon setting, and
+// path separators and control characters are removed.
 //
-// Before, only "/" was removed, so "Star Wars: Maul" and "Who Are You?"
-// went into filenames as is and the colon setting had no effect.
+// Before, only "/" was removed and the colon setting had no effect, so
+// "Star Wars: Maul" went into names as is.
 func sanitize(s string, colon ColonReplacement) string {
-	s = CleanTitle(s, colon)
-	return strings.TrimRight(s, ". ")
+	s = applyColon(s, colon)
+	s = pathCharsRe.ReplaceAllString(s, "")
+	s = multiSpaceRe.ReplaceAllString(s, " ")
+	return strings.TrimSpace(s)
+}
+
+// applyColon replaces colons according to the colon setting.
+func applyColon(s string, colon ColonReplacement) string {
+	switch colon {
+	case ColonDash:
+		return strings.ReplaceAll(s, ":", "-")
+	case ColonSpaceDash, ColonSmart:
+		s = strings.ReplaceAll(s, ": ", " - ")
+		return strings.ReplaceAll(s, ":", "-")
+	default: // ColonDelete
+		return strings.ReplaceAll(s, ":", " ")
+	}
 }
 
 func yearStr(y int) string {
@@ -170,5 +175,6 @@ func yearStr(y int) string {
 
 var (
 	invalidCharsRe = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
+	pathCharsRe    = regexp.MustCompile(`[/\\\x00-\x1f]`)
 	multiSpaceRe   = regexp.MustCompile(`\s{2,}`)
 )
