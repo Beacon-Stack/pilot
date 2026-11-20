@@ -294,3 +294,95 @@ func TestSearchStream_TimeoutSkipsFallbackQuery(t *testing.T) {
 		t.Errorf("outcome %+v, want pending", snap.Outcomes[0])
 	}
 }
+
+// ── Struggling indexers ─────────────────────────────────────────────────────
+
+func TestIndexerHealth_WindowNotStreak(t *testing.T) {
+	var h indexerHealth
+	h.record("x", true)
+	if h.struggling("x") {
+		t.Fatal("one miss is noise, not struggling")
+	}
+	h.record("x", true)
+	if !h.struggling("x") {
+		t.Fatal("two misses in a row: struggling")
+	}
+	// A cached answer comes back fast; it must not undo two cold misses.
+	h.record("x", false)
+	if !h.struggling("x") {
+		t.Fatal("miss, miss, hit: still struggling (2 of the last 3)")
+	}
+	h.record("x", false)
+	if h.struggling("x") {
+		t.Fatal("two hits in the last three: recovered")
+	}
+	if h.struggling("never-seen") {
+		t.Fatal("an indexer with no history isn't struggling")
+	}
+}
+
+func shortenStruggleTimeout(t *testing.T) {
+	t.Helper()
+	old := struggleTimeout
+	struggleTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { struggleTimeout = old })
+}
+
+// A person waiting doesn't wait on an indexer that keeps missing: it's
+// cut short and reported pending, and everyone else's results are final.
+func TestSearchInteractive_StrugglingIndexerCutShort(t *testing.T) {
+	shortenStruggleTimeout(t)
+	slow := &scriptedIndexer{gate: map[string]chan struct{}{"Show S01": make(chan struct{})}}
+	fast := &scriptedIndexer{answers: map[string][]string{"Show S01": {"Show.S01.1080p"}}}
+	svc := streamService(t, map[string]*scriptedIndexer{"slow": slow, "fast": fast}, "slow", "fast")
+	svc.health.record("slow", true)
+	svc.health.record("slow", true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	start := time.Now()
+	snap, _ := svc.SearchInteractive(ctx, []SearchGroup{{Queries: queries("Show S01")}}, nil)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("search took %v; the struggling indexer should have been cut at %v", elapsed, struggleTimeout)
+	}
+	if !snap.Outcomes[0].Pending {
+		t.Errorf("struggling indexer outcome %+v, want pending", snap.Outcomes[0])
+	}
+	if len(snap.Results) != 1 {
+		t.Errorf("results = %d, want the fast indexer's one", len(snap.Results))
+	}
+}
+
+// Automatic searches keep the full wait: nobody re-searches for them.
+func TestSearchStream_StrugglingIndexerGetsFullWait(t *testing.T) {
+	shortenStruggleTimeout(t)
+	release := make(chan struct{})
+	slow := &scriptedIndexer{
+		answers: map[string][]string{"Show S01": {"Show.S01.1080p"}},
+		gate:    map[string]chan struct{}{"Show S01": release},
+	}
+	svc := streamService(t, map[string]*scriptedIndexer{"slow": slow}, "slow")
+	svc.health.record("slow", true)
+	svc.health.record("slow", true)
+
+	time.AfterFunc(200*time.Millisecond, func() { close(release) })
+	snap, _ := svc.SearchStream(context.Background(), []SearchGroup{{Queries: queries("Show S01")}}, nil)
+	if len(snap.Results) != 1 || snap.Outcomes[0].Pending {
+		t.Errorf("auto search gave up on a slow indexer: %+v", snap.Outcomes[0])
+	}
+}
+
+// A search the caller ended isn't held against the indexers.
+func TestSearch_CallerCancelDoesNotCountAsMiss(t *testing.T) {
+	slow := &scriptedIndexer{gate: map[string]chan struct{}{"Show S01": make(chan struct{})}}
+	svc := streamService(t, map[string]*scriptedIndexer{"slow": slow}, "slow")
+
+	for i := 0; i < 3; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		_, _ = svc.SearchInteractive(ctx, []SearchGroup{{Queries: queries("Show S01")}}, nil)
+		cancel()
+	}
+	if svc.health.struggling("slow") {
+		t.Error("caller-ended searches were recorded as the indexer's misses")
+	}
+}
