@@ -142,7 +142,7 @@ func (s *Service) Discover(ctx context.Context, libraryID, root string) error {
 
 	now := s.now().UTC().Format(time.RFC3339)
 	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+		if !e.IsDir() || SkipFolder(e.Name()) {
 			continue
 		}
 		path := filepath.Join(root, e.Name())
@@ -258,4 +258,16 @@ func fromRow(r db.UnmappedFolder) Folder {
 		GuessTMDBID: int(r.GuessTmdbID), GuessTitle: r.GuessTitle, GuessYear: int(r.GuessYear),
 		GuessPosterPath: r.GuessPosterPath, Ignored: r.Ignored, FirstSeenAt: r.FirstSeenAt,
 	}
+}
+
+// SkipFolder reports whether a folder in a library is not a show and is
+// never scanned: "_unsorted" (files set aside by hand because they could
+// not be identified), NAS system folders, and hidden folders. Used by the
+// library scan too.
+func SkipFolder(name string) bool {
+	switch strings.ToLower(name) {
+	case "_unsorted", "@eadir", "#recycle", "#snapshot", "$recycle.bin":
+		return true
+	}
+	return strings.HasPrefix(name, ".")
 }
