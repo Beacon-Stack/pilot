@@ -184,6 +184,9 @@ func scanLibraryFiles(
 			return nil // keep walking
 		}
 		if d.IsDir() {
+			if path != lib.RootPath && skipScanDir(d.Name()) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if !libraryScanVideoExtensions[strings.ToLower(filepath.Ext(path))] {
@@ -284,6 +287,14 @@ func importScannedFile(
 			)
 			continue
 		}
+		// An episode that already has a file keeps it: a second copy found
+		// on disk (a duplicate, or a mislabelled release with the same
+		// SxxEyy) is not recorded against it.
+		if existing, err := q.ListEpisodeFilesByEpisodeID(ctx, ep.ID); err == nil && len(existing) > 0 {
+			logger.Debug("library scan: episode already has a file, not recording another",
+				"series", series.Title, "season", info.Season, "episode", epNum, "path", path)
+			continue
+		}
 
 		// Probe the file for resolution/codec/HDR. Source (web-dl vs bluray
 		// etc.) is unrecoverable from a clean post-import filename and is
@@ -345,6 +356,17 @@ func importScannedFile(
 // Only Resolution, Codec, and HDR are populated. Source (web-dl vs
 // bluray etc.) is not recoverable from the bytes themselves, and from a
 // clean post-import filename it's also gone, so it stays empty.
+// skipScanDir reports whether the library scan should not descend into a
+// folder: "_unsorted" (files set aside by hand because they could not be
+// identified), NAS system folders, and hidden folders.
+func skipScanDir(name string) bool {
+	switch strings.ToLower(name) {
+	case "_unsorted", "@eadir", "#recycle", "#snapshot", "$recycle.bin":
+		return true
+	}
+	return strings.HasPrefix(name, ".")
+}
+
 func probeQuality(ctx context.Context, path string, logger *slog.Logger) plugin.Quality {
 	probeCtx, cancel := context.WithTimeout(ctx, ffprobeTimeout)
 	defer cancel()

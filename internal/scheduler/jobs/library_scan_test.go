@@ -29,7 +29,24 @@ func TestScanLibraryFiles_SkipsAllZeroFile(t *testing.T) {
 	scanOneFile(t, make([]byte, 1<<20), 0)
 }
 
+// Files set aside in _unsorted (unidentified or mislabelled releases) are
+// never attached to an episode.
+func TestScanLibraryFiles_SkipsUnsortedFolder(t *testing.T) {
+	scanFileAt(t, filepath.Join("_unsorted", "odd.name.S01E01.mkv"), []byte("video"), 0, false)
+}
+
+// A second file for an episode that already has one is not recorded: a
+// mislabelled release with the same SxxEyy must not become its file.
+func TestScanLibraryFiles_EpisodeWithFileGetsNoSecondFile(t *testing.T) {
+	scanFileAt(t, filepath.Join("Season 1", "odd.name.S01E01.mkv"), []byte("video"), 1, true)
+}
+
 func scanOneFile(t *testing.T, content []byte, wantFiles int) {
+	t.Helper()
+	scanFileAt(t, filepath.Join("Season 1", "odd.name.S01E01.mkv"), content, wantFiles, false)
+}
+
+func scanFileAt(t *testing.T, rel string, content []byte, wantFiles int, preexisting bool) {
 	t.Helper()
 	d, err := dbpkg.Open(config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "pilot.db")})
 	if err != nil {
@@ -41,7 +58,7 @@ func scanOneFile(t *testing.T, content []byte, wantFiles int) {
 	}
 	root := t.TempDir()
 	folder := filepath.Join(root, "Some Odd Folder")
-	file := filepath.Join(folder, "Season 1", "odd.name.S01E01.mkv")
+	file := filepath.Join(folder, rel)
 	_ = os.MkdirAll(filepath.Dir(file), 0o755)
 	_ = os.WriteFile(file, content, 0o644)
 
@@ -57,6 +74,11 @@ func scanOneFile(t *testing.T, content []byte, wantFiles int) {
 			t.Fatal(err)
 		}
 	}
+	if preexisting {
+		if _, err := d.SQL.Exec(`INSERT INTO episode_files (id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at) VALUES ('ef0', 'e1', 's', '/elsewhere/existing.mkv', 1, '{}', '` + now + `', '` + now + `')`); err != nil {
+			t.Fatal(err)
+		}
+	}
 	q := db.New(d.SQL)
 	logger := slog.New(slog.DiscardHandler)
 	showSvc := show.NewService(q, nil, nil, nil, logger)
@@ -66,6 +88,12 @@ func scanOneFile(t *testing.T, content []byte, wantFiles int) {
 		t.Fatal(err)
 	}
 	files, _ := q.ListEpisodeFilesByEpisodeID(context.Background(), "e1")
+	if preexisting {
+		if len(files) != 1 || files[0].Path != "/elsewhere/existing.mkv" {
+			t.Fatalf("episode files = %+v, want only the existing file", files)
+		}
+		return
+	}
 	if len(files) != wantFiles || (wantFiles == 1 && files[0].Path != file) {
 		t.Fatalf("episode files = %+v, want %d (%s)", files, wantFiles, file)
 	}
