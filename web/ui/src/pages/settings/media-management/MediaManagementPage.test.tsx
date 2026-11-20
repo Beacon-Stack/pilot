@@ -72,3 +72,39 @@ describe("MediaManagementPage recycle bin", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/api/v1/recycle-bin/empty"))).toBe(true));
   });
 });
+
+describe("MediaManagementPage quality in file names", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("turning it on adds {Quality Full} to every episode format", async () => {
+    const calls = renderPage();
+    const user = userEvent.setup();
+    const sw = await screen.findByRole("switch", { name: "Include Quality in File Names" });
+    expect(sw).toHaveAttribute("aria-checked", "false");
+    await user.click(sw);
+    await user.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    const body = JSON.parse(calls.find((c) => c.method === "PUT")!.body!);
+    expect(body.standard_episode_format).toBe("{Series Title} - S{Season:00}E{Episode:00} {Quality Full}");
+    expect(body.daily_episode_format).toBe("{Series Title} - {Air-Date} {Quality Full}");
+    expect(body.anime_episode_format).toBe("{Series Title} - S{Season:00}E{Episode:00} {Quality Full}");
+  });
+
+  it("turning it off removes {Quality Full} from every episode format", async () => {
+    const calls = renderPage({
+      standard_episode_format: "{Series Title} - S{Season:00}E{Episode:00} {Quality Full}",
+      daily_episode_format: "{Series Title} - {Air-Date} {Quality Full}",
+    });
+    const user = userEvent.setup();
+    const sw = await screen.findByRole("switch", { name: "Include Quality in File Names" });
+    expect(sw).toHaveAttribute("aria-checked", "true");
+    await user.click(sw);
+    await user.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    const body = JSON.parse(calls.find((c) => c.method === "PUT")!.body!);
+    expect(body.standard_episode_format).toBe("{Series Title} - S{Season:00}E{Episode:00}");
+    expect(body.daily_episode_format).toBe("{Series Title} - {Air-Date}");
+  });
+});
