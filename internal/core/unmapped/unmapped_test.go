@@ -90,7 +90,7 @@ func newFixture(t *testing.T) *fixture {
 			t.Fatal(err)
 		}
 	}
-	for _, dir := range []string{"Breaking Bad (2008)", "Known Show", "Odd Folder Name", "Unknowable", ".hidden"} {
+	for _, dir := range []string{"Breaking Bad (2008)", "Known Show", "Odd Folder Name", "Unknowable", ".hidden", "_unsorted", "@eaDir", "#recycle"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -119,7 +119,7 @@ func TestDiscover_RecordsWithoutAdding(t *testing.T) {
 	got, _ := f.svc.List(ctx, false)
 	m := names(got)
 	if len(m) != 2 {
-		t.Fatalf("recorded %v, want Breaking Bad and Unknowable (Known Show and the pointed folder are claimed, .hidden skipped)", m)
+		t.Fatalf("recorded %v, want Breaking Bad and Unknowable (Known Show and the pointed folder are claimed, .hidden, _unsorted, @eaDir and #recycle skipped)", m)
 	}
 	bb := m["Breaking Bad (2008)"]
 	if bb.GuessTMDBID == 0 || bb.GuessTitle != "Breaking Bad (TMDB)" || bb.GuessYear != 2008 {
@@ -217,4 +217,16 @@ func mustList(t *testing.T, f *fixture) []Folder {
 		t.Fatal(err)
 	}
 	return fs
+}
+
+func TestSkipFolder(t *testing.T) {
+	for name, want := range map[string]bool{
+		"_unsorted": true, "_Unsorted": true, "@eaDir": true, "#recycle": true, "#snapshot": true,
+		"$RECYCLE.BIN": true, ".hidden": true,
+		"Breaking Bad (2008)": false, "_Show": false, "Unsorted": false,
+	} {
+		if got := SkipFolder(name); got != want {
+			t.Errorf("SkipFolder(%q) = %v, want %v", name, got, want)
+		}
+	}
 }

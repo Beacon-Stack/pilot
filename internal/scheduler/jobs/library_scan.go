@@ -184,7 +184,7 @@ func scanLibraryFiles(
 			return nil // keep walking
 		}
 		if d.IsDir() {
-			if path != lib.RootPath && skipScanDir(d.Name()) {
+			if path != lib.RootPath && unmapped.SkipFolder(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -356,17 +356,6 @@ func importScannedFile(
 // Only Resolution, Codec, and HDR are populated. Source (web-dl vs
 // bluray etc.) is not recoverable from the bytes themselves, and from a
 // clean post-import filename it's also gone, so it stays empty.
-// skipScanDir reports whether the library scan should not descend into a
-// folder: "_unsorted" (files set aside by hand because they could not be
-// identified), NAS system folders, and hidden folders.
-func skipScanDir(name string) bool {
-	switch strings.ToLower(name) {
-	case "_unsorted", "@eadir", "#recycle", "#snapshot", "$recycle.bin":
-		return true
-	}
-	return strings.HasPrefix(name, ".")
-}
-
 func probeQuality(ctx context.Context, path string, logger *slog.Logger) plugin.Quality {
 	probeCtx, cancel := context.WithTimeout(ctx, ffprobeTimeout)
 	defer cancel()
