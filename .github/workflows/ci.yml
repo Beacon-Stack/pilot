@@ -129,6 +129,15 @@ jobs:
     # Only build and push images on pushes to main (not PRs).
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test, test-frontend, build]
+    # A normal run takes 15-17 minutes. A stuck one (a build that hung
+    # for hours on 2026-11-20) fails here instead of holding a runner
+    # for GitHub's 6-hour default.
+    timeout-minutes: 45
+    # Newest push wins: an older build still running is cancelled, so it
+    # can never finish late and push an older image over :latest.
+    concurrency:
+      group: docker-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       packages: write  # required to push to ghcr.io
