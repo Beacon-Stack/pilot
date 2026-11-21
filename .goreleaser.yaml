@@ -2,8 +2,11 @@
 # https://goreleaser.com
 #
 # Triggered from .github/workflows/release.yml on `v*` tag pushes.
-# Builds cross-platform binaries, archives them, publishes a GitHub
-# Release, and pushes multi-tag docker images to ghcr.io.
+# Builds cross-platform binaries, archives them and publishes a GitHub
+# Release. Images are built by the docker job in release.yml, from the
+# same Dockerfile CI uses: GoReleaser's own image step builds from a
+# folder holding only the binary, which the from-source Dockerfile
+# can't use (why the v0.2.0 and v0.3.0 Pulse releases failed).
 
 version: 2
 
@@ -34,9 +37,10 @@ builds:
       - -s -w
       - -X github.com/beacon-stack/pilot/internal/version.Version={{.Version}}
       - -X github.com/beacon-stack/pilot/internal/version.BuildTime={{.Date}}
-      - -X github.com/beacon-stack/pilot/internal/version.Commit={{.FullCommit}}
-      - -X github.com/beacon-stack/pilot/internal/config.DefaultTMDBKey={{.Env.TMDB_API_KEY}}
-      - -X github.com/beacon-stack/pilot/internal/config.DefaultTraktClientID={{.Env.TRAKT_CLIENT_ID}}
+      # TMDB/Trakt keys, XOR-obfuscated by tools/obfuscate in release.yml
+      # (the same as the Dockerfile does): there are no plain-text
+      # variables for them to land in.
+      - '{{ .Env.PROVIDER_LDFLAGS }}'
 
 archives:
   - id: pilot
@@ -69,48 +73,6 @@ changelog:
       - '^ci:'
       - '(?i)merge pull request'
 
-dockers:
-  - id: pilot-latest
-    image_templates:
-      - 'ghcr.io/beacon-stack/pilot:{{ .Version }}'
-      - 'ghcr.io/beacon-stack/pilot:v{{ .Major }}.{{ .Minor }}'
-      - 'ghcr.io/beacon-stack/pilot:v{{ .Major }}'
-      - 'ghcr.io/beacon-stack/pilot:latest'
-    dockerfile: docker/Dockerfile
-    use: buildx
-    goos: linux
-    goarch: amd64
-    build_flag_templates:
-      - '--pull'
-      - '--platform=linux/amd64'
-      - '--label=org.opencontainers.image.title=pilot'
-      - '--label=org.opencontainers.image.description=Self-hosted TV series manager for the Beacon media stack'
-      - '--label=org.opencontainers.image.source=https://github.com/beacon-stack/pilot'
-      - '--label=org.opencontainers.image.version={{ .Version }}'
-      - '--label=org.opencontainers.image.revision={{ .FullCommit }}'
-      - '--label=org.opencontainers.image.licenses=MIT'
-    build_flag_templates_env:
-      TMDB_API_KEY: '{{ .Env.TMDB_API_KEY }}'
-      TRAKT_CLIENT_ID: '{{ .Env.TRAKT_CLIENT_ID }}'
-
-  - id: pilot-minimal
-    image_templates:
-      - 'ghcr.io/beacon-stack/pilot:{{ .Version }}-minimal'
-      - 'ghcr.io/beacon-stack/pilot:v{{ .Major }}.{{ .Minor }}-minimal'
-      - 'ghcr.io/beacon-stack/pilot:latest-minimal'
-    dockerfile: docker/Dockerfile.minimal
-    use: buildx
-    goos: linux
-    goarch: amd64
-    build_flag_templates:
-      - '--pull'
-      - '--platform=linux/amd64'
-      - '--label=org.opencontainers.image.title=pilot-minimal'
-      - '--label=org.opencontainers.image.description=Pilot on scratch base (no ffprobe)'
-      - '--label=org.opencontainers.image.source=https://github.com/beacon-stack/pilot'
-      - '--label=org.opencontainers.image.version={{ .Version }}'
-      - '--label=org.opencontainers.image.revision={{ .FullCommit }}'
-      - '--label=org.opencontainers.image.licenses=MIT'
 
 release:
   github:

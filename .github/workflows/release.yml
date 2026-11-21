@@ -1,5 +1,13 @@
 name: Release
 
+# Push a v* tag (e.g. v0.13.0) to publish a release:
+#   1. GoReleaser builds binaries and publishes the GitHub Release, with
+#      notes from the commits since the previous tag.
+#   2. The docker job builds the images from the same Dockerfile CI uses,
+#      for amd64 and arm64, and tags them <version>, <major>.<minor> and
+#      latest. :latest is always the newest release; every merge to main
+#      is published as :develop by ci.yml.
+
 on:
   push:
     tags:
@@ -11,12 +19,13 @@ permissions:
 
 jobs:
   goreleaser:
+    name: GitHub release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history for changelog generation
+          fetch-depth: 0  # full history for the changelog
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -31,6 +40,37 @@ jobs:
           cache: npm
           cache-dependency-path: web/ui/package-lock.json
 
+      # The binaries get the TMDB/Trakt keys the way the Docker image
+      # does: XOR-obfuscated into -X flags by tools/obfuscate.
+      - name: Obfuscate provider keys
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+        run: |
+          [ -n "$TMDB_API_KEY" ] || { echo "::error::TMDB_API_KEY secret is empty"; exit 1; }
+          flags="$(go run ./tools/obfuscate obfuscatedTMDBKey tmdbKeyXORKey "$TMDB_API_KEY") $(go run ./tools/obfuscate obfuscatedTraktClientID traktClientIDXORKey "$TRAKT_CLIENT_ID")"
+          echo "::add-mask::$flags"
+          echo "PROVIDER_LDFLAGS=$flags" >> "$GITHUB_ENV"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    name: Docker
+    # After the GitHub release exists, so a failed release publishes no
+    # images and :latest never moves without release notes behind it.
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -42,18 +82,52 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          # GHCR_TOKEN is a classic PAT with write:packages scope.
-          # See the comment in ci.yml for context.
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Baked into the binary via -ldflags in .goreleaser.yaml.
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          images: ghcr.io/beacon-stack/pilot
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
+            TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
+            TRAKT_CLIENT_ID=${{ secrets.TRAKT_CLIENT_ID }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+
+      - name: Build and push (minimal — scratch, no ffprobe)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.minimal
+          push: true
+          tags: |
+            ghcr.io/beacon-stack/pilot:${{ steps.meta.outputs.version }}-minimal
+            ghcr.io/beacon-stack/pilot:latest-minimal
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
+            TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
+            TRAKT_CLIENT_ID=${{ secrets.TRAKT_CLIENT_ID }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          provenance: false

@@ -111,8 +111,12 @@ function UpdateModal({
   onClose,
 }: { status: UpdateStatus; onClose: () => void } & UpdateCheckProps) {
   const [method, setMethod] = useState<"compose" | "docker">("compose");
+  // A build whose version is a commit came from :develop (every merge to
+  // main); a release build (0.13.0) from :latest (releases only).
+  const develop = /^[0-9a-f]{7,40}$/i.test(status.current_version);
+  const tag = develop ? "develop" : "latest";
   const compose = `docker compose pull ${service}\ndocker compose up -d ${service}`;
-  const docker = `docker pull ${image}:latest\n# then recreate the ${service} container with the same settings as before`;
+  const docker = `docker pull ${image}:${tag}\n# then recreate the ${service} container with the same settings as before`;
   const cmd = method === "compose" ? compose : docker;
   const safeURL = (u?: string) => (u && /^https:\/\//i.test(u) ? u : undefined);
 
@@ -133,9 +137,12 @@ function UpdateModal({
         )}
       </div>
 
-      {status.message && (
-        <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--color-text-muted)" }}>{status.message}</p>
-      )}
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--color-text-muted)" }}>
+        {develop
+          ? `You're on ${image}:develop, which gets every change merged to main.`
+          : `You're on ${image}:latest, which gets each new release.`}
+        {status.message ? ` ${status.message}` : ""}
+      </p>
 
       {status.commits && status.commits.length > 0 && (
         <Section title={`What's new (${status.behind ?? status.commits.length})`}>
