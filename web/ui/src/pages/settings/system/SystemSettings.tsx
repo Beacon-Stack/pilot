@@ -1,6 +1,7 @@
 import { useSystemStatus } from "@/api/system";
 import PageHeader from "@/components/PageHeader";
 import HealthPanel from "./HealthPanel";
+import UpdateCheck from "@beacon-shared/UpdateCheck";
 
 export default function SystemSettings() {
   const { data: status } = useSystemStatus();
@@ -62,6 +63,21 @@ export default function SystemSettings() {
             </span>
           </div>
         ))}
+        {status && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "12px 16px",
+              borderTop: "1px solid var(--color-border-subtle)",
+            }}
+          >
+            <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Updates</span>
+            <UpdateCheck app="Pilot" service="pilot" image="ghcr.io/beacon-stack/pilot" />
+          </div>
+        )}
         {!status && (
           <div style={{ padding: 16 }}>
             {Array.from({ length: 5 }).map((_, i) => (
