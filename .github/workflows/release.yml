@@ -52,12 +52,17 @@ jobs:
           echo "::add-mask::$flags"
           echo "PROVIDER_LDFLAGS=$flags" >> "$GITHUB_ENV"
 
+      # One line per merged PR, grouped by type; .github/release-notes/
+      # <tag>.md, if present, goes first. See tools/releasenotes.
+      - name: Write release notes
+        run: go run ./tools/releasenotes -app Pilot -tag "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean
+          args: release --clean --release-notes=${{ runner.temp }}/notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
