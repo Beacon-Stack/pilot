@@ -386,3 +386,43 @@ func TestSearch_CallerCancelDoesNotCountAsMiss(t *testing.T) {
 		t.Error("caller-ended searches were recorded as the indexer's misses")
 	}
 }
+
+// An indexer waiting out its own rate limit must not hold a concurrency
+// slot: with one slot, the other indexer still goes straight away.
+func TestSearch_RateLimitWaitHoldsNoSlot(t *testing.T) {
+	limited := &scriptedIndexer{answers: map[string][]string{"Show S01": {"Limited.S01"}}}
+	free := &scriptedIndexer{answers: map[string][]string{"Show S01": {"Free.S01"}}}
+	// "limited" last: Go tends to run the newest goroutine first, so under
+	// the old ordering it reliably took the only slot and then waited.
+	svc := streamService(t, map[string]*scriptedIndexer{"limited": limited, "free": free}, "free", "limited")
+	svc.sem = make(chan struct{}, 1)
+	// 60 a minute: the next request is a second away once the token's spent.
+	q := svc.q.(streamQuerier)
+	for i := range q.rows {
+		if q.rows[i].ID == "limited" {
+			q.rows[i].Settings = `{"rate_limit": 60}`
+		}
+	}
+	svc.q = q
+	if err := svc.rl.Wait(context.Background(), "limited", 60); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	var mu sync.Mutex
+	var freeAt time.Duration
+	snap, _ := svc.SearchStream(context.Background(), []SearchGroup{{Queries: queries("Show S01")}},
+		func(s Snapshot) {
+			mu.Lock()
+			defer mu.Unlock()
+			if freeAt == 0 && titlesOf(s.Results)["Free.S01"] {
+				freeAt = time.Since(start)
+			}
+		})
+	if freeAt == 0 || freeAt > 400*time.Millisecond {
+		t.Errorf("free indexer answered after %v; it waited behind the rate-limited one's slot", freeAt)
+	}
+	if got := titlesOf(snap.Results); !got["Limited.S01"] {
+		t.Errorf("results %v: the rate-limited indexer should still answer once allowed", got)
+	}
+}
