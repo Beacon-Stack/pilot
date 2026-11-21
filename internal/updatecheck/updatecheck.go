@@ -32,11 +32,24 @@ type UpdateStatus struct {
 	CurrentVersion  string         `json:"current_version"`
 	LatestVersion   string         `json:"latest_version"`
 	ReleaseURL      string         `json:"release_url,omitempty"`   // compare or release page
-	ReleaseNotes    string         `json:"release_notes,omitempty"` // a release's notes (plain text)
+	ReleaseNotes    string         `json:"release_notes,omitempty"` // the newest release's notes (markdown)
 	PublishedAt     string         `json:"published_at,omitempty"`  // when the newer build was published
 	Behind          int            `json:"behind,omitempty"`        // commits behind, for commit versions
 	Commits         []UpdateCommit `json:"commits,omitempty"`       // the newer commits, newest first
 	Message         string         `json:"message,omitempty"`       // why it can't tell, when it can't
+	// Releases are the releases newer than a release build, newest first,
+	// each with its notes: everything an update would bring.
+	Releases []Release `json:"releases,omitempty"`
+}
+
+// Release is one published GitHub release.
+type Release struct {
+	Tag         string `json:"tag"`
+	Name        string `json:"name"`
+	PublishedAt string `json:"published_at"`
+	URL         string `json:"url"`
+	Notes       string `json:"notes"` // markdown
+	Prerelease  bool   `json:"prerelease,omitempty"`
 }
 
 // UpdateCommit is one change in a newer build.
@@ -60,6 +73,67 @@ type Checker struct {
 	cached   *UpdateStatus
 	cachedAt time.Time
 	cachedOf string
+
+	relMu sync.Mutex
+	rels  []Release
+	relAt time.Time
+}
+
+// maxReleases is how many recent releases are read from GitHub (one page).
+const maxReleases = 30
+
+// Releases returns up to limit published releases, newest first, with
+// their notes. Drafts are never included. Cached like Check.
+func (c *Checker) Releases(ctx context.Context, limit int) ([]Release, error) {
+	if limit <= 0 || limit > maxReleases {
+		limit = maxReleases
+	}
+	c.relMu.Lock()
+	if c.rels != nil && time.Since(c.relAt) < c.cacheFor() {
+		rels := c.rels
+		c.relMu.Unlock()
+		return head(rels, limit), nil
+	}
+	c.relMu.Unlock()
+
+	var raw []struct {
+		TagName     string `json:"tag_name"`
+		Name        string `json:"name"`
+		HTMLURL     string `json:"html_url"`
+		Body        string `json:"body"`
+		PublishedAt string `json:"published_at"`
+		Draft       bool   `json:"draft"`
+		Prerelease  bool   `json:"prerelease"`
+	}
+	err := c.get(ctx, fmt.Sprintf("/repos/%s/releases?per_page=%d", c.Repo, maxReleases), &raw)
+	if errors.Is(err, errNotFound) {
+		raw = nil
+	} else if err != nil {
+		return nil, err
+	}
+	rels := make([]Release, 0, len(raw))
+	for _, r := range raw {
+		if r.Draft {
+			continue
+		}
+		name := r.Name
+		if name == "" {
+			name = r.TagName
+		}
+		rels = append(rels, Release{Tag: r.TagName, Name: name, PublishedAt: r.PublishedAt,
+			URL: r.HTMLURL, Notes: r.Body, Prerelease: r.Prerelease})
+	}
+	c.relMu.Lock()
+	c.rels, c.relAt = rels, time.Now()
+	c.relMu.Unlock()
+	return head(rels, limit), nil
+}
+
+func head(rels []Release, n int) []Release {
+	if len(rels) > n {
+		return rels[:n]
+	}
+	return rels
 }
 
 // maxCommits caps the commit list shown for a build far behind.
@@ -190,13 +264,68 @@ func (c *Checker) checkRelease(ctx context.Context, current string) (UpdateStatu
 		return UpdateStatus{}, err
 	}
 	r.LatestVersion = rel.TagName
-	if strings.TrimPrefix(rel.TagName, "v") != strings.TrimPrefix(current, "v") {
+	if compareVersions(rel.TagName, current) > 0 {
 		r.UpdateAvailable = true
 		r.ReleaseURL = rel.HTMLURL
 		r.ReleaseNotes = rel.Body
 		r.PublishedAt = rel.PublishedAt
+		// Every release the update brings, not just the newest: someone
+		// two releases behind should read both sets of notes.
+		if rels, err := c.Releases(ctx, maxReleases); err == nil {
+			for _, x := range rels {
+				if x.Prerelease || compareVersions(x.Tag, current) <= 0 || compareVersions(x.Tag, rel.TagName) > 0 {
+					continue
+				}
+				r.Releases = append(r.Releases, x)
+			}
+		}
 	}
 	return r, nil
+}
+
+// compareVersions compares two release versions ("v0.13.0", "0.14.0-rc.1"):
+// -1, 0 or 1. A pre-release sorts before its release.
+func compareVersions(a, b string) int {
+	pa, prea := splitVersion(a)
+	pb, preb := splitVersion(b)
+	for i := 0; i < 3; i++ {
+		if pa[i] != pb[i] {
+			if pa[i] < pb[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	switch {
+	case prea == preb:
+		return 0
+	case prea == "":
+		return 1
+	case preb == "":
+		return -1
+	case prea < preb:
+		return -1
+	default:
+		return 1
+	}
+}
+
+func splitVersion(v string) ([3]int, string) {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	v, _, _ = strings.Cut(v, "+")
+	core, pre, _ := strings.Cut(v, "-")
+	var out [3]int
+	for i, part := range strings.SplitN(core, ".", 3) {
+		n := 0
+		for _, ch := range part {
+			if ch < '0' || ch > '9' {
+				break
+			}
+			n = n*10 + int(ch-'0')
+		}
+		out[i] = n
+	}
+	return out, pre
 }
 
 var errNotFound = errors.New("not found")

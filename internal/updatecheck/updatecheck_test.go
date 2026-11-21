@@ -134,20 +134,98 @@ func TestCheck_DevBuildCantTell(t *testing.T) {
 	}
 }
 
+// releasesAPI fakes GitHub's latest-release and release-list calls.
+func releasesAPI(w http.ResponseWriter, r *http.Request) bool {
+	switch r.URL.Path {
+	case "/repos/beacon-stack/prism/releases/latest":
+		_, _ = w.Write([]byte(`{"tag_name":"v1.3.0","html_url":"https://r/1.3.0","body":"## New features\n- three","published_at":"2026-11-03T00:00:00Z"}`))
+	case "/repos/beacon-stack/prism/releases":
+		_, _ = w.Write([]byte(`[
+		  {"tag_name":"v1.4.0-rc.1","name":"v1.4.0-rc.1","body":"rc","prerelease":true},
+		  {"tag_name":"v1.3.0","name":"v1.3.0","html_url":"https://r/1.3.0","body":"## New features\n- three","published_at":"2026-11-03T00:00:00Z"},
+		  {"tag_name":"v1.2.0","name":"","html_url":"https://r/1.2.0","body":"- two","published_at":"2026-11-02T00:00:00Z"},
+		  {"tag_name":"v1.2.1-draft","draft":true,"body":"secret draft"},
+		  {"tag_name":"v1.1.0","name":"v1.1.0","body":"- one"}]`))
+	default:
+		return false
+	}
+	return true
+}
+
 func TestCheck_ReleaseTags(t *testing.T) {
 	c, _ := github(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/repos/beacon-stack/prism/releases/latest" {
+		if !releasesAPI(w, r) {
 			t.Errorf("path %s", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"tag_name":"v1.3.0","html_url":"https://r","body":"notes","published_at":"2026-11-01T00:00:00Z"}`))
 	})
-	r, _ := c.Check(context.Background(), "v1.2.0")
-	if !r.UpdateAvailable || r.LatestVersion != "v1.3.0" || r.ReleaseNotes != "notes" {
+	r, _ := c.Check(context.Background(), "v1.1.0")
+	if !r.UpdateAvailable || r.LatestVersion != "v1.3.0" || !strings.Contains(r.ReleaseNotes, "three") {
 		t.Errorf("result = %+v", r)
+	}
+	// Two releases behind: the notes of both, newest first; no
+	// pre-release, no draft, nothing it already has.
+	if len(r.Releases) != 2 || r.Releases[0].Tag != "v1.3.0" || r.Releases[1].Tag != "v1.2.0" {
+		t.Errorf("releases = %+v, want v1.3.0 then v1.2.0", r.Releases)
+	}
+	if r.Releases[1].Name != "v1.2.0" {
+		t.Errorf("a release without a name is named by its tag, got %q", r.Releases[1].Name)
 	}
 	c.cached = nil
 	if r, _ := c.Check(context.Background(), "1.3.0"); r.UpdateAvailable {
 		t.Errorf("same version without the v: %+v", r)
+	}
+	c.cached = nil
+	if r, _ := c.Check(context.Background(), "v1.4.0"); r.UpdateAvailable {
+		t.Errorf("a build newer than the latest release is not behind: %+v", r)
+	}
+}
+
+func TestReleases_ListsPublishedNewestFirstAndCaches(t *testing.T) {
+	c, calls := github(t, func(w http.ResponseWriter, r *http.Request) { releasesAPI(w, r) })
+	rels, err := c.Releases(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tags []string
+	for _, r := range rels {
+		tags = append(tags, r.Tag)
+	}
+	if strings.Join(tags, ",") != "v1.4.0-rc.1,v1.3.0,v1.2.0,v1.1.0" {
+		t.Errorf("tags = %v (drafts must never be listed)", tags)
+	}
+	if !rels[0].Prerelease {
+		t.Error("pre-releases are listed, and marked")
+	}
+	two, _ := c.Releases(context.Background(), 2)
+	if len(two) != 2 || calls.Load() != 1 {
+		t.Errorf("limit %d, %d calls; want 2 releases from the cache", len(two), calls.Load())
+	}
+}
+
+func TestReleases_NoneIsEmptyNotAnError(t *testing.T) {
+	c, _ := github(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) })
+	rels, err := c.Releases(context.Background(), 5)
+	if err != nil || len(rels) != 0 {
+		t.Errorf("%v, %v", rels, err)
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want int
+	}{
+		{"v0.13.0", "0.13.0", 0},
+		{"v0.13.1", "v0.13.0", 1},
+		{"v0.9.0", "v0.13.0", -1},
+		{"v1.0.0", "v0.99.9", 1},
+		{"v0.14.0-rc.1", "v0.14.0", -1},
+		{"v0.14.0-rc.2", "v0.14.0-rc.1", 1},
+		{"v0.14", "v0.14.0", 0},
+	} {
+		if got := compareVersions(c.a, c.b); got != c.want {
+			t.Errorf("compareVersions(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
+		}
 	}
 }
 

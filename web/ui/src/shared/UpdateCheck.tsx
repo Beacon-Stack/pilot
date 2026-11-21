@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Modal from "./Modal";
+import Markdown from "./Markdown";
 import { apiFetch } from "./api";
 
 // Shape of GET /api/v1/system/updates (internal/updatecheck in each app).
@@ -20,6 +21,18 @@ export interface UpdateStatus {
   behind?: number;
   commits?: UpdateCommit[];
   message?: string;
+  /** Releases newer than a release build, newest first, with their notes. */
+  releases?: Release[];
+}
+
+// One entry of GET /api/v1/system/releases.
+export interface Release {
+  tag: string;
+  name: string;
+  published_at: string;
+  url: string;
+  notes: string;
+  prerelease?: boolean;
 }
 
 interface UpdateCheckProps {
@@ -32,16 +45,19 @@ interface UpdateCheckProps {
 }
 
 /**
- * "Check for updates" button for a Beacon app's System page. Asks the
- * app's own /system/updates endpoint, which compares the running build
- * with the newest image published from beacon-stack/<app>, and shows
- * what changed and how to update.
+ * "Check for updates" and "Release notes" buttons for a Beacon app's
+ * System page. Check asks the app's own /system/updates endpoint, which
+ * compares the running build with the newest image published from
+ * beacon-stack/<app>, and shows what changed (the notes of every newer
+ * release, or the newer commits on :main) and how to update. Release
+ * notes lists the recent releases from /system/releases.
  */
 export default function UpdateCheck({ app, service, image }: UpdateCheckProps) {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [open, setOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   async function check() {
     setChecking(true);
@@ -74,6 +90,9 @@ export default function UpdateCheck({ app, service, image }: UpdateCheckProps) {
       >
         {checking ? "Checking…" : "Check for updates"}
       </button>
+      <button onClick={() => setNotesOpen(true)} style={secondaryButton}>
+        Release notes
+      </button>
       {status && !status.update_available && !status.message && (
         <span style={{ fontSize: 12, color: "var(--color-success)" }}>Up to date ✓</span>
       )}
@@ -99,7 +118,79 @@ export default function UpdateCheck({ app, service, image }: UpdateCheckProps) {
       {open && status?.update_available && (
         <UpdateModal status={status} app={app} service={service} image={image} onClose={() => setOpen(false)} />
       )}
+      {notesOpen && <ReleaseNotesModal app={app} onClose={() => setNotesOpen(false)} />}
     </div>
+  );
+}
+
+const secondaryButton = {
+  background: "var(--color-bg-elevated)",
+  border: "1px solid var(--color-border-default)",
+  borderRadius: 6,
+  padding: "3px 10px",
+  fontSize: 12,
+  color: "var(--color-text-secondary)",
+  cursor: "pointer",
+} as const;
+
+/** The recent releases, newest first and open; older ones folded. */
+function ReleaseNotesModal({ app, onClose }: { app: string; onClose: () => void }) {
+  const [releases, setReleases] = useState<Release[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    apiFetch<{ releases: Release[] }>("/system/releases?limit=10")
+      .then((r) => live && setReleases(r.releases ?? []))
+      .catch((e) => live && setError(e instanceof Error ? e.message : "Couldn't load the release notes"));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <Modal onClose={onClose} width={680} maxHeight="85vh" innerStyle={{ padding: 24, overflowY: "auto" }}>
+      <h2 style={{ margin: "0 0 14px", fontSize: 17, fontWeight: 600, color: "var(--color-text-primary)" }}>
+        {app} release notes
+      </h2>
+      {!releases && !error && <p style={{ fontSize: 13, color: "var(--color-text-muted)" }}>Loading…</p>}
+      {error && <p style={{ fontSize: 13, color: "var(--color-danger, #e5484d)" }}>{error}</p>}
+      {releases && releases.length === 0 && (
+        <p style={{ fontSize: 13, color: "var(--color-text-muted)" }}>No releases have been published yet.</p>
+      )}
+      {releases?.map((r, i) => <ReleaseEntry key={r.tag} release={r} open={i === 0} />)}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+        <button onClick={onClose} style={{ ...secondaryButton, padding: "6px 16px", fontSize: 13 }}>
+          Close
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function ReleaseEntry({ release, open }: { release: Release; open: boolean }) {
+  return (
+    <details open={open} style={{ borderTop: "1px solid var(--color-border-subtle)", padding: "10px 0" }}>
+      <summary style={{ cursor: "pointer", display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>{release.name}</span>
+        {release.prerelease && (
+          <span style={{ fontSize: 11, color: "var(--color-warning, #d4a72c)" }}>pre-release</span>
+        )}
+        {release.published_at && (
+          <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+            {new Date(release.published_at).toLocaleDateString()}
+          </span>
+        )}
+      </summary>
+      <div style={{ marginTop: 6 }}>
+        <Markdown text={release.notes || "No notes for this release."} />
+        {/^https:\/\//i.test(release.url) && (
+          <a href={release.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--color-accent)" }}>
+            View on GitHub →
+          </a>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -169,20 +260,20 @@ function UpdateModal({
         </Section>
       )}
 
-      {status.release_notes && (
-        <Section title="Release notes">
-          <div
-            style={{
-              whiteSpace: "pre-wrap",
-              fontSize: 13,
-              color: "var(--color-text-secondary)",
-              maxHeight: 220,
-              overflowY: "auto",
-            }}
-          >
-            {status.release_notes}
-          </div>
+      {status.releases && status.releases.length > 0 ? (
+        <Section
+          title={`Release notes (${status.releases.length} release${status.releases.length === 1 ? "" : "s"} to catch up on)`}
+        >
+          {status.releases.map((r, i) => (
+            <ReleaseEntry key={r.tag} release={r} open={i === 0} />
+          ))}
         </Section>
+      ) : (
+        status.release_notes && (
+          <Section title="Release notes">
+            <Markdown text={status.release_notes} />
+          </Section>
+        )
       )}
 
       <Section title="How to update">
