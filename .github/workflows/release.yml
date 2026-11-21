@@ -6,7 +6,7 @@ name: Release
 #   2. The docker job builds the images from the same Dockerfile CI uses,
 #      for amd64 and arm64, and tags them <version>, <major>.<minor> and
 #      latest. :latest is always the newest release; every merge to main
-#      is published as :develop by ci.yml.
+#      is published as :main by ci.yml.
 
 on:
   push:
