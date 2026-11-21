@@ -171,6 +171,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	v1.RegisterAuthSettingsRoutes(humaAPI, auth, cfg.ConfigFile)
 	v1.RegisterSystemRoutes(humaAPI, cfg.StartTime, cfg.DBType, cfg.DBPath, cfg.ConfigFile, cfg.Auth.Value(), cfg.TMDBKeyConfigured, cfg.TMDBKeyIsDefault, cfg.Logger)
+	v1.RegisterUpdateRoutes(humaAPI)
 	v1.RegisterRuntimeRoutes(humaAPI, cfg.StartTime)
 	v1.RegisterEnvRoutes(humaAPI)
 	v1.RegisterFilesystemRoutes(humaAPI)
