@@ -124,6 +124,9 @@ type Querier interface {
 	ListAllTMDBIDs(ctx context.Context) ([]int64, error)
 	ListAnimeCourMonitored(ctx context.Context, seriesID string) ([]AnimeCourMonitored, error)
 	ListBlocklist(ctx context.Context, arg ListBlocklistParams) ([]ListBlocklistRow, error)
+	// Which of these release GUIDs are on the blocklist: one query for a
+	// whole search's results instead of one per release.
+	ListBlocklistedGUIDs(ctx context.Context, guids []string) ([]string, error)
 	// Grabs still present on a download client whose import outcome is known --
 	// the download_cleanup job removes them (with data) once the seed target
 	// is met (imported) or immediately (failed + blocklisted garbage).
@@ -175,6 +178,9 @@ type Querier interface {
 	ListSeries(ctx context.Context, arg ListSeriesParams) ([]Series, error)
 	ListSeriesByLibrary(ctx context.Context, arg ListSeriesByLibraryParams) ([]Series, error)
 	ListSeriesGenresJSON(ctx context.Context) ([]string, error)
+	// Series whose IMDb/TVDB ids haven't been looked up yet (NULL; a series
+	// TMDB has none for is stored as '' / 0 and not asked about again).
+	ListSeriesMissingExternalIDs(ctx context.Context) ([]ListSeriesMissingExternalIDsRow, error)
 	// Stuck-downloading grabs that the stallwatcher should expire because
 	// they can't make progress. Two cohorts:
 	//   1. info_hash IS NULL/empty: pilot recorded the grab but never got an
@@ -199,6 +205,7 @@ type Querier interface {
 	PruneActivities(ctx context.Context, createdAt string) error
 	QualityProfileInUse(ctx context.Context, arg QualityProfileInUseParams) (int64, error)
 	SetGrabImportState(ctx context.Context, arg SetGrabImportStateParams) error
+	SetSeriesExternalIDs(ctx context.Context, arg SetSeriesExternalIDsParams) error
 	SetSetting(ctx context.Context, arg SetSettingParams) error
 	SetUnmappedFolderIgnored(ctx context.Context, arg SetUnmappedFolderIgnoredParams) error
 	SumEpisodeFileSize(ctx context.Context) (interface{}, error)

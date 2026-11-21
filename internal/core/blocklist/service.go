@@ -184,6 +184,27 @@ func (s *Service) IsBlocklistedGUIDOrInfoHash(ctx context.Context, releaseGUID, 
 	return count > 0, nil
 }
 
+// blocklistBatch keeps each IN (...) well under SQLite's parameter limit.
+const blocklistBatch = 500
+
+// BlocklistedGUIDs reports which of guids are on the blocklist, in one
+// query per 500 GUIDs rather than one per release. GUIDs not in the map
+// are not blocklisted.
+func (s *Service) BlocklistedGUIDs(ctx context.Context, guids []string) (map[string]bool, error) {
+	out := make(map[string]bool)
+	for start := 0; start < len(guids); start += blocklistBatch {
+		end := min(start+blocklistBatch, len(guids))
+		rows, err := s.q.ListBlocklistedGUIDs(ctx, guids[start:end])
+		if err != nil {
+			return nil, fmt.Errorf("checking blocklist: %w", err)
+		}
+		for _, g := range rows {
+			out[g] = true
+		}
+	}
+	return out, nil
+}
+
 // RemoveByGUID removes a blocklist entry by its release GUID. Used by the
 // grab-override flow so a user can force-grab a previously-blocklisted
 // release and have it disappear from the blocklist in one click.

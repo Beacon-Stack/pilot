@@ -827,21 +827,10 @@ func (s *Service) search(ctx context.Context, groups []SearchGroup, onUpdate fun
 }
 
 // runGroup runs one group's queries on one indexer, in order, until the
-// results are enough. It holds one concurrency slot throughout, so a
-// fallback query doesn't queue behind every other indexer again. The
-// error is nil whenever anything was found.
+// results are enough. Each query takes a concurrency slot for its own
+// request only (see searchSlotted). The error is nil whenever anything
+// was found.
 func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup, interactive bool) ([]SearchResult, error) {
-	// Bound global concurrency so queries×indexers can't all hit the
-	// network at once; release the slot when this indexer finishes.
-	if s.sem != nil {
-		select {
-		case s.sem <- struct{}{}:
-			defer func() { <-s.sem }()
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-
 	idx, err := s.cachedIndexer(cfg.Kind, cfg.ID, cfg.Settings)
 	if err != nil {
 		return nil, err
@@ -853,7 +842,7 @@ func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup, inter
 		if ctx.Err() != nil {
 			break
 		}
-		releases, err := s.searchOne(ctx, cfg, idx, q, interactive)
+		releases, err := s.searchSlotted(ctx, cfg, idx, q, interactive)
 		if err != nil {
 			lastErr = err
 			// A timeout means this indexer is still scraping (Pulse
@@ -886,9 +875,31 @@ func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup, inter
 	return nil, lastErr
 }
 
-// searchOne sends one query to one indexer, under the indexer's rate
-// limit and the per-indexer timeout, logs how long it took, and records
-// the outcome in the indexer's health.
+// searchSlotted waits for the indexer's rate limit, then takes one of the
+// global concurrency slots for the request alone. The wait comes first
+// and holds nothing: an indexer waiting out its own rate limit used to
+// sit on a slot (and spend its timeout) while faster indexers queued
+// behind it.
+func (s *Service) searchSlotted(ctx context.Context, cfg Config, idx plugin.Indexer, q plugin.SearchQuery, interactive bool) ([]plugin.Release, error) {
+	if err := s.rl.Wait(ctx, cfg.ID, extractRateLimit(cfg.Settings)); err != nil {
+		return nil, fmt.Errorf("waiting for this indexer's rate limit: %w", err)
+	}
+	// Bound global concurrency so queries×indexers can't all hit the
+	// network at once.
+	if s.sem != nil {
+		select {
+		case s.sem <- struct{}{}:
+			defer func() { <-s.sem }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return s.searchOne(ctx, cfg, idx, q, interactive)
+}
+
+// searchOne sends one query to one indexer under the per-indexer
+// timeout, logs how long it took, and records the outcome in the
+// indexer's health. The caller has already waited for the rate limit.
 func (s *Service) searchOne(ctx context.Context, cfg Config, idx plugin.Indexer, q plugin.SearchQuery, interactive bool) ([]plugin.Release, error) {
 	// Per-indexer timeout so one hung provider can't hold its slot for
 	// the whole parent budget. Inherits any earlier parent deadline.
@@ -900,9 +911,6 @@ func (s *Service) searchOne(ctx context.Context, cfg Config, idx plugin.Indexer,
 	defer cancel()
 
 	started := time.Now()
-	if err := s.rl.Wait(sctx, cfg.ID, extractRateLimit(cfg.Settings)); err != nil {
-		return nil, err
-	}
 	releases, err := idx.Search(sctx, q)
 	elapsed := time.Since(started)
 	// A search the caller ended (modal closed, request budget spent) says

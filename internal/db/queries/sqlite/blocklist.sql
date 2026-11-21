@@ -48,3 +48,8 @@ DELETE FROM blocklist WHERE release_guid = ?;
 
 -- name: ClearBlocklist :exec
 DELETE FROM blocklist;
+
+-- name: ListBlocklistedGUIDs :many
+-- Which of these release GUIDs are on the blocklist: one query for a
+-- whole search's results instead of one per release.
+SELECT DISTINCT release_guid FROM blocklist WHERE release_guid IN (sqlc.slice('guids'));

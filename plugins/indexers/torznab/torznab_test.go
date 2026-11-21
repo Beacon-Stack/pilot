@@ -369,3 +369,127 @@ func TestSearch_PulseCapsWithNonNumericSubcats(t *testing.T) {
 		t.Error("Pulse lists q,season,ep only; imdbid must not be sent")
 	}
 }
+
+// ── Skipping a tvsearch that can't help ─────────────────────────────────────
+
+// modeServer answers tvsearch and text search separately and records
+// which modes were asked for.
+func modeServer(t *testing.T, capsDoc string, tvItems, textItems bool) (*httptest.Server, *[]string) {
+	t.Helper()
+	var modes []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		mode := r.URL.Query().Get("t")
+		if mode == "caps" {
+			if capsDoc == "" {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write([]byte(capsDoc))
+			return
+		}
+		modes = append(modes, mode)
+		if (mode == "tvsearch" && tvItems) || (mode == "search" && textItems) {
+			_, _ = w.Write([]byte(oneItemFeed))
+			return
+		}
+		_, _ = w.Write([]byte(`<?xml version="1.0"?><rss><channel></channel></rss>`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &modes
+}
+
+func TestSearch_CapsWithoutTVSearchGoesStraightToText(t *testing.T) {
+	caps := `<?xml version="1.0"?><caps><searching><search available="yes" supportedParams="q"/>` +
+		`<tv-search available="no"/></searching></caps>`
+	srv, modes := modeServer(t, caps, false, true)
+	idx := New(Config{URL: srv.URL})
+	_, _ = idx.Search(context.Background(), plugin.SearchQuery{Query: "Andor S01", Season: 1})
+	if len(*modes) != 1 || (*modes)[0] != "search" {
+		t.Errorf("modes = %v, want just [search]", *modes)
+	}
+}
+
+// An indexer whose tvsearch keeps coming back empty while text search
+// finds things stops getting the tvsearch round trip, and is re-probed.
+func TestSearch_LearnsToSkipUselessTVSearch(t *testing.T) {
+	srv, modes := modeServer(t, "", false, true)
+	idx := New(Config{URL: srv.URL})
+	search := func() {
+		_, _ = idx.Search(context.Background(), plugin.SearchQuery{Query: "Andor S01", Season: 1})
+	}
+	for i := 0; i < tvUselessAfter; i++ {
+		search()
+	}
+	if len(*modes) != 2*tvUselessAfter {
+		t.Fatalf("first %d searches sent %v, want tvsearch+search each", tvUselessAfter, *modes)
+	}
+	*modes = nil
+	search()
+	if len(*modes) != 1 || (*modes)[0] != "search" {
+		t.Errorf("after %d useless tvsearches: modes = %v, want just [search]", tvUselessAfter, *modes)
+	}
+	// Re-probe: within tvReprobeEvery searches, tvsearch is tried again.
+	*modes = nil
+	for i := 0; i < tvReprobeEvery; i++ {
+		search()
+	}
+	tv := 0
+	for _, m := range *modes {
+		if m == "tvsearch" {
+			tv++
+		}
+	}
+	if tv != 1 {
+		t.Errorf("%d tvsearch probes in %d searches, want 1", tv, tvReprobeEvery)
+	}
+}
+
+// Both empty (Pulse: one cache entry for both) is not a strike against
+// tvsearch: the release just isn't there.
+func TestSearch_NothingAnywhereKeepsTVSearch(t *testing.T) {
+	srv, modes := modeServer(t, "", false, false)
+	idx := New(Config{URL: srv.URL})
+	for i := 0; i < tvUselessAfter+2; i++ {
+		_, _ = idx.Search(context.Background(), plugin.SearchQuery{Query: "Andor S01", Season: 1})
+	}
+	if (*modes)[len(*modes)-2] != "tvsearch" {
+		t.Errorf("modes = %v: tvsearch was dropped though text search found nothing either", *modes)
+	}
+}
+
+func TestSearch_TVSearchHitResetsTheCount(t *testing.T) {
+	idx := New(Config{URL: "http://unused"})
+	for i := 0; i < tvUselessAfter-1; i++ {
+		idx.noteTVSearch(false, true)
+	}
+	idx.noteTVSearch(true, false)
+	idx.noteTVSearch(false, true)
+	if !idx.tryTVSearch(nil) {
+		t.Error("one hit should reset the count; tvsearch must still be tried")
+	}
+}
+
+func TestSearch_TVDBIDFollowsCaps(t *testing.T) {
+	withTVDB := `<?xml version="1.0"?><caps><searching>` +
+		`<tv-search available="yes" supportedParams="q,season,ep,tvdbid"/></searching>` +
+		`<categories><category id="5000" name="TV"/></categories></caps>`
+	cases := []struct {
+		name string
+		caps string
+		want bool
+	}{
+		{"caps list tvdbid", withTVDB, true},
+		{"caps without tvdbid (Pulse)", pulseCaps, false},
+		{"no caps: sent as before caps were read", "", true},
+	}
+	for _, c := range cases {
+		srv, searches, _ := capsServer(t, c.caps)
+		idx := New(Config{URL: srv.URL})
+		_, _ = idx.Search(context.Background(), plugin.SearchQuery{Query: "Andor S01", Season: 1, TVDBID: 393189})
+		got := (*searches)[0].Query().Get("tvdbid") == "393189"
+		if got != c.want {
+			t.Errorf("%s: tvdbid sent = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

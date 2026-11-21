@@ -281,6 +281,7 @@ type Series struct {
 	UpdatedAt           string  `json:"updatedAt"`
 	MetadataRefreshedAt *string `json:"metadataRefreshedAt"`
 	AlternateTitles     string  `json:"alternateTitles"`
+	TvdbID              *int64  `json:"tvdbId"`
 }
 
 type Setting struct {
