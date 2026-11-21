@@ -126,8 +126,8 @@ jobs:
   docker:
     name: Docker
     runs-on: ubuntu-latest
-    # Pushes to main publish :develop (every merge). :latest is the newest
-    # release, published by release.yml when a v* tag is pushed.
+    # Pushes to main publish :main (every merge; the type=ref tag below).
+    # :latest is the newest release, published by release.yml on v* tags.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test, test-frontend, build]
     # A normal run takes 15-17 minutes. A stuck one (a build that hung
@@ -135,7 +135,7 @@ jobs:
     # for GitHub's 6-hour default.
     timeout-minutes: 45
     # Newest push wins: an older build still running is cancelled, so it
-    # can never finish late and push an older image over :develop.
+    # can never finish late and push an older image over :main.
     concurrency:
       group: docker-${{ github.ref }}
       cancel-in-progress: true
@@ -170,9 +170,8 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix=sha-
-            type=raw,value=develop,enable={{is_default_branch}}
 
-      - name: Build and push (develop — alpine with ffprobe)
+      - name: Build and push (main — alpine with ffprobe)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -199,7 +198,7 @@ jobs:
           # ghcr.io image names must be lowercase. github.repository preserves
           # the org casing ("Beacon-Stack/pilot"), which GHCR rejects, so we
           # spell the repo out explicitly instead of using the expression.
-          tags: ghcr.io/beacon-stack/pilot:develop-minimal
+          tags: ghcr.io/beacon-stack/pilot:main-minimal
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ github.sha }}
