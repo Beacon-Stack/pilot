@@ -15,6 +15,16 @@ type updateCheckOutput struct {
 	Body updatecheck.UpdateStatus
 }
 
+type releasesInput struct {
+	Limit int `query:"limit" default:"10" minimum:"1" maximum:"30" doc:"How many recent releases"`
+}
+
+type releasesOutput struct {
+	Body struct {
+		Releases []updatecheck.Release `json:"releases"`
+	}
+}
+
 // updateChecker is shared by every request so its short cache spares
 // GitHub's 60-calls-an-hour limit for unauthenticated clients.
 var updateChecker = &updatecheck.Checker{
@@ -40,5 +50,25 @@ func RegisterUpdateRoutes(api huma.API) {
 			return nil, huma.NewError(http.StatusBadGateway, err.Error())
 		}
 		return &updateCheckOutput{Body: res}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "list-releases",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/system/releases",
+		Summary:     "Recent releases and their notes",
+		Description: "The newest published releases of beacon-stack/pilot, newest first, each with its release notes (markdown).",
+		Tags:        []string{"System"},
+	}, func(ctx context.Context, in *releasesInput) (*releasesOutput, error) {
+		rels, err := updateChecker.Releases(ctx, in.Limit)
+		if err != nil {
+			return nil, huma.NewError(http.StatusBadGateway, err.Error())
+		}
+		out := &releasesOutput{}
+		out.Body.Releases = rels
+		if out.Body.Releases == nil {
+			out.Body.Releases = []updatecheck.Release{}
+		}
+		return out, nil
 	})
 }
