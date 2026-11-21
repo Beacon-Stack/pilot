@@ -325,13 +325,14 @@ func applyQualityProfile(results []indexer.SearchResult, profile *quality.Profil
 // groups, unioned as before: they find differently named releases of
 // the same episode, not the same pack under two names.
 //
-// Every query carries the series' IMDb and TMDB IDs; an indexer that
-// lists them in its caps matches the show by ID.
+// Every query carries the series' TVDB, IMDb and TMDB IDs; an indexer
+// that lists them in its caps matches the show by ID.
 func searchPlan(series show.Series, season, episode, absolute int, isAnime bool) []indexer.SearchGroup {
 	queries := buildEpisodeQueries(series.Title, season, episode, absolute, isAnime)
 	mk := func(text string) plugin.SearchQuery {
 		return plugin.SearchQuery{
 			Query:   text,
+			TVDBID:  series.TVDBID,
 			IMDBID:  series.IMDBID,
 			TMDBID:  series.TMDBID,
 			Season:  season,
@@ -447,19 +448,28 @@ func newReleaseSearch(ctx context.Context, input *episodeReleasesInput, indexerS
 	return rs, nil
 }
 
-func (rs *releaseSearch) isBlocklisted(ctx context.Context, guid string) bool {
+// checkBlocklist looks up, in one query, the GUIDs this search hasn't
+// asked about yet, and remembers the answers for its later snapshots.
+func (rs *releaseSearch) checkBlocklist(ctx context.Context, results []indexer.SearchResult) {
 	if rs.blocklist == nil {
-		return false
+		return
 	}
-	if hit, ok := rs.blocked[guid]; ok {
-		return hit
+	var unknown []string
+	for _, r := range results {
+		if _, ok := rs.blocked[r.GUID]; !ok {
+			unknown = append(unknown, r.GUID)
+		}
 	}
-	hit, err := rs.blocklist.IsBlocklistedGUIDOrInfoHash(ctx, guid, "")
+	if len(unknown) == 0 {
+		return
+	}
+	hits, err := rs.blocklist.BlocklistedGUIDs(ctx, unknown)
 	if err != nil {
-		return false // not remembered: ask again next time
+		return // not remembered: asked again with the next snapshot
 	}
-	rs.blocked[guid] = hit
-	return hit
+	for _, g := range unknown {
+		rs.blocked[g] = hits[g]
+	}
 }
 
 // list turns a (partial or final) search snapshot into the response body.
@@ -471,6 +481,7 @@ func (rs *releaseSearch) list(ctx context.Context, snap indexer.Snapshot) releas
 	// them with an "override and grab anyway" button (same UX as the
 	// blocklist and min_seeders filters).
 	applyQualityProfile(results, rs.profile)
+	rs.checkBlocklist(ctx, results)
 
 	// Count how many indexers each title appears on.
 	titleIndexers := make(map[string]map[string]bool)
@@ -495,7 +506,7 @@ func (rs *releaseSearch) list(ctx context.Context, snap indexer.Snapshot) releas
 		// Blocklist filter: any release that's been previously stalled
 		// gets tagged with a filter reason so the UI can render it
 		// grayed with an override button.
-		if rs.isBlocklisted(ctx, r.GUID) {
+		if rs.blocked[r.GUID] {
 			b.FilterReasons = append(b.FilterReasons, "previously stalled (on blocklist)")
 		}
 		if prior, ok := rs.grabs[r.GUID]; ok {
@@ -957,6 +968,15 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 	// blocklist filter. Search() already populates FilterReasons for
 	// min_seeders violations; we additionally check blocklist here.
 	// A release is "viable" for auto-grab if it has no filter reasons.
+	// One blocklist query for all of them, not one per release.
+	var blocked map[string]bool
+	if blocklistSvc != nil {
+		guids := make([]string, len(results))
+		for i, r := range results {
+			guids[i] = r.GUID
+		}
+		blocked, _ = blocklistSvc.BlocklistedGUIDs(ctx, guids)
+	}
 	var viable []indexer.SearchResult
 	for _, r := range results {
 		if len(r.FilterReasons) > 0 {
@@ -967,11 +987,8 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 				continue
 			}
 		}
-		if blocklistSvc != nil {
-			ok, bErr := blocklistSvc.IsBlocklistedGUIDOrInfoHash(ctx, r.GUID, "")
-			if bErr == nil && ok {
-				continue
-			}
+		if blocked[r.GUID] {
+			continue
 		}
 		viable = append(viable, r)
 	}

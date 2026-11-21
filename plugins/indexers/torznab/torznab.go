@@ -64,6 +64,53 @@ type Indexer struct {
 	capsMu      sync.Mutex
 	caps        *searchCaps
 	capsCheckAt time.Time
+
+	// Whether tvsearch earns its round trip on this indexer; see
+	// tryTVSearch.
+	tvMu      sync.Mutex
+	tvUseless int // searches in a row where tvsearch found nothing but text search did
+	tvSkipped int // tvsearch skips since the last probe
+}
+
+const (
+	// tvUselessAfter is how many searches in a row may find results by
+	// text search after an empty (or failed) tvsearch before tvsearch is
+	// skipped: on such an indexer it is a wasted round trip every time.
+	tvUselessAfter = 3
+	// tvReprobeEvery: while skipping, every this many searches try
+	// tvsearch again, in case the indexer has started answering it.
+	tvReprobeEvery = 20
+)
+
+// tryTVSearch reports whether this search should try tvsearch before the
+// text search.
+func (idx *Indexer) tryTVSearch(caps *searchCaps) bool {
+	if caps != nil && caps.tvUnavailable {
+		return false
+	}
+	idx.tvMu.Lock()
+	defer idx.tvMu.Unlock()
+	if idx.tvUseless < tvUselessAfter {
+		return true
+	}
+	idx.tvSkipped++
+	if idx.tvSkipped >= tvReprobeEvery {
+		idx.tvSkipped = 0
+		return true
+	}
+	return false
+}
+
+// noteTVSearch records how a search that tried tvsearch went.
+func (idx *Indexer) noteTVSearch(tvFound, textFound bool) {
+	idx.tvMu.Lock()
+	defer idx.tvMu.Unlock()
+	switch {
+	case tvFound:
+		idx.tvUseless, idx.tvSkipped = 0, 0
+	case textFound:
+		idx.tvUseless++
+	}
 }
 
 // searchCaps is the part of an indexer's caps document a search needs.
@@ -73,6 +120,9 @@ type searchCaps struct {
 	tvParams map[string]bool
 	// tvCategories are the indexer's TV categories (5000-5999).
 	tvCategories []int
+	// tvUnavailable: the caps say tv-search is not available, so a
+	// tvsearch request could only fail before the text search runs.
+	tvUnavailable bool
 }
 
 const (
@@ -176,7 +226,10 @@ func (idx *Indexer) searchCaps(ctx context.Context) *searchCaps {
 }
 
 func parseSearchCaps(doc capsResponse) *searchCaps {
-	sc := &searchCaps{tvParams: map[string]bool{}}
+	sc := &searchCaps{
+		tvParams:      map[string]bool{},
+		tvUnavailable: strings.EqualFold(strings.TrimSpace(doc.Searching.TVSearch.Available), "no"),
+	}
 	for _, p := range strings.Split(doc.Searching.TVSearch.SupportedParams, ",") {
 		if p = strings.ToLower(strings.TrimSpace(p)); p != "" {
 			sc.tvParams[p] = true
@@ -240,12 +293,17 @@ func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.
 	cats := caps.categories()
 
 	var tvSearchErr error
-	hasID := q.TVDBID != 0 || (q.IMDBID != "" && caps.supports("imdbid")) ||
+	// tvdbid is sent when the caps list it, or when there are no caps to
+	// ask (as before caps were read); imdbid/tmdbid only when listed.
+	sendTVDB := q.TVDBID != 0 && (caps == nil || caps.supports("tvdbid"))
+	hasID := sendTVDB || (q.IMDBID != "" && caps.supports("imdbid")) ||
 		(q.TMDBID != 0 && caps.supports("tmdbid"))
-	if q.Season > 0 || hasID {
+	triedTV := false
+	if (q.Season > 0 || hasID) && idx.tryTVSearch(caps) {
+		triedTV = true
 		params := url.Values{}
 		params.Set("q", q.Query)
-		if q.TVDBID != 0 {
+		if sendTVDB {
 			params.Set("tvdbid", strconv.Itoa(q.TVDBID))
 		}
 		if q.IMDBID != "" && caps.supports("imdbid") {
@@ -266,6 +324,7 @@ func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.
 		u := idx.buildURL("tvsearch", params)
 		releases, err := idx.fetchReleases(ctx, u)
 		if err == nil && len(releases) > 0 {
+			idx.noteTVSearch(true, false)
 			return releases, nil
 		}
 		// Zero results or error — fall through to text search, but keep
@@ -284,6 +343,9 @@ func (idx *Indexer) Search(ctx context.Context, q plugin.SearchQuery) ([]plugin.
 	releases, err := idx.fetchReleases(ctx, u)
 	if err != nil {
 		return nil, err
+	}
+	if triedTV {
+		idx.noteTVSearch(false, len(releases) > 0)
 	}
 	if len(releases) == 0 && tvSearchErr != nil {
 		return nil, tvSearchErr

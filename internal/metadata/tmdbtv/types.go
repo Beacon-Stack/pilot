@@ -44,6 +44,10 @@ type SeriesDetail struct {
 	Status  string
 	Network string
 	Seasons []SeasonSummary
+	// IMDBID ("tt...") and TVDBID come from external_ids; empty/zero when
+	// TMDB has none.
+	IMDBID string
+	TVDBID int
 
 	// The fields below are only populated by GetSeriesExtended (which
 	// requests append_to_response=credits,recommendations). GetSeries
@@ -121,4 +125,10 @@ type EpisodeDetail struct {
 	AirDate        string
 	StillPath      string
 	RuntimeMinutes int
+}
+
+// ExternalIDs are a series' ids on other databases, as TMDB knows them.
+type ExternalIDs struct {
+	IMDBID string // "tt0903747"; empty when unknown
+	TVDBID int    // 0 when unknown
 }

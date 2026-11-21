@@ -110,9 +110,12 @@ type CourBound struct {
 
 // Series is the domain representation of a TV series record.
 type Series struct {
-	ID                  string
-	TMDBID              int
-	IMDBID              string
+	ID     string
+	TMDBID int
+	IMDBID string
+	// TVDBID is TheTVDB's id, which most indexers match shows by. 0 when
+	// unknown (not looked up yet, or TMDB has none).
+	TVDBID              int
 	Title               string
 	SortTitle           string
 	Year                int
@@ -352,7 +355,8 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (Series, error) {
 	row, err := s.q.CreateSeries(ctx, db.CreateSeriesParams{
 		ID:                  seriesID,
 		TmdbID:              int64(detail.ID),
-		ImdbID:              nil,
+		ImdbID:              &detail.IMDBID, // "" = TMDB has none
+		TvdbID:              ptrInt64(detail.TVDBID),
 		Title:               detail.Title,
 		SortTitle:           sortTitle(detail.Title),
 		Year:                int64(detail.Year),
@@ -1104,6 +1108,7 @@ func rowToSeries(row db.Series) (Series, error) {
 		ID:                  row.ID,
 		TMDBID:              int(row.TmdbID),
 		IMDBID:              deref(row.ImdbID),
+		TVDBID:              tvdbID(row.TvdbID),
 		Title:               row.Title,
 		SortTitle:           row.SortTitle,
 		Year:                int(row.Year),
@@ -1217,7 +1222,7 @@ func (s *Service) RefreshMetadata(ctx context.Context, seriesID string) (Series,
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	updated, err := s.q.UpdateSeriesMetadata(ctx, db.UpdateSeriesMetadataParams{
-		ImdbID:              row.ImdbID,
+		ImdbID:              keepIMDB(row.ImdbID, detail.IMDBID),
 		Title:               detail.Title,
 		SortTitle:           sortTitle(detail.Title),
 		Year:                int64(detail.Year),
@@ -1233,6 +1238,7 @@ func (s *Service) RefreshMetadata(ctx context.Context, seriesID string) (Series,
 		MetadataRefreshedAt: &now,
 		UpdatedAt:           now,
 		AlternateTitles:     string(altTitlesJSON),
+		TvdbID:              keepTVDB(row.TvdbID, detail.TVDBID),
 		ID:                  seriesID,
 	})
 	if err != nil {
@@ -1521,6 +1527,85 @@ func sortTitle(title string) string {
 // toNullString returns a *string; nil for an empty input. Kept under the old
 // name because many call sites still use it; the underlying nullable type is
 // now *string after the SQLite/sqlc migration.
+func tvdbID(p *int64) int {
+	if p == nil {
+		return 0
+	}
+	return int(*p)
+}
+
+func ptrInt64(v int) *int64 {
+	n := int64(v)
+	return &n
+}
+
+// keepTVDB prefers a fresh TVDB id from TMDB, and otherwise keeps what
+// was stored (a refresh with TMDB briefly missing it shouldn't wipe it).
+func keepTVDB(stored *int64, fresh int) *int64 {
+	if fresh > 0 || stored == nil {
+		return ptrInt64(fresh)
+	}
+	return stored
+}
+
+// keepIMDB is keepTVDB for the IMDb id.
+func keepIMDB(stored *string, fresh string) *string {
+	if fresh != "" || stored == nil {
+		return &fresh
+	}
+	return stored
+}
+
+// ExternalIDLookup is the optional MetadataProvider method that reads a
+// series' IMDb/TVDB ids on their own (tmdbtv.Client has it).
+type ExternalIDLookup interface {
+	GetExternalIDs(ctx context.Context, tmdbID int) (tmdbtv.ExternalIDs, error)
+}
+
+// BackfillExternalIDs looks up IMDb and TVDB ids for series that don't
+// have them yet — those added before Pilot stored them. Each series is
+// asked about once: a series TMDB has no id for is stored as ”/0. A
+// short pause between requests keeps a large library well inside TMDB's
+// rate limit. Returns how many series were updated.
+func (s *Service) BackfillExternalIDs(ctx context.Context) (int, error) {
+	lookup, ok := s.meta.(ExternalIDLookup)
+	if !ok || s.meta == nil {
+		return 0, nil
+	}
+	rows, err := s.q.ListSeriesMissingExternalIDs(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list series missing external ids: %w", err)
+	}
+	updated := 0
+	for i, row := range rows {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return updated, ctx.Err()
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
+		ids, err := lookup.GetExternalIDs(ctx, int(row.TmdbID))
+		if err != nil {
+			s.logger.Warn("external ids: lookup failed", "series_id", row.ID, "tmdb_id", row.TmdbID, "error", err)
+			continue
+		}
+		imdb := ids.IMDBID
+		if err := s.q.SetSeriesExternalIDs(ctx, db.SetSeriesExternalIDsParams{
+			ImdbID: &imdb,
+			TvdbID: ptrInt64(ids.TVDBID),
+			ID:     row.ID,
+		}); err != nil {
+			return updated, fmt.Errorf("store external ids: %w", err)
+		}
+		updated++
+	}
+	if updated > 0 {
+		s.logger.Info("external ids: filled in", "series", updated)
+	}
+	return updated, nil
+}
+
 func toNullString(s string) *string {
 	if s == "" {
 		return nil

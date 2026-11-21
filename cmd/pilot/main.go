@@ -454,6 +454,19 @@ func run() error {
 
 	go sched.Start(appCtx)
 
+	// Series added before Pilot stored IMDb/TVDB ids get them a minute
+	// after start (the 12-hour metadata job also catches any it missed).
+	go func() {
+		select {
+		case <-appCtx.Done():
+			return
+		case <-time.After(time.Minute):
+		}
+		if _, err := showSvc.BackfillExternalIDs(appCtx); err != nil {
+			logger.Warn("external ids backfill failed", "error", err)
+		}
+	}()
+
 	// ── HTTP server ───────────────────────────────────────────────────────────
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{

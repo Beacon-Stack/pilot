@@ -37,6 +37,11 @@ func RefreshMetadata(showSvc *show.Service, logger *slog.Logger) scheduler.Job {
 }
 
 func runRefreshMetadata(ctx context.Context, showSvc *show.Service, logger *slog.Logger) error {
+	// IMDb/TVDB ids for any series that doesn't have them yet.
+	if _, err := showSvc.BackfillExternalIDs(ctx); err != nil {
+		logger.Warn("refresh_metadata: external ids backfill failed", "error", err)
+	}
+
 	result, err := showSvc.List(ctx, show.ListRequest{Page: 1, PerPage: 10000})
 	if err != nil {
 		return err

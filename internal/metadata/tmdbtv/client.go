@@ -130,10 +130,15 @@ func (c *Client) GetSeries(ctx context.Context, tmdbID int) (*SeriesDetail, erro
 			EpisodeCount int    `json:"episode_count"`
 			AirDate      string `json:"air_date"`
 		} `json:"seasons"`
+		ExternalIDs externalIDsResponse `json:"external_ids"`
 	}
 
+	// external_ids rides along on the same request: the IMDb and TVDB
+	// ids indexers match shows by.
+	params := url.Values{}
+	params.Set("append_to_response", "external_ids")
 	path := fmt.Sprintf("/tv/%d", tmdbID)
-	if err := c.get(ctx, path, nil, &raw); err != nil {
+	if err := c.get(ctx, path, params, &raw); err != nil {
 		return nil, fmt.Errorf("tmdbtv get series %d: %w", tmdbID, err)
 	}
 
@@ -175,7 +180,24 @@ func (c *Client) GetSeries(ctx context.Context, tmdbID int) (*SeriesDetail, erro
 		Status:         mapStatus(raw.Status),
 		Network:        network,
 		Seasons:        seasons,
+		IMDBID:         raw.ExternalIDs.IMDBID,
+		TVDBID:         raw.ExternalIDs.TVDBID,
 	}, nil
+}
+
+type externalIDsResponse struct {
+	IMDBID string `json:"imdb_id"`
+	TVDBID int    `json:"tvdb_id"`
+}
+
+// GetExternalIDs returns the series' IMDb and TVDB ids (/tv/{id}/external_ids).
+// Either may be empty/zero when TMDB has none.
+func (c *Client) GetExternalIDs(ctx context.Context, tmdbID int) (ExternalIDs, error) {
+	var raw externalIDsResponse
+	if err := c.get(ctx, fmt.Sprintf("/tv/%d/external_ids", tmdbID), nil, &raw); err != nil {
+		return ExternalIDs{}, fmt.Errorf("tmdbtv get external ids %d: %w", tmdbID, err)
+	}
+	return ExternalIDs(raw), nil
 }
 
 // GetSeriesExtended fetches the same /tv/{id} payload as GetSeries but

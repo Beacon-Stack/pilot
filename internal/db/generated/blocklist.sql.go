@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const clearBlocklist = `-- name: ClearBlocklist :exec
@@ -226,6 +227,45 @@ func (q *Queries) ListBlocklist(ctx context.Context, arg ListBlocklistParams) ([
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBlocklistedGUIDs = `-- name: ListBlocklistedGUIDs :many
+SELECT DISTINCT release_guid FROM blocklist WHERE release_guid IN (/*SLICE:guids*/?)
+`
+
+// Which of these release GUIDs are on the blocklist: one query for a
+// whole search's results instead of one per release.
+func (q *Queries) ListBlocklistedGUIDs(ctx context.Context, guids []string) ([]string, error) {
+	query := listBlocklistedGUIDs
+	var queryParams []interface{}
+	if len(guids) > 0 {
+		for _, v := range guids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:guids*/?", strings.Repeat(",?", len(guids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:guids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var release_guid string
+		if err := rows.Scan(&release_guid); err != nil {
+			return nil, err
+		}
+		items = append(items, release_guid)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

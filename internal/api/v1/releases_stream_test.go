@@ -23,7 +23,7 @@ import (
 )
 
 func TestSearchPlan_SeasonIsOneGroupWithFallbackPhrasing(t *testing.T) {
-	series := show.Series{Title: "Andor", IMDBID: "tt9253284", TMDBID: 83867}
+	series := show.Series{Title: "Andor", IMDBID: "tt9253284", TMDBID: 83867, TVDBID: 393189}
 	groups := searchPlan(series, 1, 0, 0, false)
 	if len(groups) != 1 {
 		t.Fatalf("season search: %d groups, want 1 (one request per indexer unless it falls short)", len(groups))
@@ -36,7 +36,7 @@ func TestSearchPlan_SeasonIsOneGroupWithFallbackPhrasing(t *testing.T) {
 		t.Error("season group needs an Enough check, or Season 1 never runs where S01 found only episodes")
 	}
 	for _, q := range g.Queries {
-		if q.IMDBID != "tt9253284" || q.TMDBID != 83867 || q.Season != 1 {
+		if q.IMDBID != "tt9253284" || q.TMDBID != 83867 || q.TVDBID != 393189 || q.Season != 1 {
 			t.Errorf("query %+v doesn't carry the series IDs and season", q)
 		}
 	}
