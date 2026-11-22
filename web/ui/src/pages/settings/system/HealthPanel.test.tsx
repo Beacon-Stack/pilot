@@ -49,10 +49,11 @@ describe("HealthPanel", () => {
 
     expect(await screen.findByText(/Can't reach indexer "Only": 401/)).toBeInTheDocument();
     expect(screen.getByText(/below its minimum of 5 GB/)).toBeInTheDocument();
-    expect(screen.getByLabelText("error")).toBeInTheDocument();
+    expect(screen.getByText("Unhealthy")).toBeInTheDocument();
+    expect(screen.getByText("Indexer")).toBeInTheDocument();
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Check now" }));
-    await waitFor(() => expect(screen.getByText("No issues found.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("All systems healthy")).toBeInTheDocument());
     const post = calls.find((c) => c.method === "POST")!;
     expect(post.url).toMatch(/\/api\/v1\/system\/health\/check$/);
   });
