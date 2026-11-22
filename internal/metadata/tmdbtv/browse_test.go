@@ -19,8 +19,9 @@ func TestBrowseQuery_TVCategories(t *testing.T) {
 		{"popular", "/discover/tv", map[string]string{"sort_by": "popularity.desc"}},
 		{"top-rated", "/discover/tv", map[string]string{"sort_by": "vote_average.desc", "vote_count.gte": "200"}},
 		{"new", "/discover/tv", map[string]string{
-			"air_date.gte": "2026-10-23", "air_date.lte": "2026-11-22",
-			"watch_region": "US", "with_watch_monetization_types": "flatrate|free|ads",
+			"first_air_date.gte": "2026-08-24", "first_air_date.lte": "2026-11-22",
+			"watch_region": "US", "with_watch_monetization_types": "flatrate|free|ads", "vote_count.gte": "5",
+			"air_date.gte": "",
 		}},
 		{"coming-soon", "/discover/tv", map[string]string{"first_air_date.gte": "2026-11-23", "first_air_date.lte": "2027-02-20"}},
 	}
@@ -71,7 +72,7 @@ func TestBrowse_TV(t *testing.T) {
 		}
 	})
 	pr, err := c.Browse(context.Background(), BrowseFilter{Category: "new", Today: today})
-	if err != nil || len(pr.Results) != 1 || pr.Results[0].Title != "New Show" || pr.Results[0].VoteAverage != 8.1 || got.Get("air_date.lte") != "2026-11-22" {
+	if err != nil || len(pr.Results) != 1 || pr.Results[0].Title != "New Show" || pr.Results[0].VoteAverage != 8.1 || got.Get("first_air_date.lte") != "2026-11-22" {
 		t.Errorf("browse %+v %v %v", pr, err, got)
 	}
 	ps, err := c.WatchProviders(context.Background(), "US")

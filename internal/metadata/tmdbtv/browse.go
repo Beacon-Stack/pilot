@@ -15,7 +15,7 @@ const (
 	CategoryTrending   = "trending"
 	CategoryPopular    = "popular"
 	CategoryTopRated   = "top-rated"
-	CategoryNewOnline  = "new" // new episodes on streaming services
+	CategoryNewOnline  = "new" // new series on streaming services
 	CategoryComingSoon = "coming-soon"
 )
 
@@ -78,13 +78,16 @@ func BrowseQuery(f BrowseFilter) (string, url.Values, error) {
 		p.Set("sort_by", "vote_average.desc")
 		p.Set("vote_count.gte", "200")
 	case CategoryNewOnline:
-		// Series with an episode out in the last 30 days on a streaming,
-		// free or ad-supported service in this country.
+		// New series: premiered in the last 90 days and on a streaming,
+		// free or ad-supported service in this country. ("Has an episode
+		// this month" filled the list with long-running network shows.)
+		// A few votes keeps out spam entries, which have none.
 		p.Set("sort_by", "popularity.desc")
-		p.Set("air_date.gte", date(today.Add(-30*day)))
-		p.Set("air_date.lte", date(today))
+		p.Set("first_air_date.gte", date(today.Add(-90*day)))
+		p.Set("first_air_date.lte", date(today))
 		p.Set("watch_region", region)
 		p.Set("with_watch_monetization_types", "flatrate|free|ads")
+		p.Set("vote_count.gte", "5")
 	case CategoryComingSoon:
 		// New series premiering in the next 90 days.
 		p.Set("sort_by", "popularity.desc")

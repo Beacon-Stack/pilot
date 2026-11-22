@@ -168,7 +168,7 @@ func RegisterDiscoverRoutes(api huma.API, showSvc *show.Service) {
 		Method:      http.MethodGet,
 		Path:        "/api/v1/discover/browse",
 		Summary:     "Browse TV series by category with optional filters",
-		Description: "Categories: trending, popular, top-rated, new (episodes out on a streaming service in the last 30 days), coming-soon (premiering in the next 90 days). Filters are ignored for trending.",
+		Description: "Categories: trending, popular, top-rated, new (series that premiered on a streaming service in the last 90 days), coming-soon (premiering in the next 90 days). Filters are ignored for trending.",
 		Tags:        []string{"Discover"},
 	}, func(ctx context.Context, input *discoverBrowseInput) (*discoverListOutput, error) {
 		pr, err := showSvc.DiscoverBrowse(ctx, tmdbtv.BrowseFilter{
