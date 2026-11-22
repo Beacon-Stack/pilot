@@ -343,6 +343,15 @@ func (s *stubMeta) DiscoverTVByGenre(context.Context, int, int) (*tmdbtv.Paginat
 func (s *stubMeta) GetTVGenres(context.Context) ([]tmdbtv.Genre, error) {
 	return nil, nil
 }
+func (s *stubMeta) Browse(context.Context, tmdbtv.BrowseFilter) (*tmdbtv.PaginatedSeries, error) {
+	return &tmdbtv.PaginatedSeries{}, nil
+}
+func (s *stubMeta) WatchProviders(context.Context, string) ([]tmdbtv.WatchProvider, error) {
+	return nil, nil
+}
+func (s *stubMeta) SearchPaginated(context.Context, string, int) (*tmdbtv.PaginatedSeries, error) {
+	return &tmdbtv.PaginatedSeries{}, nil
+}
 func (s *stubMeta) GetSeasonEpisodes(context.Context, int, int) ([]tmdbtv.EpisodeDetail, error) {
 	return s.seasonEpisodes, nil
 }
