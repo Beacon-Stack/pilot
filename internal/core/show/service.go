@@ -68,6 +68,9 @@ type MetadataProvider interface {
 	GetOnTheAirTV(ctx context.Context, page int) (*tmdbtv.PaginatedSeries, error)
 	DiscoverTVByGenre(ctx context.Context, genreID, page int) (*tmdbtv.PaginatedSeries, error)
 	GetTVGenres(ctx context.Context) ([]tmdbtv.Genre, error)
+	Browse(ctx context.Context, f tmdbtv.BrowseFilter) (*tmdbtv.PaginatedSeries, error)
+	WatchProviders(ctx context.Context, region string) ([]tmdbtv.WatchProvider, error)
+	SearchPaginated(ctx context.Context, query string, page int) (*tmdbtv.PaginatedSeries, error)
 	GetAlternativeTitles(ctx context.Context, tmdbID int) ([]string, error)
 }
 
@@ -913,6 +916,30 @@ func (s *Service) DiscoverList(ctx context.Context, category string, page int) (
 	default:
 		return nil, fmt.Errorf("unknown discover category %q", category)
 	}
+}
+
+// DiscoverBrowse returns a page of a Discover category with filters.
+func (s *Service) DiscoverBrowse(ctx context.Context, f tmdbtv.BrowseFilter) (*tmdbtv.PaginatedSeries, error) {
+	if s.meta == nil {
+		return nil, ErrMetadataNotConfigured
+	}
+	return s.meta.Browse(ctx, f)
+}
+
+// DiscoverProviders lists the streaming services in a country.
+func (s *Service) DiscoverProviders(ctx context.Context, region string) ([]tmdbtv.WatchProvider, error) {
+	if s.meta == nil {
+		return nil, ErrMetadataNotConfigured
+	}
+	return s.meta.WatchProviders(ctx, region)
+}
+
+// DiscoverSearch searches series by title, a page at a time.
+func (s *Service) DiscoverSearch(ctx context.Context, query string, page int) (*tmdbtv.PaginatedSeries, error) {
+	if s.meta == nil {
+		return nil, ErrMetadataNotConfigured
+	}
+	return s.meta.SearchPaginated(ctx, query, page)
 }
 
 // DiscoverByGenre returns a page of series in the given TMDB genre.

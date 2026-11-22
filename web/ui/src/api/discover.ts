@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 
 export interface DiscoverCast {
@@ -105,5 +105,59 @@ export function useGenreList() {
     queryKey: ["discover", "genres"],
     queryFn: () => apiFetch<TMDBGenre[]>("/discover/genres"),
     staleTime: Infinity,
+  });
+}
+
+// ── Browse with filters, search, streaming services ─────────────────────────
+
+export interface DiscoverBrowseParams {
+  category: string;
+  page: number;
+  genre: number;
+  provider: number;
+  minRating: number;
+  region: string;
+}
+
+export interface StreamingService {
+  id: number;
+  name: string;
+  logo_path: string;
+}
+
+export function useDiscoverBrowse(p: DiscoverBrowseParams, enabled = true) {
+  const qs = new URLSearchParams({
+    category: p.category,
+    page: String(p.page),
+    region: p.region,
+    ...(p.genre ? { genre: String(p.genre) } : {}),
+    ...(p.provider ? { provider: String(p.provider) } : {}),
+    ...(p.minRating ? { min_rating: String(p.minRating) } : {}),
+  });
+  return useQuery({
+    queryKey: ["discover", "browse", p],
+    queryFn: () => apiFetch<DiscoverListResponse>(`/discover/browse?${qs}`),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useDiscoverSearch(query: string, page: number, enabled = true) {
+  const q = query.trim();
+  return useQuery({
+    queryKey: ["discover", "search", q, page],
+    queryFn: () => apiFetch<DiscoverListResponse>(`/discover/search?q=${encodeURIComponent(q)}&page=${page}`),
+    enabled: enabled && q.length > 0,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useDiscoverProviders(region: string) {
+  return useQuery({
+    queryKey: ["discover", "providers", region],
+    queryFn: () => apiFetch<StreamingService[]>(`/discover/providers?region=${region}`),
+    staleTime: 24 * 60 * 60_000,
   });
 }

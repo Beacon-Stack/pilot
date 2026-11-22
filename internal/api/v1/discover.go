@@ -3,6 +3,8 @@ package v1
 import (
 	"context"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -93,6 +95,34 @@ type discoverPageInput struct {
 	Page int `query:"page" doc:"1-based page number" default:"1"`
 }
 
+type discoverBrowseInput struct {
+	Category  string  `query:"category" default:"trending" enum:"trending,popular,top-rated,new,coming-soon" doc:"Which list"`
+	Page      int     `query:"page" default:"1" minimum:"1" maximum:"500" doc:"1-based page number"`
+	Genre     int     `query:"genre" doc:"TMDB genre ID; 0 for any"`
+	Provider  int     `query:"provider" doc:"TMDB streaming service ID; 0 for any"`
+	MinRating float64 `query:"min_rating" minimum:"0" maximum:"10" doc:"Minimum TMDB rating (0-10)"`
+	Region    string  `query:"region" default:"US" doc:"Country for streaming availability (ISO 3166-1)"`
+}
+
+type discoverRegionInput struct {
+	Region string `query:"region" default:"US" doc:"Country (ISO 3166-1)"`
+}
+
+type discoverSearchInput struct {
+	Query string `query:"q" maxLength:"200" doc:"Title to search for"`
+	Page  int    `query:"page" default:"1" minimum:"1" maximum:"500" doc:"1-based page number"`
+}
+
+type providerBody struct {
+	ID       int    `json:"id"        doc:"TMDB watch provider ID"`
+	Name     string `json:"name"      doc:"Service name"`
+	LogoPath string `json:"logo_path" doc:"TMDB logo path"`
+}
+
+type providerListOutput struct {
+	Body []providerBody
+}
+
 type discoverGenreInput struct {
 	ID   int `path:"id" doc:"TMDB genre ID"`
 	Page int `query:"page" doc:"1-based page number" default:"1"`
@@ -131,6 +161,69 @@ func paginatedToBody(pr *tmdbtv.PaginatedSeries) *discoverListBody {
 // RegisterDiscoverRoutes registers the /api/v1/discover/* endpoints used by
 // the Discover detail page.
 func RegisterDiscoverRoutes(api huma.API, showSvc *show.Service) {
+	// Browse with filters: one endpoint for every category, so genre,
+	// streaming service and rating can be combined with any of them.
+	huma.Register(api, huma.Operation{
+		OperationID: "discover-browse",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/discover/browse",
+		Summary:     "Browse TV series by category with optional filters",
+		Description: "Categories: trending, popular, top-rated, new (episodes out on a streaming service in the last 30 days), coming-soon (premiering in the next 90 days). Filters are ignored for trending.",
+		Tags:        []string{"Discover"},
+	}, func(ctx context.Context, input *discoverBrowseInput) (*discoverListOutput, error) {
+		pr, err := showSvc.DiscoverBrowse(ctx, tmdbtv.BrowseFilter{
+			Category:   input.Category,
+			Page:       input.Page,
+			GenreID:    input.Genre,
+			ProviderID: input.Provider,
+			MinRating:  input.MinRating,
+			Region:     input.Region,
+			Today:      time.Now(),
+		})
+		if err != nil {
+			return nil, mapShowError(err, "series")
+		}
+		return &discoverListOutput{Body: paginatedToBody(pr)}, nil
+	})
+
+	// GET /api/v1/discover/providers — streaming services for the filter.
+	huma.Register(api, huma.Operation{
+		OperationID: "discover-providers",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/discover/providers",
+		Summary:     "List streaming services in a country",
+		Tags:        []string{"Discover"},
+	}, func(ctx context.Context, input *discoverRegionInput) (*providerListOutput, error) {
+		ps, err := showSvc.DiscoverProviders(ctx, input.Region)
+		if err != nil {
+			return nil, mapShowError(err, "series")
+		}
+		out := make([]providerBody, 0, len(ps))
+		for _, p := range ps {
+			out = append(out, providerBody{ID: p.ID, Name: p.Name, LogoPath: p.LogoPath})
+		}
+		return &providerListOutput{Body: out}, nil
+	})
+
+	// GET /api/v1/discover/search — title search, a page at a time.
+	huma.Register(api, huma.Operation{
+		OperationID: "discover-search",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/discover/search",
+		Summary:     "Search TV series by title",
+		Tags:        []string{"Discover"},
+	}, func(ctx context.Context, input *discoverSearchInput) (*discoverListOutput, error) {
+		q := strings.TrimSpace(input.Query)
+		if q == "" {
+			return &discoverListOutput{Body: &discoverListBody{Results: []discoverListItemBody{}, Page: 1}}, nil
+		}
+		pr, err := showSvc.DiscoverSearch(ctx, q, input.Page)
+		if err != nil {
+			return nil, mapShowError(err, "series")
+		}
+		return &discoverListOutput{Body: paginatedToBody(pr)}, nil
+	})
+
 	// GET /api/v1/discover/{tmdbId}
 	huma.Register(api, huma.Operation{
 		OperationID: "discover-series",
