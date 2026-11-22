@@ -307,6 +307,11 @@ func run() error {
 
 	indexerRL := ratelimit.New()
 	indexerSvc := indexer.NewService(queries, registry.Default, bus, indexerRL, logger)
+	// Which indexers keep missing, as of the last run, so the first
+	// searches after a restart don't wait the full timeout on them.
+	if err := indexerSvc.LoadHealth(context.Background()); err != nil {
+		logger.Warn("starting with no indexer health", "error", err)
+	}
 
 	downloaderSvc := downloader.NewService(queries, registry.Default, bus)
 	notificationSvc := notification.NewService(queries, registry.Default)

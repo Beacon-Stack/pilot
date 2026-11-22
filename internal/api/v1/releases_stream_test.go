@@ -93,6 +93,7 @@ func (q streamTestQuerier) ListEnabledReleaseProfiles(context.Context) ([]db.Rel
 func (q streamTestQuerier) GetSetting(context.Context, string) (string, error) {
 	return "", sql.ErrNoRows
 }
+func (q streamTestQuerier) SetSetting(context.Context, db.SetSettingParams) error { return nil }
 
 type gatedIndexer struct {
 	titles []string

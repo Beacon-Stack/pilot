@@ -36,6 +36,7 @@ import {
   Tv,
 } from "lucide-react";
 import Shell, { type NavItem } from "@beacon-shared/Shell";
+import UpdatedNotice from "@beacon-shared/UpdatedNotice";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
 import { getAuthStatus, logout } from "@/lib/auth";
@@ -221,9 +222,10 @@ export default function PilotShell() {
         </>
       }
       overlay={
-        commandPalette.isOpen && (
-          <CommandPalette onClose={commandPalette.close} />
-        )
+        <>
+          {commandPalette.isOpen && <CommandPalette onClose={commandPalette.close} />}
+          <UpdatedNotice app="Pilot" />
+        </>
       }
     />
   );

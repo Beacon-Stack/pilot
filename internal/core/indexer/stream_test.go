@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,11 +18,18 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// streamQuerier answers the three queries a search makes. Anything else
-// panics through the nil embedded interface, which is what we want.
+// streamQuerier answers the queries a search makes, and keeps settings
+// in memory. Anything else panics through the nil embedded interface,
+// which is what we want.
 type streamQuerier struct {
 	db.Querier
-	rows []db.IndexerConfig
+	rows     []db.IndexerConfig
+	settings *settingsStore
+}
+
+type settingsStore struct {
+	mu sync.Mutex
+	m  map[string]string
 }
 
 func (q streamQuerier) ListEnabledIndexers(context.Context) ([]db.IndexerConfig, error) {
@@ -32,8 +40,27 @@ func (q streamQuerier) ListEnabledReleaseProfiles(context.Context) ([]db.Release
 	return nil, nil
 }
 
-func (q streamQuerier) GetSetting(context.Context, string) (string, error) {
-	return "", sql.ErrNoRows
+func (q streamQuerier) GetSetting(_ context.Context, key string) (string, error) {
+	if q.settings == nil {
+		return "", sql.ErrNoRows
+	}
+	q.settings.mu.Lock()
+	defer q.settings.mu.Unlock()
+	v, ok := q.settings.m[key]
+	if !ok {
+		return "", sql.ErrNoRows
+	}
+	return v, nil
+}
+
+func (q streamQuerier) SetSetting(_ context.Context, arg db.SetSettingParams) error {
+	if q.settings == nil {
+		return nil
+	}
+	q.settings.mu.Lock()
+	defer q.settings.mu.Unlock()
+	q.settings.m[arg.Key] = arg.Value
+	return nil
 }
 
 // scriptedIndexer answers each query text with fixed titles. A query in
@@ -424,5 +451,77 @@ func TestSearch_RateLimitWaitHoldsNoSlot(t *testing.T) {
 	}
 	if got := titlesOf(snap.Results); !got["Limited.S01"] {
 		t.Errorf("results %v: the rate-limited indexer should still answer once allowed", got)
+	}
+}
+
+// Indexer health survives a restart: a new Service loads what the old
+// one saved, so a struggling indexer is cut short from the first search.
+func TestHealth_SurvivesRestart(t *testing.T) {
+	shortenStruggleTimeout(t)
+	store := &settingsStore{m: map[string]string{}}
+	stuck := &scriptedIndexer{gate: map[string]chan struct{}{"Show S01": make(chan struct{})}}
+	reg := registry.New()
+	reg.RegisterIndexer("scripted-stuck", func(json.RawMessage) (plugin.Indexer, error) { return stuck, nil })
+	q := streamQuerier{rows: []db.IndexerConfig{{ID: "stuck", Name: "stuck", Kind: "scripted-stuck", Enabled: true, Settings: "{}"}}, settings: store}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	before := NewService(q, reg, nil, ratelimit.New(), logger)
+	before.health.record("stuck", true)
+	before.health.record("stuck", true)
+	before.saveHealth()
+
+	after := NewService(q, reg, nil, ratelimit.New(), logger)
+	if err := after.LoadHealth(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !after.health.struggling("stuck") {
+		t.Fatal("a restarted service forgot the indexer keeps missing")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	start := time.Now()
+	snap, _ := after.SearchInteractive(ctx, []SearchGroup{{Queries: queries("Show S01")}}, nil)
+	if time.Since(start) > time.Second || !snap.Outcomes[0].Pending {
+		t.Errorf("first search after restart took %v (outcome %+v); want the short cut-off", time.Since(start), snap.Outcomes[0])
+	}
+}
+
+// Searches save health on their own, in the background.
+func TestHealth_SavedAfterSearch(t *testing.T) {
+	store := &settingsStore{m: map[string]string{}}
+	ok := &scriptedIndexer{answers: map[string][]string{"Show S01": {"Show.S01.1080p"}}}
+	svc := streamService(t, map[string]*scriptedIndexer{"ok": ok}, "ok")
+	q := svc.q.(streamQuerier)
+	q.settings = store
+	svc.q = q
+
+	_, _ = svc.SearchStream(context.Background(), []SearchGroup{{Queries: queries("Show S01")}}, nil)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		store.mu.Lock()
+		v, saved := store.m[healthSettingKey]
+		store.mu.Unlock()
+		if saved {
+			if !strings.Contains(v, `"ok":[false]`) {
+				t.Errorf("saved health = %s, want the hit recorded", v)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("health was not saved after a search")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestLoadHealth_NothingSavedOrJunk(t *testing.T) {
+	store := &settingsStore{m: map[string]string{}}
+	svc := NewService(streamQuerier{settings: store}, registry.New(), nil, ratelimit.New(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := svc.LoadHealth(context.Background()); err != nil {
+		t.Errorf("nothing saved should start fresh, got %v", err)
+	}
+	store.m[healthSettingKey] = "not json"
+	if err := svc.LoadHealth(context.Background()); err == nil {
+		t.Error("junk should be reported, so the caller can log and start fresh")
 	}
 }
