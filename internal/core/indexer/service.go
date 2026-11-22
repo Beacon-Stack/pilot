@@ -182,6 +182,80 @@ func (h *indexerHealth) record(id string, miss bool) {
 	h.recent[id] = r
 }
 
+// snapshot copies the recent outcomes, for saving.
+func (h *indexerHealth) snapshot() map[string][]bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make(map[string][]bool, len(h.recent))
+	for id, r := range h.recent {
+		out[id] = append([]bool(nil), r...)
+	}
+	return out
+}
+
+// restore replaces the recent outcomes with saved ones.
+func (h *indexerHealth) restore(saved map[string][]bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.recent = make(map[string][]bool, len(saved))
+	for id, r := range saved {
+		if len(r) > healthWindow {
+			r = r[len(r)-healthWindow:]
+		}
+		h.recent[id] = append([]bool(nil), r...)
+	}
+}
+
+// healthSettingKey is where indexer health is saved in the settings
+// table, so a restart doesn't forget which indexers keep missing and
+// give them the full timeout again.
+const healthSettingKey = "indexer_health"
+
+// LoadHealth restores indexer health saved by an earlier run. Nothing
+// saved, or something unreadable, starts fresh.
+func (s *Service) LoadHealth(ctx context.Context) error {
+	if s.q == nil {
+		return nil
+	}
+	raw, err := s.q.GetSetting(ctx, healthSettingKey)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("loading indexer health: %w", err)
+	}
+	var saved map[string][]bool
+	if err := json.Unmarshal([]byte(raw), &saved); err != nil {
+		return fmt.Errorf("reading saved indexer health: %w", err)
+	}
+	s.health.restore(saved)
+	return nil
+}
+
+// saveHealth writes the current indexer health. Called in the background
+// after each search; saves are serialized so an older snapshot can't
+// land after a newer one.
+func (s *Service) saveHealth() {
+	if s.q == nil {
+		return
+	}
+	s.healthSaveMu.Lock()
+	defer s.healthSaveMu.Unlock()
+	b, err := json.Marshal(s.health.snapshot())
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.q.SetSetting(ctx, db.SetSettingParams{
+		Key:       healthSettingKey,
+		Value:     string(b),
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil && s.logger != nil {
+		s.logger.Warn("could not save indexer health", "error", err)
+	}
+}
+
 func (h *indexerHealth) struggling(id string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -203,6 +277,8 @@ type Service struct {
 	cache  sync.Map      // config ID → plugin.Indexer
 	sem    chan struct{} // bounds concurrent indexer searches
 	health indexerHealth // recent outcomes per indexer; see struggleTimeout
+	// healthSaveMu serializes saveHealth.
+	healthSaveMu sync.Mutex
 }
 
 // NewService creates a new Service. A nil logger falls back to slog.Default()
@@ -811,6 +887,7 @@ func (s *Service) search(ctx context.Context, groups []SearchGroup, onUpdate fun
 		}
 	}
 	wg.Wait()
+	go s.saveHealth()
 
 	mu.Lock()
 	defer mu.Unlock()
