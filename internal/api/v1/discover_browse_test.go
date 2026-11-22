@@ -73,3 +73,25 @@ func TestDiscoverBrowse(t *testing.T) {
 		t.Errorf("empty search should not call TMDB: %d %q", resp.Code, meta.query)
 	}
 }
+
+type vandalMeta struct{ browseMeta }
+
+func (m *vandalMeta) Browse(context.Context, tmdbtv.BrowseFilter) (*tmdbtv.PaginatedSeries, error) {
+	return &tmdbtv.PaginatedSeries{Page: 1, TotalPages: 1, Results: []tmdbtv.SearchResult{
+		{ID: 291507, Title: "Ticket+1-888-805-5591 or US +1-888-805-5591", OriginalTitle: "The Body"},
+		{ID: 2, Title: "Call 1-888-805-5591", OriginalTitle: "Call 1-888-805-5591"},
+		{ID: 3, Title: "VisionQuest", OriginalTitle: "VisionQuest"},
+	}}, nil
+}
+
+// A vandalised TMDB title shows the original title; junk in both is dropped.
+func TestDiscoverBrowse_VandalisedTitles(t *testing.T) {
+	_, api := humatest.New(t)
+	RegisterDiscoverRoutes(api, show.NewService(nil, &vandalMeta{}, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	resp := api.Get("/api/v1/discover/browse?category=new")
+	var body discoverListBody
+	_ = json.Unmarshal(resp.Body.Bytes(), &body)
+	if len(body.Results) != 2 || body.Results[0].Title != "The Body" || body.Results[1].Title != "VisionQuest" {
+		t.Errorf("results %+v", body.Results)
+	}
+}
