@@ -130,10 +130,9 @@ jobs:
     # :latest is the newest release, published by release.yml on v* tags.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test, test-frontend, build]
-    # A normal run takes 15-17 minutes. A stuck one (a build that hung
-    # for hours on 2026-11-20) fails here instead of holding a runner
-    # for GitHub's 6-hour default.
-    timeout-minutes: 45
+    # A normal run takes 4-6 minutes. A stuck one fails here instead of
+    # holding a runner for GitHub's 6-hour default.
+    timeout-minutes: 30
     # Newest push wins: an older build still running is cancelled, so it
     # can never finish late and push an older image over :main.
     concurrency:
@@ -178,27 +177,6 @@ jobs:
           file: docker/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ github.sha }}
-            BUILD_TIME=${{ github.event.head_commit.timestamp }}
-            TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
-            TRAKT_CLIENT_ID=${{ secrets.TRAKT_CLIENT_ID }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-          provenance: false
-
-      - name: Build and push (minimal — scratch, no ffprobe)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/Dockerfile.minimal
-          push: true
-          # ghcr.io image names must be lowercase. github.repository preserves
-          # the org casing ("Beacon-Stack/pilot"), which GHCR rejects, so we
-          # spell the repo out explicitly instead of using the expression.
-          tags: ghcr.io/beacon-stack/pilot:main-minimal
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ github.sha }}
