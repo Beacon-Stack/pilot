@@ -15,10 +15,30 @@
 // react-router-dom — no lucide. The four icons it needs (Menu, X,
 // ChevronLeft, ChevronRight) are inlined as SVG below.
 
-import { useState, useEffect, type ReactNode, type CSSProperties } from "react";
+import {
+  useState,
+  useEffect,
+  createContext,
+  type ReactNode,
+  type CSSProperties,
+} from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
 // ── Public types ─────────────────────────────────────────────────────────────
+
+// Exposes the sidebar's icons-only state to children rendered inside
+// `sidebarFooterExtras`. Custom footer items (per-app docs links, health
+// dots, version badges) must hide their text labels when the sidebar
+// is collapsed — otherwise they overflow the 60 px compact-mode rail
+// and either clip ("Do…") or wrap into ugly stair-step lines.
+//
+// `isMobile` is true while the slide-out drawer is rendering at 240 px
+// regardless of `collapsed`, so consumers should treat
+// `isMobile || !collapsed` as "show labels".
+export const SidebarStateContext = createContext<{
+  collapsed: boolean;
+  isMobile: boolean;
+}>({ collapsed: false, isMobile: false });
 
 export interface NavItem {
   to: string;
@@ -174,20 +194,29 @@ function BookOpenIcon({ size = 16 }: { size?: number }) {
 
 // ── Internal: SidebarNavItem ─────────────────────────────────────────────────
 
+// exactOnly: a nav item lights up only on its own page when another
+// item lives under it (System and System → Logs, Settings and
+// Settings → System), so one item is highlighted at a time.
+function exactOnly(to: string, all: NavItem[]): boolean {
+  return to === "/" || all.some((other) => other.to.startsWith(`${to}/`));
+}
+
 function SidebarNavItem({
   item,
   collapsed,
   onClick,
+  end,
 }: {
   item: NavItem;
   collapsed: boolean;
   onClick?: () => void;
+  end: boolean;
 }) {
   const Icon = item.icon;
   return (
     <NavLink
       to={item.to}
-      end={item.to === "/"}
+      end={end}
       title={item.label}
       onClick={onClick}
       style={({ isActive }) => ({
@@ -195,7 +224,15 @@ function SidebarNavItem({
         alignItems: "center",
         gap: "10px",
         padding: "0 12px",
-        height: "40px",
+        // 32 px row + flexShrink: 0 keeps the menu identical at any
+        // viewport height. 32 px is what the previous 40 px spec
+        // naturally collapsed to under flex-shrink at typical 1080-tall
+        // fullscreen; locking it here means full-height and half-height
+        // viewports render the same row size instead of one squishing
+        // and the other not. Sized so all ~26 nav rows fit comfortably
+        // at 1080 without forcing a sidebar scroll.
+        height: "32px",
+        flexShrink: 0,
         borderRadius: "6px",
         textDecoration: "none",
         fontSize: "14px",
@@ -270,6 +307,7 @@ function Sidebar({
 }) {
   const width = isMobile ? 240 : collapsed ? 60 : 240;
   const showLabels = !isMobile && !collapsed;
+  const allNav = [...mainNav, ...(settingsNav ?? [])];
 
   return (
     <nav
@@ -374,6 +412,7 @@ function Sidebar({
           <SidebarNavItem
             key={item.to}
             item={item}
+            end={exactOnly(item.to, allNav)}
             collapsed={!isMobile && collapsed}
             onClick={isMobile ? onClose : undefined}
           />
@@ -414,6 +453,7 @@ function Sidebar({
               <SidebarNavItem
                 key={item.to}
                 item={item}
+                end={exactOnly(item.to, allNav)}
                 collapsed={!isMobile && collapsed}
                 onClick={isMobile ? onClose : undefined}
               />
@@ -432,7 +472,11 @@ function Sidebar({
           gap: "4px",
         }}
       >
-        {sidebarFooterExtras}
+        <SidebarStateContext.Provider
+          value={{ collapsed: !isMobile && collapsed, isMobile }}
+        >
+          {sidebarFooterExtras}
+        </SidebarStateContext.Provider>
         {docsUrl && (
           <a
             href={docsUrl}

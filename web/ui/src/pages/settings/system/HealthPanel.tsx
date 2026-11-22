@@ -2,6 +2,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, RefreshCw } from "lucide-reac
 import { toast } from "sonner";
 import { useCheckHealth, useHealth } from "@/api/health";
 import type { HealthIssue } from "@/types";
+import SystemCard from "@beacon-shared/SystemCard";
 
 const SOURCE_LABEL: Record<HealthIssue["source"], string> = {
   library: "Library",
@@ -27,32 +28,10 @@ export default function HealthPanel() {
   }
 
   return (
-    <section
-      aria-label="Health"
-      style={{
-        background: "var(--color-bg-surface)",
-        border: "1px solid var(--color-border-subtle)",
-        borderRadius: 8,
-        overflow: "hidden",
-        boxShadow: "var(--shadow-card)",
-        marginBottom: 20,
-      }}
-    >
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-          padding: "12px 16px",
-          borderBottom: "1px solid var(--color-border-subtle)",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>Health</h2>
-          {data && <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{checkedLabel(data.connectivity_checked_at)}</span>}
-        </div>
+    <SystemCard
+      title="Health"
+      subtitle={data ? checkedLabel(data.connectivity_checked_at) : undefined}
+      action={
         <button
           type="button"
           onClick={() => void onCheck()}
@@ -73,8 +52,8 @@ export default function HealthPanel() {
           <RefreshCw size={13} style={check.isPending ? { animation: "spin 1s linear infinite" } : undefined} />
           {check.isPending ? "Checking…" : "Check now"}
         </button>
-      </header>
-
+      }
+    >
       {isLoading && <div className="skeleton" style={{ height: 40, margin: 16, borderRadius: 4 }} />}
 
       {data && data.issues.length === 0 && (
@@ -110,6 +89,6 @@ export default function HealthPanel() {
           })}
         </ul>
       )}
-    </section>
+    </SystemCard>
   );
 }

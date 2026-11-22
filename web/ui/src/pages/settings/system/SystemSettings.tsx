@@ -1,90 +1,16 @@
-import { useSystemStatus } from "@/api/system";
 import PageHeader from "@/components/PageHeader";
+import SystemInfo from "@beacon-shared/SystemInfo";
+import TasksCard from "@beacon-shared/TasksCard";
 import HealthPanel from "./HealthPanel";
-import UpdateCheck from "@beacon-shared/UpdateCheck";
 
 export default function SystemSettings() {
-  const { data: status } = useSystemStatus();
-
-  const rows = status
-    ? [
-        { label: "App Name",    value: status.app_name },
-        { label: "Version",     value: status.version },
-        { label: "Build Time",  value: status.build_time },
-        { label: "Go Version",  value: status.go_version },
-        { label: "Database",    value: status.db_type },
-        { label: "DB Path",     value: status.db_path ?? "—" },
-        { label: "Uptime",      value: `${Math.floor(status.uptime_seconds / 60)}m` },
-      ]
-    : [];
-
   return (
     <div style={{ padding: 24, maxWidth: 900 }}>
-      <PageHeader
-        title="System"
-        description="Health and runtime information about this Pilot instance."
-      />
-
-      <HealthPanel />
-
-      <div
-        style={{
-          background: "var(--color-bg-surface)",
-          border: "1px solid var(--color-border-subtle)",
-          borderRadius: 8,
-          overflow: "hidden",
-          boxShadow: "var(--shadow-card)",
-        }}
-      >
-        {rows.map((row, idx) => (
-          <div
-            key={row.label}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "12px 16px",
-              borderBottom: idx < rows.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
-            }}
-          >
-            <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-              {row.label}
-            </span>
-            <span
-              style={{
-                fontSize: 13,
-                color: "var(--color-text-primary)",
-                fontFamily: row.label === "Version" || row.label === "Build Time" || row.label === "DB Path" || row.label === "Go Version"
-                  ? "var(--font-family-mono)"
-                  : undefined,
-              }}
-            >
-              {row.value}
-            </span>
-          </div>
-        ))}
-        {status && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              padding: "12px 16px",
-              borderTop: "1px solid var(--color-border-subtle)",
-            }}
-          >
-            <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Updates</span>
-            <UpdateCheck app="Pilot" service="pilot" image="ghcr.io/beacon-stack/pilot" />
-          </div>
-        )}
-        {!status && (
-          <div style={{ padding: 16 }}>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="skeleton" style={{ height: 14, borderRadius: 4, marginBottom: 8, width: i % 2 === 0 ? "60%" : "40%" }} />
-            ))}
-          </div>
-        )}
+      <PageHeader title="System" description="What's running and how it's doing." />
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <SystemInfo app="Pilot" service="pilot" image="ghcr.io/beacon-stack/pilot" />
+        <HealthPanel />
+        <TasksCard />
       </div>
     </div>
   );

@@ -14,6 +14,8 @@ function renderPage(updates: object) {
         { status: 200 },
       );
     if (url.endsWith("/system/health")) return new Response(JSON.stringify({ issues: [] }), { status: 200 });
+    if (url.endsWith("/tasks")) return new Response(JSON.stringify([{ name: "library_scan", interval: "6h0m0s" }]), { status: 200 });
+    if (url.endsWith("/tasks/library_scan/run")) return new Response(null, { status: 202 });
     return new Response(JSON.stringify({}), { status: 200 });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -51,5 +53,26 @@ describe("SystemSettings updates", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByText("Check for updates"));
     await waitFor(() => expect(screen.getByText(/Up to date/)).toBeInTheDocument());
+  });
+});
+
+describe("SystemSettings layout", () => {
+  it("shows About, Health and Tasks in the shared layout", async () => {
+    renderPage({ status: "up_to_date", kind: "commit", current: "1111111" });
+    expect(await screen.findByRole("region", { name: "About" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Health" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Tasks" })).toBeInTheDocument();
+    expect(await screen.findByText("1111111")).toBeInTheDocument();
+    expect(screen.getByText("1m")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "/api/docs" })).toHaveAttribute("href", "/api/docs");
+  });
+
+  it("runs a task early", async () => {
+    const fetchMock = renderPage({ status: "up_to_date", kind: "commit", current: "1111111" });
+    expect(await screen.findByText("Library scan")).toBeInTheDocument();
+    expect(screen.getByText("every 6h")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Run Library scan now" }));
+    expect(await screen.findByText("Running ✓")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([u, init]) => String(u).endsWith("/tasks/library_scan/run") && (init as RequestInit)?.method === "POST")).toBe(true);
   });
 });
