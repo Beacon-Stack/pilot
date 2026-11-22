@@ -140,9 +140,13 @@ type genreListOutput struct {
 func paginatedToBody(pr *tmdbtv.PaginatedSeries) *discoverListBody {
 	items := make([]discoverListItemBody, 0, len(pr.Results))
 	for _, r := range pr.Results {
+		title, ok := displayTitle(r.Title, r.OriginalTitle)
+		if !ok {
+			continue
+		}
 		items = append(items, discoverListItemBody{
 			TMDBID:     r.ID,
-			Title:      r.Title,
+			Title:      title,
 			Year:       r.Year,
 			Overview:   r.Overview,
 			PosterPath: r.PosterPath,
