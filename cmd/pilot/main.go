@@ -26,15 +26,6 @@ import (
 	_ "github.com/beacon-stack/pilot/plugins/downloaders/transmission"
 
 	// Register notification plugins.
-	_ "github.com/beacon-stack/pilot/plugins/notifications/command"
-	_ "github.com/beacon-stack/pilot/plugins/notifications/discord"
-	_ "github.com/beacon-stack/pilot/plugins/notifications/email"
-	_ "github.com/beacon-stack/pilot/plugins/notifications/gotify"
-	_ "github.com/beacon-stack/pilot/plugins/notifications/ntfy"
-	_ "github.com/beacon-stack/pilot/plugins/notifications/pushover"
-	_ "github.com/beacon-stack/pilot/plugins/notifications/slack"
-	_ "github.com/beacon-stack/pilot/plugins/notifications/telegram"
-	_ "github.com/beacon-stack/pilot/plugins/notifications/webhook"
 
 	// Register media server plugins.
 	_ "github.com/beacon-stack/pilot/plugins/mediaservers/emby"
@@ -53,6 +44,7 @@ import (
 	beaconlog "github.com/beacon-stack/pulse/pkg/log"
 	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
 	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
+	"github.com/beacon-stack/pulse/pkg/notify"
 
 	"github.com/beacon-stack/pilot/internal/api"
 	"github.com/beacon-stack/pilot/internal/api/middleware"
@@ -73,7 +65,6 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/library"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/mediaserver"
-	"github.com/beacon-stack/pilot/internal/core/notification"
 	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
@@ -90,6 +81,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/events"
 	"github.com/beacon-stack/pilot/internal/metadata/animelist"
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
+	"github.com/beacon-stack/pilot/internal/notifications"
 	pulseint "github.com/beacon-stack/pilot/internal/pulse"
 	"github.com/beacon-stack/pilot/internal/ratelimit"
 	"github.com/beacon-stack/pilot/internal/registry"
@@ -314,7 +306,6 @@ func run() error {
 	}
 
 	downloaderSvc := downloader.NewService(queries, registry.Default, bus)
-	notificationSvc := notification.NewService(queries, registry.Default)
 	mediaServerSvc := mediaserver.NewService(queries, registry.Default)
 	blocklistSvc := blocklist.NewService(queries)
 	mediaManagementSvc := mediamanagement.NewService(queries)
@@ -382,6 +373,23 @@ func run() error {
 		defer pulseIntegration.Close()
 	}
 
+	// ── Notifications ─────────────────────────────────────────────────────────
+	// Through Pulse when connected to one that has channels, otherwise from
+	// Pilot's own channels (pulse/pkg/notify).
+	notifyStore, notifyOutbox, err := notifications.Setup(context.Background(), notifications.Deps{
+		DB: database.SQL, Q: queries, Bus: bus, Log: logger,
+		Hub: func() notify.Hub {
+			if pulseIntegration == nil || pulseIntegration.Client == nil {
+				return nil
+			}
+			return pulseIntegration.Client.NotifyHub()
+		},
+	})
+	if err != nil {
+		logger.Error("notifications unavailable", "error", err)
+		os.Exit(1)
+	}
+
 	// ── HTTP router ───────────────────────────────────────────────────────────
 	startTime := time.Now()
 	router := api.NewRouter(api.RouterConfig{
@@ -394,6 +402,8 @@ func run() error {
 		Logger:                 logger,
 		StartTime:              startTime,
 		DB:                     database.SQL,
+		NotifyStore:            notifyStore,
+		NotifyOutbox:           notifyOutbox,
 		DBType:                 "sqlite",
 		DBPath:                 cfg.Database.Path,
 		ConfigFile:             cfg.ConfigFile,
@@ -407,7 +417,6 @@ func run() error {
 		LibraryService:         librarySvc,
 		IndexerService:         indexerSvc,
 		DownloaderService:      downloaderSvc,
-		NotificationService:    notificationSvc,
 		MediaServerService:     mediaServerSvc,
 		BlocklistService:       blocklistSvc,
 		MediaManagementService: mediaManagementSvc,
@@ -438,6 +447,10 @@ func run() error {
 	// Anime-Lists XML — fetch + daily refresh. Disk fallback means
 	// startup is fast; the network fetch happens asynchronously.
 	animeListSvc.Start(appCtx)
+	go notifyOutbox.Run(appCtx)
+	go (&notify.HealthWatcher{Outbox: notifyOutbox, Check: notifications.HealthCheck(func(ctx context.Context) []health.Issue {
+		return healthSvc.Report(ctx).Issues
+	})}).Run(appCtx)
 
 	// One-shot anime backfill sweep — catches series added before anime
 	// detection existed and upgrades their series_type + populates

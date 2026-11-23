@@ -17,7 +17,7 @@ import LogsPage from "@/pages/settings/system/Logs";
 import AppSettings from "@/pages/settings/app/AppSettings";
 import ProvidersSettings from "@/pages/settings/providers/ProvidersSettings";
 import DownloadClientList from "@/pages/settings/download-clients/DownloadClientList";
-import NotificationList from "@/pages/settings/notifications/NotificationList";
+import Notifications from "@beacon-shared/Notifications";
 import MediaServerList from "@/pages/settings/media-servers/MediaServerList";
 import BlocklistPage from "@/pages/settings/blocklist/BlocklistPage";
 import MediaManagementPage from "@/pages/settings/media-management/MediaManagementPage";
@@ -79,7 +79,7 @@ export default function App() {
             {/* settings/custom-formats is hidden until the backend exists (plans/sonarr-parity.md, Phase D). */}
             <Route path="settings/indexers" element={<IndexerList />} />
             <Route path="settings/download-clients" element={<DownloadClientList />} />
-            <Route path="settings/notifications" element={<NotificationList />} />
+            <Route path="settings/notifications" element={<Notifications />} />
             <Route path="settings/media-servers" element={<MediaServerList />} />
             <Route path="settings/import-lists" element={<ImportListList />} />
             <Route path="settings/import-exclusions" element={<ImportExclusions />} />
