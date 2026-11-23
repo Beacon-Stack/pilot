@@ -13,6 +13,8 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	beaconlog "github.com/beacon-stack/pulse/pkg/log"
+	"github.com/beacon-stack/pulse/pkg/notify"
+	"github.com/beacon-stack/pulse/pkg/notify/notifyapi"
 
 	"github.com/beacon-stack/pilot/internal/api/middleware"
 	v1 "github.com/beacon-stack/pilot/internal/api/v1"
@@ -30,7 +32,6 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/library"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 	"github.com/beacon-stack/pilot/internal/core/mediaserver"
-	"github.com/beacon-stack/pilot/internal/core/notification"
 	"github.com/beacon-stack/pilot/internal/core/provider"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/queue"
@@ -69,7 +70,8 @@ type RouterConfig struct {
 	LibraryService         *library.Service
 	IndexerService         *indexer.Service
 	DownloaderService      *downloader.Service
-	NotificationService    *notification.Service
+	NotifyStore            *notify.Store
+	NotifyOutbox           *notify.Outbox
 	MediaServerService     *mediaserver.Service
 	BlocklistService       *blocklist.Service
 	MediaManagementService *mediamanagement.Service
@@ -214,8 +216,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		v1.RegisterManualImportRoutes(humaAPI, cfg.ImporterService)
 	}
 
-	if cfg.NotificationService != nil {
-		v1.RegisterNotificationRoutes(humaAPI, cfg.NotificationService)
+	if cfg.NotifyStore != nil && cfg.NotifyOutbox != nil {
+		notifyapi.Register(humaAPI, notifyapi.Options{App: "Pilot", Store: cfg.NotifyStore, Outbox: cfg.NotifyOutbox})
 	}
 
 	if cfg.MediaServerService != nil {

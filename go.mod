@@ -3,7 +3,7 @@ module github.com/beacon-stack/pilot
 go 1.25.0
 
 require (
-	github.com/beacon-stack/pulse v0.3.1-0.20260504190202-3c12cd16bb1e
+	github.com/beacon-stack/pulse v0.4.1-0.20261123130739-7ff6e287ede2
 	github.com/coder/websocket v1.8.14
 	github.com/danielgtaylor/huma/v2 v2.37.3
 	github.com/go-chi/chi/v5 v5.2.5
@@ -37,7 +37,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
