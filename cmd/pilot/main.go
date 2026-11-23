@@ -41,6 +41,7 @@ import (
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_popular_tv"
 	_ "github.com/beacon-stack/pilot/plugins/importlists/trakt_trending_tv"
 
+	"github.com/beacon-stack/pulse/pkg/healthcheck"
 	beaconlog "github.com/beacon-stack/pulse/pkg/log"
 	"github.com/beacon-stack/pulse/pkg/log/plugins/file"
 	"github.com/beacon-stack/pulse/pkg/log/plugins/loki"
@@ -93,6 +94,9 @@ import (
 )
 
 func main() {
+	// "pilot healthcheck" (and the wget link) answer the container health
+	// check and exit; the image has no shell or wget of its own.
+	healthcheck.Run(os.Args, "http://127.0.0.1:"+envOr("PILOT_SERVER_PORT", "8383")+"/health")
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -560,4 +564,12 @@ func (a animeLookupAdapter) CourBounds(tmdbID int) []show.CourBound {
 		}
 	}
 	return out
+}
+
+// envOr returns the environment variable, or def when it's unset.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
