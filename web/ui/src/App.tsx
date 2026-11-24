@@ -76,7 +76,6 @@ export default function App() {
             <Route path="settings/media-management" element={<MediaManagementPage />} />
             <Route path="settings/quality-profiles" element={<QualityProfileList />} />
             <Route path="settings/quality-definitions" element={<QualityDefinitionsPage />} />
-            {/* settings/custom-formats is hidden until the backend exists (plans/sonarr-parity.md, Phase D). */}
             <Route path="settings/indexers" element={<IndexerList />} />
             <Route path="settings/download-clients" element={<DownloadClientList />} />
             <Route path="settings/notifications" element={<Notifications />} />
