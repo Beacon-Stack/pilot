@@ -83,7 +83,7 @@ type Mapping struct {
 	// entries for both tmdbseason=1 and tmdbseason=2).
 	TMDBSeason int
 	// TMDBOffset is added to the cour-relative episode number to get
-	// the TMDB-relative episode number. For the JJK incident: cour 3
+	// the TMDB-relative episode number. Example (Jujutsu Kaisen): cour 3
 	// (tvdbseason=3) maps to TMDB season=1 with tmdboffset=47, so
 	// TVDB S03E01 → TMDB S01E48 → absolute 48.
 	TMDBOffset int
@@ -390,7 +390,7 @@ func (s *Service) size() int {
 	return len(s.byTMDBID)
 }
 
-// ── XML parsing ─────────────────────────────────────────────────────────────
+// XML parsing
 
 // rawAnime is the on-disk shape. The XML uses string-typed attributes
 // (some are blank, some are the literal "movie" keyword for non-series

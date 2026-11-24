@@ -9,7 +9,7 @@ import type {
   CategoryResult,
 } from "@/types";
 
-// ── Shared styles ─────────────────────────────────────────────────────────────
+// Shared styles
 
 const cardStyle: React.CSSProperties = {
   background: "var(--color-bg-surface)",
@@ -84,7 +84,7 @@ function formatBytes(gb: number): string {
   return `${gb.toFixed(0)} GB`;
 }
 
-// ── Stage 1: Connection ───────────────────────────────────────────────────────
+// Stage 1: Connection
 
 interface Stage1Props {
   url: string;
@@ -164,7 +164,7 @@ function ConnectionStage({
   );
 }
 
-// ── Stage 2: Preview ──────────────────────────────────────────────────────────
+// Stage 2: Preview
 
 interface Stage2Props {
   preview: SonarrPreviewResult;
@@ -333,7 +333,7 @@ function PreviewStage({
   );
 }
 
-// ── Stage 3: Results ──────────────────────────────────────────────────────────
+// Stage 3: Results
 
 interface Stage3Props {
   result: SonarrImportResult;
@@ -463,7 +463,7 @@ function ResultStage({ result, onDone }: Stage3Props) {
   );
 }
 
-// ── Small reusable pieces ─────────────────────────────────────────────────────
+// Small reusable pieces
 
 const tagStyle: React.CSSProperties = {
   display: "inline-block",
@@ -542,7 +542,7 @@ function CountCell({
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// Main component
 
 type Stage = "connect" | "preview" | "results";
 

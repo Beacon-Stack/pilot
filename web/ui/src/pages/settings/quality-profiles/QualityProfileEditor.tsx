@@ -4,7 +4,7 @@ import Modal from "@beacon-shared/Modal";
 import { useCreateQualityProfile, useUpdateQualityProfile } from "@/api/quality";
 import type { Quality, QualityProfile } from "@/types";
 
-// ── Quality catalog ───────────────────────────────────────────────────────────
+// Quality catalog
 
 export interface CatalogQuality {
   name: string;
@@ -55,7 +55,7 @@ function toQuality(c: CatalogQuality): Quality {
   return { name: c.name, resolution: c.resolution, source: c.source, codec: "", hdr: "" };
 }
 
-// ── Form state ────────────────────────────────────────────────────────────────
+// Form state
 
 export interface ProfileForm {
   name: string;
@@ -113,7 +113,7 @@ export function buildProfileRequest(f: ProfileForm, existing: QualityProfile | n
   };
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// Component
 
 const labelStyle: CSSProperties = {
   display: "flex",

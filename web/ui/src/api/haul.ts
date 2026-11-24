@@ -74,9 +74,9 @@ export interface SeriesGrabHistoryItem {
 }
 
 // useSeriesGrabHistory loads Pilot's own grab_history rows for the
-// series. Used to detect "orphaned" grabs — completed downloads whose
-// file never got linked into the library (the anime-importer bug class
-// of issue). Cheap enough to fetch on every series detail open.
+// series. Used to detect "orphaned" grabs: completed downloads whose
+// file never got linked into the library. Cheap enough to fetch on every
+// series detail open.
 export function useSeriesGrabHistory(seriesId: string) {
   return useQuery({
     queryKey: ["series", seriesId, "grab-history"],

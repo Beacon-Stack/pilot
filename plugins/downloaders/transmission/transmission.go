@@ -216,7 +216,7 @@ func (c *Client) SetSeedLimits(ctx context.Context, clientItemID string, ratioLi
 	return nil
 }
 
-// ── RPC helper ───────────────────────────────────────────────────────────────
+// RPC helper
 
 // rpc performs a Transmission RPC call, automatically handling the session-ID
 // CSRF dance (409 → retry with new X-Transmission-Session-Id header).
@@ -288,7 +288,7 @@ func (c *Client) rpc(ctx context.Context, method string, arguments map[string]an
 	return errors.New("transmission: too many 409 retries")
 }
 
-// ── Torrent fetch ────────────────────────────────────────────────────────────
+// Torrent fetch
 
 // errMagnetRedirect signals that a torrent URL redirected to a magnet link.
 type errMagnetRedirect struct{ magnetURL string }
@@ -328,7 +328,7 @@ func (c *Client) fetchTorrentFile(ctx context.Context, torrentURL string) ([]byt
 	return io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MiB limit
 }
 
-// ── Torrent get helper ───────────────────────────────────────────────────────
+// Torrent get helper
 
 // torrentFields is the list of fields requested from torrent-get.
 var torrentFields = []string{
@@ -350,7 +350,7 @@ func (c *Client) getTorrents(ctx context.Context, hashes []string) ([]torrentInf
 	return resp.Torrents, nil
 }
 
-// ── RPC types ────────────────────────────────────────────────────────────────
+// RPC types
 
 type rpcRequest struct {
 	Method    string         `json:"method"`
@@ -377,7 +377,7 @@ type addedTorrent struct {
 	Name       string `json:"name"`
 }
 
-// ── Torrent state types ──────────────────────────────────────────────────────
+// Torrent state types
 
 type torrentInfo struct {
 	ID            int64   `json:"id"`

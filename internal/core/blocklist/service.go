@@ -1,17 +1,6 @@
-// Package blocklist manages the release blocklist used to skip known-bad releases.
-//
-// ⚠ Before changing anything in this file, run:
-//
-//	go test ./internal/core/blocklist/...
-//
-// The tests (service_test.go) pin the stall-watcher's write path:
-// AddFromStall, two-keyed dedup (guid OR info_hash), idempotency on
-// duplicate insert, RemoveByGUID for the grab override flow, and the
-// CountRecentStalls query used by the circuit breaker. Breaking any of
-// these silently breaks automated dead-torrent blocklisting.
-//
-// See pilot/CLAUDE.md "Regression guard: dead-torrent release search"
-// for the full context.
+// Package blocklist manages the release blocklist used to skip known-bad
+// releases. Entries are keyed by GUID or info hash, so a release
+// blocklisted from one indexer is also skipped on another.
 package blocklist
 
 import (

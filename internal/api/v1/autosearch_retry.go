@@ -17,11 +17,8 @@ import (
 // NewAutoSearchRetryHandler returns an event-bus handler that performs the
 // re-search requested by TypeAutoSearchRetry. The stall watcher and the
 // failed-download handler publish that event after blocklisting a dead
-// release; this is what actually searches again and grabs the next best
-// release. The blocklist entry they wrote keeps the dead release out.
-//
-// Before this existed the event had no subscriber, so stalled or failed
-// automatic grabs were blocklisted and then nothing happened.
+// release; this handler searches again and grabs the next best release.
+// The blocklist entry they wrote keeps the dead release out.
 func NewAutoSearchRetryHandler(
 	showSvc *show.Service,
 	indexerSvc *indexer.Service,

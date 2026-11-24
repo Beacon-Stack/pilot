@@ -1,8 +1,8 @@
 package jobs
 
-// rss_sync_test.go — regression tests for the per-episode dedup change
-// that closed the "11 duplicate completed grab_history rows" failure
-// mode (see plans/lifecycle-trust.md QW1).
+// Tests for RSS sync's per-episode dedup, which stops the same episode
+// being grabbed again and again while an earlier grab is in flight or
+// has just completed.
 //
 // We can't easily test runRSSSync end-to-end because it takes concrete
 // *indexer.Service and *downloader.Service pointers (not interfaces),

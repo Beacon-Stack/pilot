@@ -106,7 +106,7 @@ func TestLookup_FirstWinsWhenMultipleEntriesShareTMDBID(t *testing.T) {
 	}
 }
 
-// ── TVDBSeasonToAbsolute (the JJK incident path) ───────────────────────────
+// TVDBSeasonToAbsolute (the JJK incident path)
 
 // Headline: Jujutsu Kaisen tagged in TVDB-style as S03E01 should
 // resolve to absolute episode 48 — that's the user's TMDB-relative
@@ -195,7 +195,7 @@ func TestTVDBSeasonToAbsolute_RejectsZeroEpisode(t *testing.T) {
 	}
 }
 
-// ── AbsoluteToTMDBEpisode (inverse) ─────────────────────────────────────────
+// AbsoluteToTMDBEpisode (inverse)
 //
 // These tests pin the import-side mapping that turns a fansub
 // absolute number ("Show - 48") back into the TMDB (season, episode)

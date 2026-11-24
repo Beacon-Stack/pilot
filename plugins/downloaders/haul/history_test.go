@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-// ── buildHistoryQueryString ──────────────────────────────────────────────────
+// buildHistoryQueryString
 
 func TestBuildHistoryQueryString_AllFields(t *testing.T) {
 	q := buildHistoryQueryString(HistoryFilter{
@@ -70,7 +70,7 @@ func TestBuildHistoryQueryString_IncludeRemovedFalseOmitted(t *testing.T) {
 	}
 }
 
-// ── LookupHistory (integration-ish via httptest.Server) ─────────────────────
+// LookupHistory (integration-ish via httptest.Server)
 
 // Headline behaviour: a happy-path lookup returns the items array.
 // Pin this so the response-shape contract with Haul's

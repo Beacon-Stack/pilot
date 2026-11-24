@@ -203,7 +203,7 @@ func (s *Server) Test(ctx context.Context) error {
 	return nil
 }
 
-// ── Library sync support ─────────────────────────────────────────────────────
+// Library sync support
 
 // Section is a public representation of a Plex library section.
 type Section struct {
@@ -317,7 +317,7 @@ func extractTmdbID(v plexVideo) int {
 	return 0
 }
 
-// ── WatchProvider implementation ─────────────────────────────────────────────
+// WatchProvider implementation
 
 // plexHistoryContainer wraps the Plex watch history XML response.
 type plexHistoryContainer struct {

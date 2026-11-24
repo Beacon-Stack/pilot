@@ -14,7 +14,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/safedialer"
 )
 
-// ── Sonarr API types ─────────────────────────────────────────────────────────
+// Sonarr API types
 
 type sonarrStatus struct {
 	Version string `json:"version"`
@@ -115,8 +115,6 @@ type sonarrSeries struct {
 	SeriesType       string `json:"seriesType"` // "standard", "anime", "daily"
 }
 
-// ── Client ───────────────────────────────────────────────────────────────────
-
 // Client is an HTTP client for the Sonarr v3 API.
 type Client struct {
 	baseURL string
@@ -209,7 +207,7 @@ func (c *Client) GetSeries(ctx context.Context) ([]sonarrSeries, error) {
 	return series, nil
 }
 
-// ── Field helpers ────────────────────────────────────────────────────────────
+// Field helpers
 
 func fieldString(fields []sonarrField, name string) string {
 	for _, f := range fields {

@@ -7,26 +7,10 @@
 // watcher also triggers a re-search for the episode, capped by a circuit
 // breaker to avoid loops when every release for an episode is dead.
 //
-// Design notes in plans/dead-torrent-phase0.md. Specifically: this is
-// pull-based (not webhooks), runs entirely in Pilot, and tolerates Haul
-// being briefly unreachable without fallout. The watcher does NOT
-// blocklist during its own first 2 minutes of uptime — that's to absorb
-// restart races where grabs from before the restart look "stalled" because
-// we just haven't observed them yet.
-//
-// ⚠ Before changing anything in this file, run:
-//
-//	go test ./internal/core/stallwatcher/...
-//
-// The tests (service_test.go) pin every critical contract:
-//   - startup grace suppression
-//   - circuit breaker behavior
-//   - interactive-vs-auto_search retry gating
-//   - unique-info_hash cross-indexer dedup
-//   - idempotency on already-stalled grabs
-//   - graceful degradation when Haul is down
-//
-// See pilot/CLAUDE.md for the full regression-guard rationale.
+// It pulls rather than receiving webhooks, and tolerates Haul being
+// briefly unreachable. It does not blocklist during its own first two
+// minutes: after a restart, grabs from before it can look stalled only
+// because they haven't been observed yet.
 package stallwatcher
 
 import (
@@ -350,10 +334,10 @@ func (s *Service) handleStall(ctx context.Context, st haul.StalledTorrent, inGra
 	return nil
 }
 
-// resolveHaulClient finds an enabled haul download client in the
+// resolveHaulClient finds an enabled Haul download client in the
 // downloader registry and returns a concrete plugin client. Returns
-// errNoHaulConfigured if the user hasn't set one up — Phase 0 only
-// watches Haul, so other clients are silently ignored.
+// errNoHaulConfigured if there is none: only Haul reports stalls, so
+// other clients are not watched.
 func (s *Service) resolveHaulClient(ctx context.Context) (*haul.Client, error) {
 	clients, err := s.downloader.List(ctx)
 	if err != nil {

@@ -117,7 +117,7 @@ func (s *Server) Test(ctx context.Context) error {
 	return nil
 }
 
-// ── WatchProvider implementation ─────────────────────────────────────────────
+// WatchProvider implementation
 
 // WatchHistory returns watch events since the given timestamp.
 // Implements plugin.WatchProvider.

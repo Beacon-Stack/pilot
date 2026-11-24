@@ -85,14 +85,14 @@ func parseEpisode(filename string) episodeParse {
 
 	var result episodeParse
 
-	// ── Year ─────────────────────────────────────────────────────────────────
+	// Year
 	if m := yearRe.FindStringSubmatch(filename); len(m) >= 2 {
 		if y, err := strconv.Atoi(m[1]); err == nil {
 			result.Year = y
 		}
 	}
 
-	// ── Season + episode numbers ──────────────────────────────────────────────
+	// Season + episode numbers
 	if m := seEpisodeRe.FindStringSubmatch(filename); len(m) >= 3 {
 		season, _ := strconv.Atoi(m[1])
 		result.EpisodeInfo.Season = season
@@ -119,7 +119,7 @@ func parseEpisode(filename string) episodeParse {
 		return result
 	}
 
-	// ── Season pack (no episode number) ──────────────────────────────────────
+	// Season pack (no episode number)
 	if m := seasonPackRe.FindStringSubmatchIndex(filename); m != nil {
 		// Group 1 is the compact form (S02), group 2 the word form
 		// (Season 2) — exactly one is set.
@@ -135,7 +135,7 @@ func parseEpisode(filename string) episodeParse {
 		return result
 	}
 
-	// ── Anime absolute episode number ────────────────────────────────────────
+	// Anime absolute episode number
 	// Tried only when no SxxExx and no season pack matched. Fansub
 	// releases like "[Group] Jujutsu Kaisen - 48 [1080p].mkv" land here.
 	// Year / resolution markers are excluded by the regex's shape
@@ -157,7 +157,7 @@ func parseEpisode(filename string) episodeParse {
 		}
 	}
 
-	// ── No season/episode information found ───────────────────────────────────
+	// No season/episode information found
 	result.Title = cleanTitle(filename)
 	return result
 }

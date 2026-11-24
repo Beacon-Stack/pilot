@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 import type { Series, Season, Cour, Episode, SeriesListResponse } from "@/types";
 
-// ── Series list & detail ─────────────────────────────────────────────────────
+// Series list & detail
 
 // useSeriesList loads the entire library. The server paginates (default 50
 // per page), so we accumulate pages until we have all `total` rows — the
@@ -40,7 +40,7 @@ export function useSeriesDetail(id: string) {
   });
 }
 
-// ── Lookup (search TMDB before adding) ──────────────────────────────────────
+// Lookup (search TMDB before adding)
 
 export interface LookupResult {
   tmdb_id: number;
@@ -71,7 +71,7 @@ export function useLookupSeries(query: string) {
   });
 }
 
-// ── Library TMDB IDs (for "already added" detection) ────────────────────────
+// Library TMDB IDs (for "already added" detection)
 
 export function useLibraryTmdbIds() {
   return useQuery({
@@ -80,7 +80,7 @@ export function useLibraryTmdbIds() {
   });
 }
 
-// ── Mutations ────────────────────────────────────────────────────────────────
+// Mutations
 
 interface AddSeriesInput {
   tmdb_id: number;
@@ -126,7 +126,7 @@ export function useRefreshSeriesMetadata(id: string) {
   });
 }
 
-// ── Seasons ──────────────────────────────────────────────────────────────────
+// Seasons
 
 export function useSeasons(seriesId: string) {
   return useQuery({
@@ -150,7 +150,7 @@ export function useUpdateSeasonMonitored(seriesId: string) {
   });
 }
 
-// ── Cours (anime) ────────────────────────────────────────────────────────────
+// Cours (anime)
 
 // useCours returns the cour-shaped projection for an anime series.
 // The backend returns an empty array for non-anime or unmapped series;
@@ -178,7 +178,7 @@ export function useUpdateCourMonitored(seriesId: string) {
   });
 }
 
-// ── Episodes ─────────────────────────────────────────────────────────────────
+// Episodes
 
 export function useEpisodes(seriesId: string, seasonNumber: number) {
   return useQuery({

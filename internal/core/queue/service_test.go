@@ -20,7 +20,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── mocks ────────────────────────────────────────────────────────────────────
+// mocks
 
 // mockQuerier embeds db.Querier so only the methods PollAndUpdate
 // touches need real implementations. Records every call so tests can
@@ -138,7 +138,7 @@ func activeGrab(id, clientItemID, currentStatus string) db.GrabHistory {
 	}
 }
 
-// ── PollAndUpdate ────────────────────────────────────────────────────────────
+// PollAndUpdate
 
 // No active grabs → no-op. Important: the SUT short-circuits without
 // calling ClientFor, so a misbehaving downloader during periods with
@@ -503,7 +503,7 @@ func TestPollAndUpdate_StatusErrorIsLoggedAndContinues(t *testing.T) {
 	}
 }
 
-// ── Failed-download handling ─────────────────────────────────────────────────
+// Failed-download handling
 
 type recordingFailureHandler struct {
 	mu    sync.Mutex

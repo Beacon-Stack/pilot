@@ -7,7 +7,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// helpers
 
 func qSD() plugin.Quality {
 	return plugin.Quality{Resolution: plugin.ResolutionSD, Source: plugin.SourceDVD, Codec: plugin.CodecXVID}
@@ -49,7 +49,7 @@ func standardProfile(upgradeAllowed bool, upgradeUntil *plugin.Quality) *quality
 	}
 }
 
-// ── IsUpgrade tests ───────────────────────────────────────────────────────────
+// IsUpgrade tests
 
 func TestIsUpgrade(t *testing.T) {
 	t.Parallel()
@@ -123,7 +123,7 @@ func TestIsUpgrade(t *testing.T) {
 	}
 }
 
-// ── AllowedQualities tests ────────────────────────────────────────────────────
+// AllowedQualities tests
 
 func TestAllowedQualities(t *testing.T) {
 	t.Parallel()

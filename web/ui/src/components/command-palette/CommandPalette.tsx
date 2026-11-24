@@ -15,7 +15,7 @@ import {
 import type { Series, SeriesListResponse } from "@/types";
 import { Tv } from "lucide-react";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// Types
 
 interface PaletteItem {
   id: string;
@@ -32,7 +32,7 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
 function getCachedSeries(qc: ReturnType<typeof useQueryClient>): Map<number, Series> {
   const map = new Map<number, Series>();
@@ -47,7 +47,7 @@ function getCachedSeries(qc: ReturnType<typeof useQueryClient>): Map<number, Ser
   return map;
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+// Component
 
 export function CommandPalette({ onClose }: CommandPaletteProps) {
   const navigate = useNavigate();
@@ -92,7 +92,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   // Series lookup
   const lookup = useLookupSeries(debouncedQuery);
 
-  // ── Build flat item list ───────────────────────────────────────────────────
+  // Build flat item list
 
   const handleAction = useCallback(
     (cmd: ActionCommand) => {
@@ -169,7 +169,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     });
   }
 
-  // ── Keyboard handling ──────────────────────────────────────────────────────
+  // Keyboard handling
 
   function onKeyDown(e: React.KeyboardEvent) {
     switch (e.key) {
@@ -204,7 +204,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     }
   }, [activeIndex]);
 
-  // ── Grouped rendering ─────────────────────────────────────────────────────
+  // Grouped rendering
 
   const navItems = items.filter((i) => i.category === "navigation");
   const seriesItems = items.filter((i) => i.category === "series");
@@ -384,7 +384,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   );
 }
 
-// ── Sub-components ───────────────────────────────────────────────────────────
+// Sub-components
 
 function PaletteGroup({
   label,

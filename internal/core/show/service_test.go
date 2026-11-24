@@ -138,7 +138,7 @@ func TestGetSeasons_EmptySeries(t *testing.T) {
 	}
 }
 
-// ── rowToSeries: alternate_titles JSON parsing ───────────────────────────────
+// rowToSeries: alternate_titles JSON parsing
 
 func TestRowToSeries_AlternateTitlesEmptyArray(t *testing.T) {
 	row := mkSeriesRow("s1", `[]`)
@@ -239,7 +239,7 @@ func (f fakeAnimeLookup) TVDBSeasonToAbsolute(_, _, _ int) (int, bool) {
 
 func (f fakeAnimeLookup) CourBounds(_ int) []CourBound { return nil }
 
-// ── RefreshMetadata ──────────────────────────────────────────────────────────
+// RefreshMetadata
 
 // refreshMetadataMock implements just the queries RefreshMetadata calls.
 type refreshMetadataMock struct {
@@ -485,7 +485,7 @@ func testSeriesDetail() *tmdbtv.SeriesDetail {
 	}
 }
 
-// ── Anime detection / absolute_number backfill (refresh path) ────────────────
+// Anime detection / absolute_number backfill (refresh path)
 
 // Headline regression test for the Jujutsu Kaisen incident: a series
 // added before anime detection shipped (series_type=standard, episodes
@@ -622,7 +622,7 @@ func TestRefreshMetadata_AnimeBackfill_IsIdempotent(t *testing.T) {
 	}
 }
 
-// ── Add: quality-profile FK resolution ───────────────────────────────────────
+// Add: quality-profile FK resolution
 
 // addMock implements just the queries Service.Add touches. It records the
 // CreateSeries params so tests can assert the quality_profile_id that gets
@@ -803,7 +803,7 @@ func TestAdd_EmptyQualityProfileLibraryLookupError(t *testing.T) {
 	}
 }
 
-// ── TVDBSeasonToAbsolute pass-through ───────────────────────────────────────
+// TVDBSeasonToAbsolute pass-through
 
 // recordingAnimeLookup records the args TVDBSeasonToAbsolute was called
 // with so we can assert the show service forwards them verbatim.

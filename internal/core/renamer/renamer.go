@@ -143,9 +143,6 @@ func CleanTitle(title string, colon ColonReplacement) string {
 // Titles keep their real punctuation ("Who Are You?", "Curiouser and
 // Curiouser!"): only colons are changed, following the colon setting, and
 // path separators and control characters are removed.
-//
-// Before, only "/" was removed and the colon setting had no effect, so
-// "Star Wars: Maul" went into names as is.
 func sanitize(s string, colon ColonReplacement) string {
 	s = applyColon(s, colon)
 	s = pathCharsRe.ReplaceAllString(s, "")

@@ -13,7 +13,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/registry"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 type indexerBody struct {
 	ID        string          `json:"id"        doc:"Indexer UUID"`
@@ -72,7 +72,7 @@ type indexerTestOutput struct {
 	}
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
 func indexerToBody(c indexer.Config) *indexerBody {
 	return &indexerBody{
@@ -105,7 +105,7 @@ func indexerInputToRequest(in indexerInput) indexer.CreateRequest {
 	}
 }
 
-// ── Route registration ───────────────────────────────────────────────────────
+// Route registration
 
 // RegisterIndexerRoutes registers all /api/v1/indexers endpoints.
 func RegisterIndexerRoutes(api huma.API, svc *indexer.Service) {

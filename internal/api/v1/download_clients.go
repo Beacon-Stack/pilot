@@ -13,7 +13,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/registry"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 type downloadClientBody struct {
 	ID        string          `json:"id"         doc:"Download client UUID"`
@@ -72,7 +72,7 @@ type downloadClientTestOutput struct {
 	}
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 func downloadClientToBody(c downloader.Config) *downloadClientBody {
 	return &downloadClientBody{
@@ -105,7 +105,7 @@ func downloadClientInputToRequest(in downloadClientInput) downloader.CreateReque
 	}
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterDownloadClientRoutes registers all /api/v1/download-clients endpoints.
 func RegisterDownloadClientRoutes(api huma.API, svc *downloader.Service) {

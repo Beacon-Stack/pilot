@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Tv } from "lucide-react";
 
-// ── Color generation ────────────────────────────────────────────────────────
+// Color generation
 
 /**
  * Deterministic hue from a title string. Same title always produces the same
@@ -15,7 +15,7 @@ export function placeholderHue(title: string): number {
   return Math.abs(hash) % 360;
 }
 
-// ── PosterPlaceholder ───────────────────────────────────────────────────────
+// PosterPlaceholder
 
 interface PosterPlaceholderProps {
   title: string;
@@ -81,7 +81,7 @@ export function PosterPlaceholder({ title, year, style }: PosterPlaceholderProps
   );
 }
 
-// ── Poster ──────────────────────────────────────────────────────────────────
+// Poster
 
 interface PosterProps {
   src?: string | null;

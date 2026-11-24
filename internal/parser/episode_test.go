@@ -192,7 +192,7 @@ func TestTitleMatches_YearNot4Digits(t *testing.T) {
 	}
 }
 
-// ── Anime absolute-episode parsing ─────────────────────────────────────────
+// Anime absolute-episode parsing
 
 // Headline regression for the Jujutsu Kaisen incident: fansub release
 // titles use absolute numbering ("Show - 48"). Without recognizing

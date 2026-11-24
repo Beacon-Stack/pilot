@@ -47,8 +47,8 @@ export function parseEpisodeFromReleaseTitle(title: string): { season?: number; 
 interface SearchTarget {
   seriesId: string;
   // seasonNumber/episodeNumber are TMDB-relative — the backend's
-  // search filter resolves releases against these (Phase 2A's
-  // TVDB→absolute conversion expects TMDB coords).
+  // search filter resolves releases against these (its TVDB→absolute
+  // conversion expects TMDB coords).
   seasonNumber: number;
   episodeNumber?: number;
   // episodeId is set when the search is scoped to a specific episode
@@ -80,7 +80,7 @@ function SeriesStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Season episode list with filtering and bulk actions ─────────────────────
+// Season episode list with filtering and bulk actions
 
 function SeasonEpisodeList({
   seriesId,
@@ -115,8 +115,8 @@ function SeasonEpisodeList({
   // Cours have season.season_number = the cour identifier (e.g. 3 for
   // "Season 3"), but episodes live in a different TMDB season (0 for
   // specials, 1 for typical cours). The backend's search filter resolves
-  // releases against TMDB-relative coords (Phase 2A handles the
-  // TVDB→absolute conversion), so we must pass the TMDB season here.
+  // releases against TMDB-relative coords (and converts TVDB numbering
+  // to absolute itself), so we must pass the TMDB season here.
   // Defaults to season.season_number when omitted (non-anime path).
   fetchSeasonNumber?: number;
   // filterEpisodeIDs, when provided, narrows the rendered episode list
@@ -333,7 +333,7 @@ function SeasonEpisodeList({
   );
 }
 
-// ── Main page ───────────────────────────────────────────────────────────────
+// Main page
 
 export default function SeriesDetail() {
   const { id } = useParams<{ id: string }>();

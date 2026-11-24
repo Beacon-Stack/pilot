@@ -408,7 +408,7 @@ func TestAuth_WebSocket(t *testing.T) {
 	}
 }
 
-// ── Sonarr-style default: no login on your own network ────────────────────
+// Sonarr-style default: no login on your own network
 
 // remote makes a request look like it came from the internet through a
 // local reverse proxy (the test client itself is on 127.0.0.1).

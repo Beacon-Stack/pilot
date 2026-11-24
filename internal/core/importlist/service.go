@@ -110,9 +110,7 @@ func NewService(
 	}
 }
 
-// ---------------------------------------------------------------------------
 // CRUD
-// ---------------------------------------------------------------------------
 
 // Create adds a new import list configuration.
 func (s *Service) Create(ctx context.Context, req CreateRequest) (Config, error) {
@@ -223,9 +221,7 @@ func (s *Service) Test(ctx context.Context, id string) error {
 	return pl.Test(ctx)
 }
 
-// ---------------------------------------------------------------------------
 // Preview
-// ---------------------------------------------------------------------------
 
 // PreviewItem is a single series from a list preview, including poster info.
 type PreviewItem struct {
@@ -264,9 +260,7 @@ func (s *Service) Preview(ctx context.Context, kind string, settings json.RawMes
 	return previews, nil
 }
 
-// ---------------------------------------------------------------------------
 // Exclusions
-// ---------------------------------------------------------------------------
 
 // CreateExclusion adds a series to the import exclusion list.
 func (s *Service) CreateExclusion(ctx context.Context, tmdbID int, title string, year int) (Exclusion, error) {
@@ -308,9 +302,7 @@ func (s *Service) DeleteExclusion(ctx context.Context, id string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
 // Sync
-// ---------------------------------------------------------------------------
 
 // Sync fetches all enabled import lists and adds new series to the library.
 // Returns immediately if a sync is already running.
@@ -457,9 +449,7 @@ func (s *Service) injectClients(pl plugin.ImportList) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 func rowToConfig(r db.ImportListConfig) Config {
 	ca, _ := time.Parse(time.RFC3339, r.CreatedAt)

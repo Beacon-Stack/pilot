@@ -86,9 +86,9 @@ func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.
 		return err
 	}
 
-	// Phase 1: record folders no series claims, for the user to review.
-	// Nothing is added automatically: a wrong TMDB hit used to add the
-	// wrong show and attach files to it.
+	// Step 1: record folders no series claims, for the user to review.
+	// Nothing is added automatically, since a wrong TMDB match would add
+	// the wrong show and attach files to it.
 	if um != nil {
 		for _, lib := range libs {
 			if err := um.Discover(ctx, lib.ID, lib.RootPath); err != nil {
@@ -97,7 +97,7 @@ func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.
 		}
 	}
 
-	// Phase 2: Match video files to known series/episodes.
+	// Step 2: match video files to known series and episodes.
 	knownPaths, err := q.ListAllEpisodeFilePaths(ctx)
 	if err != nil {
 		return err

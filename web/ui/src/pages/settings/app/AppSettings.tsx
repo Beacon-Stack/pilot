@@ -17,7 +17,7 @@ import { apiFetch } from "@/api/client";
 import ScheduledBackups from "./ScheduledBackups";
 import SecuritySection from "./SecuritySection";
 
-// ── Shared styles ────────────────────────────────────────────────────────────
+// Shared styles
 
 const card: React.CSSProperties = {
   background: "var(--color-bg-surface)",
@@ -36,7 +36,7 @@ const sectionHeader: React.CSSProperties = {
   margin: "0 0 12px",
 };
 
-// ── Mode button helper ───────────────────────────────────────────────────────
+// Mode button helper
 
 function ModeButton({
   mode,
@@ -90,7 +90,7 @@ function ModeButton({
   );
 }
 
-// ── Theme swatch ─────────────────────────────────────────────────────────────
+// Theme swatch
 
 function ThemeSwatch({
   preset,
@@ -196,7 +196,7 @@ function ThemeSwatch({
   );
 }
 
-// ── Toggle row ───────────────────────────────────────────────────────────────
+// Toggle row
 
 function ToggleRow({
   label,
@@ -265,7 +265,7 @@ function ToggleRow({
   );
 }
 
-// ── API Key section ──────────────────────────────────────────────────────────
+// API Key section
 
 function APIKeySection() {
   const [fullKey, setFullKey] = useState<string | null>(null);
@@ -377,7 +377,7 @@ function APIKeySection() {
   );
 }
 
-// ── Backup & Restore section ─────────────────────────────────────────────
+// Backup & Restore section
 
 function BackupRestoreSection() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -473,7 +473,7 @@ function BackupRestoreSection() {
   );
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────
+// Main page
 
 export default function AppSettings() {
   const [mode, setMode] = useState<ThemeMode>(getStoredMode);
@@ -518,7 +518,7 @@ export default function AppSettings() {
       />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* ── Appearance ──────────────────────────────────────────────────── */}
+        {/* Appearance */}
         <div style={card}>
           <p style={sectionHeader}>Appearance</p>
 
@@ -574,7 +574,7 @@ export default function AppSettings() {
           </div>
         </div>
 
-        {/* ── UI Preferences ──────────────────────────────────────────────── */}
+        {/* UI Preferences */}
         <div style={card}>
           <p style={sectionHeader}>UI Preferences</p>
           <ToggleRow
@@ -592,16 +592,16 @@ export default function AppSettings() {
           />
         </div>
 
-        {/* ── Security (login) ────────────────────────────────────────────── */}
+        {/* Security (login) */}
         <SecuritySection />
 
-        {/* ── API Key ─────────────────────────────────────────────────────── */}
+        {/* API Key */}
         <APIKeySection />
 
-        {/* ── Backup & Restore ───────────────────────────────────────────── */}
+        {/* Backup & Restore */}
         <BackupRestoreSection />
 
-        {/* ── Scheduled backups ──────────────────────────────────────────── */}
+        {/* Scheduled backups */}
         <ScheduledBackups />
       </div>
     </div>

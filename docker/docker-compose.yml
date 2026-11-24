@@ -1,4 +1,3 @@
-# ============================================================================
 # Pilot — TV series manager
 # https://beaconstack.io/pilot
 #
@@ -9,7 +8,6 @@
 # Pilot runs on its own: add indexers and a download client in its
 # Settings, like Sonarr. To run it with Haul, Prism and Pulse, see
 # https://beaconstack.io for examples that connect them.
-# ============================================================================
 
 services:
   pilot:
@@ -21,7 +19,7 @@ services:
     environment:
       TZ: UTC                       # your timezone, e.g. America/New_York
 
-      # ── Optional: connect to Pulse ──────────────────────────────────────
+      # Optional: connect to Pulse
       # Pulse hands Pilot its indexers, download clients and quality
       # profiles. To turn it on, set the URL and uncomment the two lines
       # below it. Empty means Pilot runs on its own.

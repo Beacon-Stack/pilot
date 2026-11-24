@@ -262,7 +262,7 @@ func TestRSS_UnwantedLanguageIsSkipped(t *testing.T) {
 	}
 }
 
-// ── Delay profile ────────────────────────────────────────────────────────────
+// Delay profile
 
 func torrentRelease(title, guid string, ageMinutes float64) indexer.SearchResult {
 	r := rssRelease(title, guid, 50)

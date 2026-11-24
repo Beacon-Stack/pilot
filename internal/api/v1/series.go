@@ -12,7 +12,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
 )
 
-// ── Response body shapes ─────────────────────────────────────────────────────
+// Response body shapes
 
 type seriesBody struct {
 	ID                  string     `json:"id"                               doc:"Series UUID"`
@@ -82,7 +82,7 @@ type lookupResultBody struct {
 	Popularity    float64 `json:"popularity"     doc:"TMDB popularity score"`
 }
 
-// ── Output wrappers ───────────────────────────────────────────────────────────
+// Output wrappers
 
 type seriesOutput struct {
 	Body *seriesBody
@@ -121,7 +121,7 @@ type seasonOutput struct {
 	Body *seasonBody
 }
 
-// ── Input wrappers ────────────────────────────────────────────────────────────
+// Input wrappers
 
 type lookupSeriesInput struct {
 	Body struct {
@@ -230,7 +230,7 @@ type courMonitoredOutput struct {
 	Body *courBody
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 func seriesToBody(s show.Series) *seriesBody {
 	return &seriesBody{
@@ -336,7 +336,7 @@ func mapShowError(err error, entityName string) error {
 	}
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterSeriesRoutes registers all /api/v1/series, /api/v1/episodes, and
 // /api/v1/seasons endpoints.

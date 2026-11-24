@@ -54,7 +54,7 @@ const tooltipStyle = {
 
 const axisStyle = { fontSize: 11, fill: "var(--color-text-muted)" };
 
-// ── Card shell ────────────────────────────────────────────────────────────────
+// Card shell
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -83,7 +83,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-// ── Stat block ────────────────────────────────────────────────────────────────
+// Stat block
 
 function StatBlock({
   label,
@@ -114,7 +114,7 @@ function StatBlock({
   );
 }
 
-// ── Skeleton ──────────────────────────────────────────────────────────────────
+// Skeleton
 
 function CardSkeleton({ height = 200 }: { height?: number }) {
   return (
@@ -135,7 +135,7 @@ function ErrorCard({ title }: { title: string }) {
   );
 }
 
-// ── Collection card ───────────────────────────────────────────────────────────
+// Collection card
 
 function CollectionCard({ data }: { data: CollectionStats }) {
   return (
@@ -165,7 +165,7 @@ function CollectionCard({ data }: { data: CollectionStats }) {
   );
 }
 
-// ── Storage card ──────────────────────────────────────────────────────────────
+// Storage card
 
 function EmptyChart({ message }: { message: string }) {
   return (
@@ -257,7 +257,7 @@ function StorageCard({ data }: { data: StorageStats }) {
   );
 }
 
-// ── Quality card (dimension/tier dual-view, recharts) ────────────────────────
+// Quality card (dimension/tier dual-view, recharts)
 
 const RESOLUTION_ORDER = ["2160p", "1080p", "720p", "SD", "unknown"];
 const SOURCE_ORDER = ["Remux", "Bluray", "WEBDL", "WEBRip", "HDTV", "DVD", "unknown"];
@@ -462,7 +462,7 @@ function QualityCard({ data, tierData }: { data: QualityBucket[]; tierData?: Qua
   );
 }
 
-// ── Growth card ───────────────────────────────────────────────────────────────
+// Growth card
 
 function GrowthCard({ data }: { data: GrowthPoint[] }) {
   if (data.length < 2) {
@@ -526,7 +526,7 @@ function GrowthCard({ data }: { data: GrowthPoint[] }) {
   );
 }
 
-// ── Decades card ──────────────────────────────────────────────────────────────
+// Decades card
 
 function DecadesCard({ data }: { data: DecadeBucket[] }) {
   if (data.length === 0) {
@@ -562,7 +562,7 @@ function DecadesCard({ data }: { data: DecadeBucket[] }) {
   );
 }
 
-// ── Genres card ───────────────────────────────────────────────────────────────
+// Genres card
 
 function GenresCard({ data }: { data: GenreBucket[] }) {
   if (data.length === 0) {
@@ -615,7 +615,7 @@ function GenresCard({ data }: { data: GenreBucket[] }) {
   );
 }
 
-// ── Grabs card ────────────────────────────────────────────────────────────────
+// Grabs card
 
 function GrabsCard({ data }: { data: GrabStats }) {
   const successPct = Math.round(data.success_rate * 100);
@@ -776,7 +776,7 @@ function GrabsCard({ data }: { data: GrabStats }) {
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// Page
 
 export default function StatsPage() {
   const collection = useCollectionStats();

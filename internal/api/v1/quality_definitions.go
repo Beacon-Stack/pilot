@@ -9,7 +9,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/quality"
 )
 
-// ── Response / request shapes ─────────────────────────────────────────────────
+// Response / request shapes
 
 type qualityDefinitionBody struct {
 	ID            string  `json:"id"             doc:"Stable slug identifier"`
@@ -41,7 +41,7 @@ type qualityDefinitionBulkUpdateInput struct {
 
 type qualityDefinitionBulkUpdateOutput struct{}
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 func definitionToBody(d quality.Definition) *qualityDefinitionBody {
 	return &qualityDefinitionBody{
@@ -58,7 +58,7 @@ func definitionToBody(d quality.Definition) *qualityDefinitionBody {
 	}
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterQualityDefinitionRoutes registers /api/v1/quality-definitions endpoints.
 func RegisterQualityDefinitionRoutes(api huma.API, svc *quality.DefinitionService) {

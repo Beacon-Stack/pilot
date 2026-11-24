@@ -101,7 +101,7 @@ func newOutcomeSvc(q db.Querier) *Service {
 	}
 }
 
-// ── recordImportOutcome ─────────────────────────────────────────────────────
+// recordImportOutcome
 
 func TestRecordImportOutcome_SuccessRecordsImported(t *testing.T) {
 	q := &outcomeQuerier{}
@@ -186,7 +186,7 @@ func TestRecordImportOutcome_HardFailureExhaustsRetryBudget(t *testing.T) {
 	}
 }
 
-// ── resolveEpisodeInfo ──────────────────────────────────────────────────────
+// resolveEpisodeInfo
 
 // Headline regression. Without the anime fallback, this test fails
 // and the JJK production bug is back. With it, abs=48 → S01E48.

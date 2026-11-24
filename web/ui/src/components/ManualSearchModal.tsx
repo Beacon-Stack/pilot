@@ -12,7 +12,7 @@ type SortDir = "asc" | "desc";
 
 type PackFilter = "season" | "episodes" | "all";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "—";
@@ -47,7 +47,7 @@ function shouldCloseOnGrab(): boolean {
   return window.localStorage.getItem("manualSearchModal.closeOnGrab") === "true";
 }
 
-// ── Filter pill ───────────────────────────────────────────────────────────────
+// Filter pill
 
 function FilterPill({
   active,
@@ -94,7 +94,7 @@ function FilterPill({
   );
 }
 
-// ── Pack type badge ───────────────────────────────────────────────────────────
+// Pack type badge
 
 function PackTypeBadge({ release }: { release: ReleaseResult }) {
   const pt = release.pack_type;
@@ -181,7 +181,7 @@ function PackTypeBadge({ release }: { release: ReleaseResult }) {
   );
 }
 
-// ── Quality badge ─────────────────────────────────────────────────────────────
+// Quality badge
 
 function QualityBadge({ quality }: { quality: ReleaseResult["quality"] }) {
   const label = quality.name || quality.resolution || "Unknown";
@@ -208,7 +208,7 @@ function QualityBadge({ quality }: { quality: ReleaseResult["quality"] }) {
   );
 }
 
-// ── Release row ───────────────────────────────────────────────────────────────
+// Release row
 
 interface ReleaseRowProps {
   release: ReleaseResult;
@@ -432,7 +432,7 @@ function ReleaseRow({ release, onGrab, isGrabbing }: ReleaseRowProps) {
   );
 }
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
+// Modal
 
 interface ManualSearchModalProps {
   seriesId: string;

@@ -42,9 +42,8 @@ func NormalizeTitle(s string) string {
 // ("Breaking Bad 2008" matches "Breaking Bad") since indexer releases
 // frequently embed the premiere year.
 //
-// It does NOT do any fuzzy matching, substring matching, or word-set
-// comparison — those let unrelated releases slip through and cause the
-// exact wrong-torrent bug this is meant to prevent. Use TitleMatchesAny
+// There is no fuzzy, substring or word-set matching: those let unrelated
+// releases through, and the wrong show gets grabbed. Use TitleMatchesAny
 // when the series carries explicit alternate titles (from TMDB).
 func TitleMatches(seriesTitle, releaseShowTitle string) bool {
 	s := NormalizeTitle(seriesTitle)

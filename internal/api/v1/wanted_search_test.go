@@ -51,7 +51,7 @@ func TestPickBestViable_PrefersMultiIndexerWithinTopQuality(t *testing.T) {
 	}
 }
 
-// ── Bulk search runner ───────────────────────────────────────────────────────
+// Bulk search runner
 
 func TestWantedSearchRunner_OneRunPerKind(t *testing.T) {
 	gate := make(chan struct{})

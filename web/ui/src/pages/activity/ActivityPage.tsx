@@ -34,7 +34,7 @@ import { useSeriesList } from "@/api/series";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import type { QueueItem, Series } from "@/types";
 
-// ── Shared bits ──────────────────────────────────────────────────────────────
+// Shared bits
 
 function Rail({
   title,
@@ -153,7 +153,7 @@ function SeriesLabel({ id, fallback, idx }: { id?: string; fallback: string; idx
   );
 }
 
-// ── 1. Currently downloading ─────────────────────────────────────────────────
+// 1. Currently downloading
 
 function progressPct(item: QueueItem): number {
   if (!item.size || item.size === 0) return 0;
@@ -302,7 +302,7 @@ function DownloadingRail({ idx }: { idx: Map<string, Series> }) {
   );
 }
 
-// ── 2. Recently imported ─────────────────────────────────────────────────────
+// 2. Recently imported
 //
 // Sourced from activity_log (category=import_succeeded, type=import_complete)
 // rather than grab_history. activity_log.created_at is the actual import-
@@ -406,7 +406,7 @@ function RecentlyImportedRail({ idx }: { idx: Map<string, Series> }) {
   );
 }
 
-// ── 3. Needs attention ───────────────────────────────────────────────────────
+// 3. Needs attention
 
 function attentionIcon(kind: string) {
   switch (kind) {
@@ -562,7 +562,7 @@ function KindLabel({ kind }: { kind: string }) {
   );
 }
 
-// ── 4. Active background tasks ───────────────────────────────────────────────
+// 4. Active background tasks
 //
 // Pilot's scheduler tracks job intervals but not per-run state — it has
 // no concept of "task X is running right now." Surfacing that requires
@@ -583,7 +583,7 @@ function BackgroundTasksRail() {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// Page
 
 export default function ActivityPage() {
   const idx = useSeriesIndex();

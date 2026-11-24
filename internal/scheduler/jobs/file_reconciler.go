@@ -96,7 +96,7 @@ func runFileExistenceReconciler(
 	retryEpisodes := map[string]string{} // episode_id -> seriesID for the event
 	missingCount := 0
 
-	// ── Pass 1: stat every recorded file, prune the ones gone from disk ──
+	// Pass 1: stat every recorded file, prune the ones gone from disk
 	for _, f := range files {
 		if _, statErr := os.Stat(f.Path); statErr != nil {
 			if !errors.Is(statErr, fs.ErrNotExist) {
@@ -150,7 +150,7 @@ func runFileExistenceReconciler(
 		}
 	}
 
-	// ── Pass 2: completed grabs whose episode currently lacks a file ──
+	// Pass 2: completed grabs whose episode currently lacks a file
 	// Catches the "import failed silently — episode_files row never
 	// got written" case (Maul S01 class). Bounded window so we don't
 	// retry-spam ancient grabs.

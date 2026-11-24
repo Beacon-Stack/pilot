@@ -11,7 +11,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── Add: empty download URL is rejected at the plugin layer ──────────────────
+// Add: empty download URL is rejected at the plugin layer
 
 // When an indexer's torznab response is missing the <enclosure> tag (some
 // scrapers — notably Pulse's Pirate Bay definition at the time of writing —

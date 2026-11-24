@@ -66,7 +66,6 @@ func TestClassify_UnknownEventReturnsEmpty(t *testing.T) {
 	}
 }
 
-// ── handleEvent ──────────────────────────────────────────────────────────────
 //
 // handleEvent is the bridge between the in-memory event bus and the
 // persistent activity_log table. If it silently drops events or

@@ -108,13 +108,13 @@ func run() error {
 	flag.StringVar(&cfgFile, "config", "", "path to config file (default: ~/.config/pilot/config.yaml)")
 	flag.Parse()
 
-	// ── Config ────────────────────────────────────────────────────────────────
+	// Config
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// ── Logger ────────────────────────────────────────────────────────────────
+	// Logger
 	// Shared module from pulse/pkg/log — stdout JSON, ring buffer
 	// behind /api/v1/system/logs, pluggable sinks (Loki, file)
 	// configured via env vars.
@@ -172,7 +172,7 @@ func run() error {
 		}
 	}
 
-	// ── API Key ───────────────────────────────────────────────────────────────
+	// API Key
 	generated, err := config.EnsureAPIKey(cfg)
 	if err != nil {
 		return fmt.Errorf("ensuring API key: %w", err)
@@ -213,7 +213,7 @@ func run() error {
 		logger.Info("authentication disabled for local addresses — browsers on your network open the UI without logging in")
 	}
 
-	// ── Startup banner ────────────────────────────────────────────────────────
+	// Startup banner
 	configFile := cfg.ConfigFile
 	if configFile == "" {
 		configFile = "(none — using defaults/env)"
@@ -226,7 +226,7 @@ func run() error {
 		"config_file", configFile,
 	)
 
-	// ── Database restore staging check ────────────────────────────────────────
+	// Database restore staging check
 	if cfg.Database.Path != "" {
 		if applied, restoreErr := backup.ApplyStagedRestore(cfg.Database.Path); restoreErr != nil {
 			logger.Warn("failed to swap restore file into place", "error", restoreErr)
@@ -235,7 +235,7 @@ func run() error {
 		}
 	}
 
-	// ── Database ──────────────────────────────────────────────────────────────
+	// Database
 	database, err := db.Open(cfg.Database)
 	if err != nil {
 		return fmt.Errorf("opening database: %w", err)
@@ -250,10 +250,10 @@ func run() error {
 
 	logger.Info("database migrations up to date")
 
-	// ── Event bus ─────────────────────────────────────────────────────────────
+	// Event bus
 	bus := events.New(logger)
 
-	// ── Services ──────────────────────────────────────────────────────────────
+	// Services
 	queries := dbgen.New(database.SQL)
 
 	qualitySvc := quality.NewService(queries, bus)
@@ -346,7 +346,7 @@ func run() error {
 	// blocklists a dead automatic grab.
 	bus.Subscribe(apiv1.NewAutoSearchRetryHandler(showSvc, indexerSvc, downloaderSvc, blocklistSvc, qualitySvc, logger))
 
-	// ── Scheduler ─────────────────────────────────────────────────────────────
+	// Scheduler
 	sched := scheduler.New(logger)
 	sched.Add(jobs.QueuePoll(queueSvc, 30*time.Second, logger))
 	unmappedSvc := unmapped.New(queries, showSvc)
@@ -368,7 +368,7 @@ func run() error {
 	sched.Add(jobs.HealthCheck(healthSvc))
 	sched.Add(jobs.RecycleBinCleanup(recycleSvc, logger))
 
-	// ── Pulse integration (optional) ──────────────────────────────────────────
+	// Pulse integration (optional)
 	pulseIntegration, err := pulseint.New(cfg.Pulse, cfg.Server.Host, cfg.Server.Port, cfg.Auth.APIKey.Value(), logger)
 	if err != nil {
 		logger.Warn("pulse integration failed — continuing without it", "error", err)
@@ -377,7 +377,7 @@ func run() error {
 		defer pulseIntegration.Close()
 	}
 
-	// ── Notifications ─────────────────────────────────────────────────────────
+	// Notifications
 	// Through Pulse when connected to one that has channels, otherwise from
 	// Pilot's own channels (pulse/pkg/notify).
 	notifyStore, notifyOutbox, err := notifications.Setup(context.Background(), notifications.Deps{
@@ -394,7 +394,7 @@ func run() error {
 		os.Exit(1)
 	}
 
-	// ── HTTP router ───────────────────────────────────────────────────────────
+	// HTTP router
 	startTime := time.Now()
 	router := api.NewRouter(api.RouterConfig{
 		Auth: cfg.Auth.APIKey,
@@ -445,7 +445,7 @@ func run() error {
 		PulseSyncHandler:       pulseSyncHandler(pulseIntegration, indexerSvc, downloaderSvc),
 	})
 
-	// ── Background services ───────────────────────────────────────────────────
+	// Background services
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
@@ -471,8 +471,8 @@ func run() error {
 		go pulseIntegration.StartSyncLoop(appCtx, indexerSvc, downloaderSvc, qualitySvc, mediaManagementSvc, 30*time.Second)
 	}
 
-	// Stall watcher — poll Haul every 60s for dead torrents and blocklist
-	// the corresponding releases. See plans/dead-torrent-phase0.md.
+	// Stall watcher: poll Haul every 60s for dead torrents and blocklist
+	// the corresponding releases.
 	go stallWatcher.Run(appCtx)
 
 	go sched.Start(appCtx)
@@ -490,7 +490,7 @@ func run() error {
 		}
 	}()
 
-	// ── HTTP server ───────────────────────────────────────────────────────────
+	// HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
 		Addr:         addr,
@@ -508,7 +508,7 @@ func run() error {
 		}
 	}()
 
-	// ── Graceful shutdown ─────────────────────────────────────────────────────
+	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 

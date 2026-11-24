@@ -23,7 +23,7 @@ func newTestClient(t *testing.T, h http.HandlerFunc) (*Client, *httptest.Server)
 	return c, srv
 }
 
-// ── GetAlternativeTitles ─────────────────────────────────────────────────────
+// GetAlternativeTitles
 
 func TestGetAlternativeTitles_HappyPath(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {

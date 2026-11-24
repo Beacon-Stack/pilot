@@ -16,10 +16,6 @@ import (
 
 // renameQuality is the quality a rename renders into {Quality Full}.
 //
-// Rename used to pass an empty quality, so every rename stripped the
-// quality from names the importer had just written ("… WEBRip-1080p
-// x265.mp4" → "….mp4"), and the next import added it back.
-//
 // The stored quality is used when it has a name (importer rows). Rows
 // from the library scan have no name and no source (ffprobe cannot see
 // the source), so the current filename is parsed and its fields win over

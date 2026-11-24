@@ -12,14 +12,14 @@ import {
 import type { IndexerConfig } from "@/types";
 import type { IndexerRequest, TestResult } from "@/api/indexers";
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// Helpers
 
 function strSetting(settings: Record<string, unknown>, key: string): string {
   const v = settings[key];
   return typeof v === "string" ? v : "";
 }
 
-// ── Shared styles ──────────────────────────────────────────────────────────────
+// Shared styles
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -60,7 +60,7 @@ function actionBtn(color: string, bg: string): React.CSSProperties {
   };
 }
 
-// ── Form state ─────────────────────────────────────────────────────────────────
+// Form state
 
 interface FormState {
   name: string;
@@ -98,7 +98,7 @@ function formToRequest(f: FormState): IndexerRequest {
   };
 }
 
-// ── Modal ──────────────────────────────────────────────────────────────────────
+// Modal
 
 interface ModalProps {
   editing: IndexerConfig | null;
@@ -220,7 +220,7 @@ function IndexerModal({ editing, onClose }: ModalProps) {
   );
 }
 
-// ── Row actions ────────────────────────────────────────────────────────────────
+// Row actions
 
 function RowActions({ indexer, onEdit }: { indexer: IndexerConfig; onEdit: () => void }) {
   const [confirming, setConfirming] = useState(false);
@@ -293,7 +293,7 @@ function RowActions({ indexer, onEdit }: { indexer: IndexerConfig; onEdit: () =>
   );
 }
 
-// ── Badge ──────────────────────────────────────────────────────────────────────
+// Badge
 
 function KindBadge({ kind }: { kind: string }) {
   const isUsenet = kind === "newznab";
@@ -304,7 +304,7 @@ function KindBadge({ kind }: { kind: string }) {
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// Page
 
 export default function IndexerList() {
   const { data, isLoading, error } = useIndexers();

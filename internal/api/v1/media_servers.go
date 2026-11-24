@@ -13,7 +13,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/registry"
 )
 
-// ── Request / response shapes ─────────────────────────────────────────────────
+// Request / response shapes
 
 type mediaServerBody struct {
 	ID        string          `json:"id"`
@@ -65,7 +65,7 @@ type mediaServerTestInput struct {
 
 type mediaServerTestOutput struct{}
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 func msToBody(cfg mediaserver.Config) *mediaServerBody {
 	return &mediaServerBody{
@@ -79,7 +79,7 @@ func msToBody(cfg mediaserver.Config) *mediaServerBody {
 	}
 }
 
-// ── Route registration ─────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterMediaServerRoutes registers the /api/v1/media-servers endpoints.
 func RegisterMediaServerRoutes(api huma.API, svc *mediaserver.Service) {

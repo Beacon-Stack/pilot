@@ -9,7 +9,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/scheduler"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 type taskBody struct {
 	Name     string `json:"name"     doc:"Unique task name"`
@@ -26,7 +26,7 @@ type taskRunInput struct {
 
 type taskRunOutput struct{}
 
-// ── Route registration ───────────────────────────────────────────────────────
+// Route registration
 
 // RegisterTaskRoutes registers the /api/v1/tasks endpoints.
 func RegisterTaskRoutes(api huma.API, sched *scheduler.Scheduler) {

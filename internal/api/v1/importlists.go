@@ -13,7 +13,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/registry"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 type importListBody struct {
 	ID               string          `json:"id"`
@@ -84,7 +84,7 @@ type importListPreviewOutput struct {
 	Body []importlist.PreviewItem
 }
 
-// ── Exclusion shapes ─────────────────────────────────────────────────────────
+// Exclusion shapes
 
 type exclusionBody struct {
 	ID        string    `json:"id"`
@@ -118,7 +118,7 @@ type exclusionDeleteInput struct {
 
 type exclusionDeleteOutput struct{}
 
-// ── Registration ─────────────────────────────────────────────────────────────
+// Registration
 
 func RegisterImportListRoutes(api huma.API, svc *importlist.Service) {
 	tags := []string{"Import Lists"}
@@ -265,7 +265,7 @@ func RegisterImportListRoutes(api huma.API, svc *importlist.Service) {
 		return &importListPreviewOutput{Body: items}, nil
 	})
 
-	// ── Exclusions ────────────────────────────────────────────────────────────
+	// Exclusions
 
 	exclTags := []string{"Import Exclusions"}
 
@@ -332,7 +332,7 @@ func RegisterImportListRoutes(api huma.API, svc *importlist.Service) {
 	})
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
 func importListToBody(c importlist.Config) *importListBody {
 	return &importListBody{

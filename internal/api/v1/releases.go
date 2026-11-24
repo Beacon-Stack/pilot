@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -27,7 +26,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 // releaseBody is the API representation of a single indexer search result.
 type releaseBody struct {
@@ -174,7 +173,7 @@ type grabOutput struct {
 	Body *grabHistoryBody
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
 // isGrabbedTerminalFailure returns true for download statuses where the
 // grab effectively didn't deliver a usable file — failed, stalled
@@ -242,12 +241,10 @@ func indexerResultToReleaseBody(r indexer.SearchResult) *releaseBody {
 	}
 }
 
-// buildEpisodeQueries builds the list of Sonarr-style search queries to issue
-// for a specific episode or season. Season-level searches issue TWO queries —
-// one using the canonical "S01" form and one using the "Season 1" form —
-// because many torznab indexers index releases under exactly one of the two
-// naming conventions and will silently miss the other. Dedupe happens at the
-// caller by GUID. See Sonarr issue #3934 for the same bug in Sonarr proper.
+// buildEpisodeQueries builds the search queries for an episode, a season or
+// a whole series. A season search issues two queries, "S01" and
+// "Season 1", because many torznab indexers index a release under only
+// one of the two forms. The caller dedupes results by GUID.
 //
 // Anime augmentation: when isAnime is true and absolute > 0, the
 // per-episode form additionally emits two absolute-numbering queries
@@ -367,16 +364,11 @@ func seasonPackFound(title string, alternates []string, season int) func([]index
 	}
 }
 
-// interactiveSearchTimeout is the hard interactive-search cut-off. This
-// was 12s when half the fleet failed instantly (masked HTTP 400s) and
-// dead indexers were the thing to kill quickly. With the 2026-08-17
-// engine fixes all indexers genuinely scrape and queue behind the
-// global semaphore and Pulse's per-site rate limiting, so a cold-cache
-// season search legitimately needs 20s+. Failures are now fast and
-// honest (torznab <error> docs, no hangs), so the budget matches the
-// 25s per-indexer timeout plus queue headroom. Stragglers show up in
-// pilot logs as `indexer search failed duration_ms=30000+ error=context
-// deadline exceeded`. The stream endpoint shows results long before.
+// interactiveSearchTimeout is the hard cut-off for an interactive search.
+// Indexers queue behind the global concurrency limit and Pulse's per-site
+// rate limits, so a cold-cache season search can need over 20s; the
+// budget is the 25s per-indexer timeout plus queue headroom. The stream
+// endpoint shows results long before this.
 const interactiveSearchTimeout = 30 * time.Second
 
 // releaseSearch is one interactive search: what it looks for, and what
@@ -503,9 +495,8 @@ func (rs *releaseSearch) list(ctx context.Context, snap indexer.Snapshot) releas
 		if r.Seeds < 5 {
 			b.LowConfidence = true
 		}
-		// Blocklist filter: any release that's been previously stalled
-		// gets tagged with a filter reason so the UI can render it
-		// grayed with an override button.
+		// Blocklisted releases are tagged, not dropped, so the UI can show
+		// them greyed out with an override button.
 		if rs.blocked[r.GUID] {
 			b.FilterReasons = append(b.FilterReasons, "previously stalled (on blocklist)")
 		}
@@ -587,7 +578,7 @@ func streamReleases(hctx huma.Context, indexerSvc *indexer.Service, rs *releaseS
 	}
 }
 
-// ── Route registration ───────────────────────────────────────────────────────
+// Route registration
 
 // RegisterReleaseRoutes registers the release search and grab history endpoints.
 // qualitySvc may be nil; when nil, the quality-profile gate is skipped and all
@@ -709,21 +700,6 @@ func RegisterReleaseRoutes(api huma.API, indexerSvc *indexer.Service, showSvc *s
 			}
 		}
 
-		// Instrumentation: log indexer-claimed peer counts so we can join
-		// them offline against Haul's real peer counts per grab. This is
-		// the measurement pipeline from plans/dead-torrent-phase0.md Step 0.
-		// After a week we grep for grab.metrics and decide whether the
-		// post-hoc stall detection is proportionate to the actual failure
-		// rate, or whether pre-flight BEP 48 scrape is warranted.
-		slog.Default().Info("grab.metrics",
-			"release_guid", release.GUID,
-			"title", release.Title,
-			"indexer", input.Body.IndexerID,
-			"indexer_seeds", input.Body.Size, // seeds not in body yet — Phase 1 adds it; indexer_id is enough for now
-			"override", input.Body.Override,
-			"grab_source", "interactive",
-		)
-
 		// Record the grab in history first with status "queued". Source is
 		// "interactive" so the stall watcher will NOT auto-re-search on
 		// failure — the user picked this release deliberately, they own
@@ -839,10 +815,9 @@ type autoSearchParams struct {
 }
 
 // pickBestViable returns the release to grab from viable, which is in
-// ranking order. Among releases of the top quality and revision, it
-// prefers one listed by several indexers (more confidence its seed count
-// is real). That preference used to look across all qualities, so a 720p
-// on two indexers could beat a 2160p on one.
+// ranking order. Among releases of the top quality and revision only, it
+// prefers one listed by several indexers: more confidence that its seed
+// count is real.
 func pickBestViable(viable []indexer.SearchResult) indexer.SearchResult {
 	best := viable[0]
 	sameTier := func(r indexer.SearchResult) bool {
@@ -1060,26 +1035,25 @@ func runAutoSearchAndGrab(ctx context.Context, deps autoSearchDeps, p autoSearch
 }
 
 // filterByEpisode removes results that don't match the requested series and
-// season/episode. If season is 0, only the series-title gate is applied
-// (whole-series search). Season packs are kept when searching for a specific
-// season.
+// season/episode. If season is 0, only the series title is checked
+// (whole-series search). Season packs are kept when searching for a
+// specific season.
 //
-// The series-title gate is the regression fix for the wrong-torrent bug: many
-// torznab indexers do loose matching on the raw query string and return
-// unrelated shows whose names happen to share common words. We re-parse each
-// result's title and drop anything whose parsed show title doesn't match the
-// series we're actually searching for.
-// filterByEpisode (extended) accepts an absolute episode number and
-// an optional TVDB→absolute converter. When `absolute > 0`:
+// The title check matters because many torznab indexers match loosely on
+// the query string and return unrelated shows that share common words.
+// Each result's title is re-parsed and dropped unless its show title
+// matches the series or one of its alternate titles.
 //
-//   - releases the parser tagged with a matching AbsoluteEpisode
-//     (fansub "Show - 48" form) pass through regardless of season;
-//   - releases parsed as TVDB-style "Show S03E01" run through
-//     `tvdbToAbsolute(parsed_season, parsed_episode)`; if that
-//     yields the requested absolute, they also pass.
+// For anime, pass the absolute episode number and a TVDB→absolute
+// converter. When absolute > 0:
 //
-// Pass `absolute=0` and `tvdbToAbsolute=nil` for the non-anime
-// behavior (no augmentation, strict season/episode matching only).
+//   - releases tagged with a matching absolute number (fansub
+//     "Show - 48" form) pass regardless of season;
+//   - releases tagged TVDB-style ("Show S03E01") pass when
+//     tvdbToAbsolute(season, episode) gives the requested absolute.
+//
+// Pass absolute=0 and tvdbToAbsolute=nil for strict season/episode
+// matching.
 func filterByEpisode(results []indexer.SearchResult, seriesTitle string, alternateTitles []string, season, episode, absolute int, tvdbToAbsolute func(int, int) int) []indexer.SearchResult {
 	// Build the candidate-title set once: canonical title + any TMDB
 	// alternates. The series row's AlternateTitles list does NOT contain

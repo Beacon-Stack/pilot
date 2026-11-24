@@ -201,7 +201,7 @@ func (c *Client) Remove(ctx context.Context, clientItemID string, _ bool) error 
 	return nil
 }
 
-// ── JSON-RPC helper ──────────────────────────────────────────────────────────
+// JSON-RPC helper
 
 type rpcRequest struct {
 	Method string `json:"method"`
@@ -264,7 +264,7 @@ func (c *Client) call(ctx context.Context, method string, params []any, out any)
 	return nil
 }
 
-// ── API call wrappers ────────────────────────────────────────────────────────
+// API call wrappers
 
 func (c *Client) listGroups(ctx context.Context) ([]groupItem, error) {
 	var groups []groupItem
@@ -282,7 +282,7 @@ func (c *Client) listHistory(ctx context.Context) ([]historyItem, error) {
 	return history, nil
 }
 
-// ── Response types ───────────────────────────────────────────────────────────
+// Response types
 
 type groupItem struct {
 	NZBID           int    `json:"NZBID"`
@@ -335,7 +335,7 @@ func (h historyItem) toQueueItem() plugin.QueueItem {
 	}
 }
 
-// ── Status mapping ───────────────────────────────────────────────────────────
+// Status mapping
 
 func mapGroupStatus(status string) plugin.DownloadStatus {
 	switch status {

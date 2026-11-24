@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { apiFetch } from "./client";
 import type { EpisodeFile } from "@/types";
 
-// ── Episode files ─────────────────────────────────────────────────────────────
+// Episode files
 
 export function useEpisodeFiles(seriesId: string) {
   return useQuery({
@@ -28,9 +28,9 @@ export function useDeleteEpisodeFile() {
   });
 }
 
-// ── Rename preview / execute ─────────────────────────────────────────────────
+// Rename preview / execute
 
-// ── Library scan task ────────────────────────────────────────────────────────
+// Library scan task
 
 export function useLibraryScan() {
   return useMutation({

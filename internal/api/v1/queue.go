@@ -12,7 +12,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/queue"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 type queueItemBody struct {
 	GrabID           string    `json:"id"                        doc:"Grab history UUID"`
@@ -53,7 +53,7 @@ type queueBlocklistInput struct {
 
 type queueBlocklistOutput struct{}
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
 func queueItemToBody(item queue.Item) *queueItemBody {
 	return &queueItemBody{
@@ -71,7 +71,7 @@ func queueItemToBody(item queue.Item) *queueItemBody {
 	}
 }
 
-// ── Route registration ───────────────────────────────────────────────────────
+// Route registration
 
 // RegisterQueueRoutes registers the /api/v1/queue endpoints.
 func RegisterQueueRoutes(api huma.API, svc *queue.Service, bl *blocklist.Service) {
