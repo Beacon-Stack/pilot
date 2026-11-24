@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import { apiFetch } from "./api";
+import { getAuthStatus, logout } from "./auth";
 import { card, sectionHeader } from "./styles";
 
 // The Security settings card, the same in every Beacon app. It talks to
@@ -72,6 +73,8 @@ export default function Security() {
   const [networks, setNetworks] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // Only a login session can be signed out of.
+  const [hasSession, setHasSession] = useState(false);
 
   function show(s: AuthSettings) {
     setSaved(s);
@@ -86,6 +89,9 @@ export default function Security() {
     apiFetch<AuthSettings>("/system/auth")
       .then(show)
       .catch((err: Error) => setMessage({ ok: false, text: err.message }));
+    getAuthStatus()
+      .then((s) => setHasSession(s.method === "session"))
+      .catch(() => setHasSession(false));
   }, []);
 
   const networkList = parseNetworks(networks);
@@ -234,6 +240,24 @@ export default function Security() {
           >
             {saving ? "Saving…" : "Save"}
           </button>
+          {hasSession && (
+            <button
+              type="button"
+              onClick={() => void logout()}
+              style={{
+                height: 32,
+                padding: "0 14px",
+                borderRadius: 6,
+                border: "1px solid var(--color-border-default)",
+                background: "transparent",
+                color: "var(--color-text-secondary)",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Sign out
+            </button>
+          )}
           {message && (
             <span
               role={message.ok ? "status" : "alert"}

@@ -167,6 +167,20 @@ If the full stack is running, Pilot pulls shared indexers and quality profiles f
 
 **API surface.** Everything the UI does is available through the REST API — OpenAPI docs at `/api/docs`.
 
+## Access and login
+
+By default Pilot needs no login: devices on your local network get in, and connections from anywhere else are refused. You can change that in Settings → App Settings → Security:
+
+- **None** (default): the local network only, no login.
+- **Login, except on my local network**: anyone outside it needs the username and password.
+- **Login for everyone**.
+
+"Local" means the private address ranges (192.168.x.x, 10.x.x.x, 172.16–31.x.x). If your network uses other addresses, or Pilot sees a different address for your devices (some VPNs and container setups), add the range in the same place or set `PILOT_AUTH_LOCAL_NETWORKS` (comma-separated). The settings page shows the address Pilot sees for you.
+
+No login is only safe while Pilot can't be reached from the internet. If you forward a port or publish it through a proxy, choose a login.
+
+Scripts and the other Beacon apps use the API key, which works whichever option is chosen. If you open Pilot through your own domain name without a login, list the name in `PILOT_SERVER_ALLOWED_HOSTS`.
+
 ## Privacy
 
 Pilot makes outbound connections only to services you explicitly configure: TMDB for metadata, your indexers, your download clients, your media servers, and your notification targets. It asks GitHub about new versions only when you press Check for updates, and your browser loads the interface fonts from Google Fonts. No telemetry, no analytics, no crash reporting. Credentials are stored locally and never written to logs.
