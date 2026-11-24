@@ -1,23 +1,25 @@
-const DOCS_BASE = "https://pilot.tv/docs";
+// There are no per-page docs yet, so every help link opens Pilot's page
+// on the Beacon site.
+const DOCS = "https://beaconstack.io/pilot";
 
 export const DOCS_URLS = {
   // Settings pages
-  libraries: `${DOCS_BASE}/libraries`,
-  qualityProfiles: `${DOCS_BASE}/quality-profiles`,
-  qualityDefinitions: `${DOCS_BASE}/quality-definitions`,
-  customFormats: `${DOCS_BASE}/custom-formats`,
-  indexers: `${DOCS_BASE}/indexers`,
-  downloadClients: `${DOCS_BASE}/download-clients`,
-  notifications: `${DOCS_BASE}/notifications`,
-  mediaServers: `${DOCS_BASE}/media-servers`,
-  importLists: `${DOCS_BASE}/import-lists`,
-  blocklist: `${DOCS_BASE}/blocklist`,
-  mediaManagement: `${DOCS_BASE}/media-management`,
-  appSettings: `${DOCS_BASE}/app-settings`,
-  system: `${DOCS_BASE}/system`,
+  libraries: DOCS,
+  qualityProfiles: DOCS,
+  qualityDefinitions: DOCS,
+  customFormats: DOCS,
+  indexers: DOCS,
+  downloadClients: DOCS,
+  notifications: DOCS,
+  mediaServers: DOCS,
+  importLists: DOCS,
+  blocklist: DOCS,
+  mediaManagement: DOCS,
+  appSettings: DOCS,
+  system: DOCS,
 
   // Main pages
-  wanted: `${DOCS_BASE}/wanted`,
-  activity: `${DOCS_BASE}/activity`,
-  calendar: `${DOCS_BASE}/calendar`,
+  wanted: DOCS,
+  activity: DOCS,
+  calendar: DOCS,
 } as const;
