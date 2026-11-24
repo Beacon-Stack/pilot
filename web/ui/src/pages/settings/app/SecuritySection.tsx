@@ -58,6 +58,7 @@ export default function SecuritySection() {
   const [required, setRequired] = useState<Required>("disabled_for_local");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -72,6 +73,9 @@ export default function SecuritySection() {
 
   const dirty =
     saved !== null && (required !== saved.required || username.trim() !== saved.username || password !== "");
+  // Once a login exists, changing it takes the current password.
+  const needsCurrent = saved?.password_set === true && dirty;
+  const canSave = dirty && !saving && (!needsCurrent || currentPassword !== "");
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -79,11 +83,13 @@ export default function SecuritySection() {
     try {
       const body: Record<string, string> = { required, username: username.trim() };
       if (password) body.password = password;
+      if (currentPassword) body.current_password = currentPassword;
       const s = await apiFetch<AuthSettings>("/system/auth", { method: "PUT", body: JSON.stringify(body) });
       setSaved(s);
       setRequired(s.required);
       setUsername(s.username);
       setPassword("");
+      setCurrentPassword("");
       toast.success(s.username ? "Login saved" : "Login removed");
     } catch (err) {
       toast.error((err as Error).message);
@@ -137,6 +143,19 @@ export default function SecuritySection() {
             disabled={saved === null}
           />
         </label>
+        {needsCurrent && (
+          <label style={label}>
+            Current password
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              placeholder="Needed to change the login"
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              style={input}
+            />
+          </label>
+        )}
         {saved !== null && !saved.username && (
           <p style={hint}>No login is set up, so Pilot can only be reached from your local network.</p>
         )}
@@ -145,7 +164,7 @@ export default function SecuritySection() {
         <div>
           <button
             type="submit"
-            disabled={!dirty || saving}
+            disabled={!canSave}
             style={{
               height: 32,
               padding: "0 14px",
@@ -155,8 +174,8 @@ export default function SecuritySection() {
               color: "var(--color-accent-fg)",
               fontSize: 13,
               fontWeight: 500,
-              cursor: dirty && !saving ? "pointer" : "default",
-              opacity: dirty && !saving ? 1 : 0.5,
+              cursor: canSave ? "pointer" : "default",
+              opacity: canSave ? 1 : 0.5,
             }}
           >
             {saving ? "Saving…" : "Save"}

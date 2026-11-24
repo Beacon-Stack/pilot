@@ -66,8 +66,10 @@ func BackupHandler(db *sql.DB, dbPath string, logger *slog.Logger) http.HandlerF
 // on next application startup.
 func RestoreHandler(dbPath string, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Allow up to 500 MiB for the restore upload.
+		// Allow up to 500 MiB for the restore upload, and longer than the
+		// server's usual read timeout to send it.
 		r.Body = http.MaxBytesReader(w, r.Body, 500<<20)
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Minute))
 
 		stagingPath := dbPath + ".restore"
 		f, err := os.Create(stagingPath)

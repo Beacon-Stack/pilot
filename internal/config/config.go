@@ -36,6 +36,13 @@ type PulseConfig struct {
 type ServerConfig struct {
 	Host string `mapstructure:"host"`
 	Port int    `mapstructure:"port"`
+	// AllowedHosts are extra names Pilot may be opened under without a
+	// login from a local address, e.g. "pilot.example.com" or
+	// "*.example.com" behind a reverse proxy. IP addresses, localhost,
+	// single-word names and home-network names (.local, .lan, .home,
+	// .internal, .home.arpa) are always accepted. Everything else must
+	// log in: it guards against DNS rebinding from a web page.
+	AllowedHosts []string `mapstructure:"allowed_hosts"`
 }
 
 // DatabaseConfig configures the SQLite database.

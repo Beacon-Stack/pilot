@@ -403,6 +403,7 @@ func run() error {
 			Username:     cfg.Auth.Username,
 			PasswordHash: cfg.Auth.PasswordHash.Value(),
 		},
+		AllowedHosts:           cfg.Server.AllowedHosts,
 		Logger:                 logger,
 		StartTime:              startTime,
 		DB:                     database.SQL,

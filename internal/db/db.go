@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -44,6 +45,13 @@ func Open(cfg config.DatabaseConfig) (*DB, error) {
 	if err := sqlDB.PingContext(pingCtx); err != nil {
 		sqlDB.Close()
 		return nil, fmt.Errorf("pinging sqlite database: %w", err)
+	}
+
+	// The database holds tokens and passwords for other services, so only
+	// the user Pilot runs as may read it (SQLite creates it world-readable
+	// under the usual umask). Best effort: some network shares refuse.
+	for _, f := range []string{cfg.Path, cfg.Path + "-wal", cfg.Path + "-shm"} {
+		_ = os.Chmod(f, 0o600)
 	}
 
 	return &DB{SQL: sqlDB}, nil

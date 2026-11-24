@@ -198,6 +198,7 @@ func TestAuthenticate_LocalBypass(t *testing.T) {
 	req := func(remote string) *http.Request {
 		r := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
 		r.RemoteAddr = remote
+		r.Host = "192.168.1.10:8383"
 		return r
 	}
 	// Default: local in, remote out.
