@@ -2,80 +2,19 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { summarizeHealth, useHealth } from "@/api/health";
 import {
-  Activity,
   AlertTriangle,
-  ArrowDownToLine,
-  Ban,
-  BarChart2,
-  Bell,
   BookOpen,
-  Bookmark,
-  Calendar as CalendarDays,
-  Compass,
-  Download,
-  FileText,
-  Filter,
-  Timer,
-  Languages,
-  FolderSync,
-  FolderInput,
-  Film,
-  Gauge,
-  History,
-  KeyRound,
-  Library,
-  ListPlus,
-  MonitorPlay,
-  Paintbrush,
-  Search,
-  Server,
-  Settings2,
-  SlidersHorizontal,
-  LayoutDashboard,
   LogOut,
   Tv,
 } from "lucide-react";
-import Shell, { type NavItem } from "@beacon-shared/Shell";
+import Shell from "@beacon-shared/Shell";
+import { mainNav, settingsNav } from "./nav";
 import UpdatedNotice from "@beacon-shared/UpdatedNotice";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
 import { getAuthStatus, logout } from "@/lib/auth";
 import { useCommandPalette } from "@/components/command-palette/useCommandPalette";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
-
-const mainNav: NavItem[] = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/discover", icon: Compass, label: "Discover" },
-  { to: "/activity", icon: Activity, label: "Activity" },
-  { to: "/calendar", icon: CalendarDays, label: "Calendar" },
-  { to: "/wanted", icon: Bookmark, label: "Wanted" },
-  { to: "/stats", icon: BarChart2, label: "Statistics" },
-  { to: "/queue", icon: Download, label: "Queue" },
-  { to: "/history", icon: History, label: "History" },
-  { to: "/manual-import", icon: FolderInput, label: "Manual Import" },
-];
-
-const settingsNav: NavItem[] = [
-  { to: "/settings/libraries", icon: Library, label: "Libraries" },
-  { to: "/settings/media-management", icon: Film, label: "Media Management" },
-  { to: "/settings/quality-profiles", icon: SlidersHorizontal, label: "Quality Profiles" },
-  { to: "/settings/quality-definitions", icon: Gauge, label: "Quality Definitions" },
-  { to: "/settings/indexers", icon: Search, label: "Indexers" },
-  { to: "/settings/download-clients", icon: Settings2, label: "Download Clients" },
-  { to: "/settings/remote-path-mappings", icon: FolderSync, label: "Remote Path Mappings" },
-  { to: "/settings/notifications", icon: Bell, label: "Notifications" },
-  { to: "/settings/media-servers", icon: MonitorPlay, label: "Media Servers" },
-  { to: "/settings/release-profiles", icon: Filter, label: "Release Profiles" },
-  { to: "/settings/delay-profile", icon: Timer, label: "Delay Profile" },
-  { to: "/settings/languages", icon: Languages, label: "Languages" },
-  { to: "/settings/import-lists", icon: ListPlus, label: "Import Lists" },
-  { to: "/settings/blocklist", icon: Ban, label: "Blocklist" },
-  { to: "/settings/import", icon: ArrowDownToLine, label: "Import" },
-  { to: "/settings/providers", icon: KeyRound, label: "Providers" },
-  { to: "/settings/system", icon: Server, label: "System" },
-  { to: "/settings/system/logs", icon: FileText, label: "Logs" },
-  { to: "/settings/app", icon: Paintbrush, label: "App Settings" },
-];
 
 // Pilot fetches its display name from /api/system/status (so the
 // branding can be re-skinned without a frontend rebuild). The shared
