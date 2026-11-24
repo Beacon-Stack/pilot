@@ -91,7 +91,7 @@ The compose file is [`docker/docker-compose.yml`](docker/docker-compose.yml). Th
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-The web UI is at `http://<this-host>:8383`. No login is needed from your own network; to reach Pilot from elsewhere, set a username and password in Settings → App Settings → Security. Scripts and other apps use the API key from Settings → App Settings.
+The web UI is at `http://<this-host>:8383`. No login is needed from your own network, and connections from anywhere else are refused. To reach Pilot from outside, or to put a login in front of it for everyone, set a username and password in Settings → App Settings → Security. Scripts and other apps use the API key from Settings → App Settings.
 
 ### Running it with the other Beacon apps
 
@@ -166,6 +166,20 @@ If the full stack is running, Pilot pulls shared indexers and quality profiles f
 **Tests.** `make test` runs the Go suite; the ranking, stall-watcher, blocklist and authentication tests pin behaviour that has broken before, so fix the code rather than the test when one fails.
 
 **API surface.** Everything the UI does is available through the REST API — OpenAPI docs at `/api/docs`.
+
+## Access and login
+
+By default Pilot needs no login: devices on your local network get in, and connections from anywhere else are refused. You can change that in Settings → App Settings → Security:
+
+- **None** (default): the local network only, no login.
+- **Login, except on my local network**: anyone outside it needs the username and password.
+- **Login for everyone**.
+
+"Local" means the private address ranges (192.168.x.x, 10.x.x.x, 172.16–31.x.x). If your network uses other addresses, or Pilot sees a different address for your devices (some VPNs and container setups), add the range in the same place or set `PILOT_AUTH_LOCAL_NETWORKS` (comma-separated). The settings page shows the address Pilot sees for you.
+
+No login is only safe while Pilot can't be reached from the internet. If you forward a port or publish it through a proxy, choose a login.
+
+Scripts and the other Beacon apps use the API key, which works whichever option is chosen. If you open Pilot through your own domain name without a login, list the name in `PILOT_SERVER_ALLOWED_HOSTS`.
 
 ## Privacy
 

@@ -12,7 +12,7 @@ import { mainNav, settingsNav } from "./nav";
 import UpdatedNotice from "@beacon-shared/UpdatedNotice";
 import { useSystemStatus } from "@/api/system";
 import { applyTheme } from "@/theme";
-import { getAuthStatus, logout } from "@/lib/auth";
+import { getAuthStatus, logout } from "@beacon-shared/auth";
 import { useCommandPalette } from "@/components/command-palette/useCommandPalette";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 

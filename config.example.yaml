@@ -23,13 +23,12 @@ log:
 
 auth:
   # api_key: ""  # auto-generated on first run if empty; for scripts and other apps
-  # Like Sonarr: "disabled_for_local" (default) lets browsers on your own
-  # network open the UI without logging in; "enabled" makes everyone log in.
-  # required: disabled_for_local
-  # Set the login from Settings → App Settings → Security. password_hash is
-  # written there; never put a plain password in this file.
-  # username: ""
-  # password_hash: ""
+  # Who must log in is set in Settings → App Settings → Security and saved
+  # in auth.json beside the database. The default is no login: devices on
+  # your local network get in, everyone else is refused.
+  # Extra address ranges that count as your local network (the private
+  # ranges always do). Env: PILOT_AUTH_LOCAL_NETWORKS (comma-separated).
+  # local_networks: ["100.64.0.0/10"]
 
 tvdb:
   # api_key: ""  # TheTVDB API key (not yet wired up)

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installAuthRedirect, safeNextPath } from "./auth";
+import { installAuthRedirect, safeNextPath } from "@beacon-shared/auth";
 
 describe("safeNextPath", () => {
   it("keeps same-app relative paths", () => {

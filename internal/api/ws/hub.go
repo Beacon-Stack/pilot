@@ -60,7 +60,7 @@ func (h *Hub) HandleEvent(_ context.Context, e events.Event) {
 
 // ServeHTTP upgrades the connection to WebSocket and starts pumping events
 // to the client. It performs no authentication itself: the router mounts it
-// behind middleware.Auth, which also rejects cross-site handshakes for
+// behind the auth gate (pulse/pkg/auth), which also rejects cross-site handshakes for
 // cookie sessions (the origin check below is skipped for dev proxies).
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{

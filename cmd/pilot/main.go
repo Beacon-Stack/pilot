@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/beacon-stack/pulse/pkg/auth"
+
 	// Register indexer plugins so they self-register with registry.Default.
 	_ "github.com/beacon-stack/pilot/plugins/indexers/newznab"
 	_ "github.com/beacon-stack/pilot/plugins/indexers/torznab"
@@ -48,7 +50,6 @@ import (
 	"github.com/beacon-stack/pulse/pkg/notify"
 
 	"github.com/beacon-stack/pilot/internal/api"
-	"github.com/beacon-stack/pilot/internal/api/middleware"
 	apiv1 "github.com/beacon-stack/pilot/internal/api/v1"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/appinfo"
@@ -203,14 +204,29 @@ func run() error {
 		logger.Info("API key loaded", "key_prefix", masked, "source", "config/env")
 	}
 
-	switch {
-	case cfg.Auth.Required == middleware.AuthEnabled && (cfg.Auth.Username == "" || cfg.Auth.PasswordHash.IsEmpty()):
-		logger.Warn("auth.required is \"enabled\" but no username/password is set — allowing local addresses without a login so you aren't locked out",
-			"hint", "set a login in Settings → App Settings")
-	case cfg.Auth.Required == middleware.AuthEnabled:
-		logger.Info("authentication required for every address")
+	// Who may use the app. Settings live in auth.json beside the database;
+	// the first start after an upgrade takes them from config.yaml, where
+	// older versions kept the login.
+	gate, err := auth.Open(auth.Options{
+		App:           appinfo.AppName,
+		APIKey:        cfg.Auth.APIKey.Value(),
+		AllowedHosts:  cfg.Server.AllowedHosts,
+		LocalNetworks: cfg.Auth.LocalNetworks,
+	}, filepath.Dir(cfg.Database.Path), auth.Settings{
+		Required:     cfg.Auth.Required,
+		Username:     cfg.Auth.Username,
+		PasswordHash: cfg.Auth.PasswordHash.Value(),
+	})
+	if err != nil {
+		return fmt.Errorf("loading login settings: %w", err)
+	}
+	switch gate.Settings().Mode() {
+	case auth.RequiredEverywhere:
+		logger.Info("a login is required from every address")
+	case auth.RequiredOutside:
+		logger.Info("the local network needs no login; other addresses log in")
 	default:
-		logger.Info("authentication disabled for local addresses — browsers on your network open the UI without logging in")
+		logger.Info("no login: the local network gets in, other addresses are refused")
 	}
 
 	// Startup banner
@@ -397,12 +413,8 @@ func run() error {
 	// HTTP router
 	startTime := time.Now()
 	router := api.NewRouter(api.RouterConfig{
-		Auth: cfg.Auth.APIKey,
-		AuthSettings: middleware.AuthSettings{
-			Required:     cfg.Auth.Required,
-			Username:     cfg.Auth.Username,
-			PasswordHash: cfg.Auth.PasswordHash.Value(),
-		},
+		Auth:                   cfg.Auth.APIKey,
+		Gate:                   gate,
 		AllowedHosts:           cfg.Server.AllowedHosts,
 		Logger:                 logger,
 		StartTime:              startTime,

@@ -1,8 +1,15 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import { Lock } from "lucide-react";
-import { getAuthStatus, login, safeNextPath, type AuthStatus } from "@/lib/auth";
+import { getAuthStatus, login, safeNextPath } from "./auth";
+import type { AuthStatus } from "./auth";
 
-const inputStyle: React.CSSProperties = {
+// The sign-in page, the same in every Beacon app. It is also where
+// someone lands when the app won't let them in for another reason (not
+// on the local network, or opened under a name the app doesn't know), so
+// it says which.
+
+const inputStyle: CSSProperties = {
   height: 36,
   padding: "0 10px",
   borderRadius: 6,
@@ -12,11 +19,18 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 6,
   fontSize: 12,
+  color: "var(--color-text-secondary)",
+};
+
+const noteStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 13,
+  lineHeight: 1.5,
   color: "var(--color-text-secondary)",
 };
 
@@ -38,7 +52,7 @@ export default function LoginPage() {
         if (s.authenticated) window.location.replace(nextPath());
         else setStatus(s);
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not reach Pilot."));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not reach the app."));
   }, []);
 
   async function onSubmit(e: FormEvent) {
@@ -55,8 +69,10 @@ export default function LoginPage() {
     }
   }
 
-  const noLogin = status !== null && !status.credentials_configured;
+  // A login form only helps when a login is what's missing.
+  const canLogIn = status !== null && status.required !== "none";
   const canSubmit = !submitting && username.trim() !== "" && password !== "";
+  const blocked = status !== null && status.reason !== undefined && status.reason !== "login_required";
 
   return (
     <div
@@ -86,31 +102,15 @@ export default function LoginPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Lock size={20} strokeWidth={1.75} style={{ color: "var(--color-accent)" }} />
           <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "var(--color-text-primary)" }}>
-            Sign in
+            {canLogIn || status === null ? "Sign in" : `${status.app} isn't available here`}
           </h1>
         </div>
 
-        {status === null && !error && (
-          <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>Checking…</p>
-        )}
+        {status === null && !error && <p style={noteStyle}>Checking…</p>}
 
-        {status?.untrusted_host && (
-          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--color-text-secondary)" }}>
-            Pilot doesn't recognise <strong>{status.untrusted_host}</strong> as its own address, so it
-            asks for a login here. Open it by IP address or local name
-            {noLogin ? "" : ", sign in below,"} or add this name to <code>server.allowed_hosts</code>.
-          </p>
-        )}
+        {blocked && status.detail && <p style={noteStyle}>{status.detail}</p>}
 
-        {noLogin && !status?.untrusted_host && (
-          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--color-text-secondary)" }}>
-            Pilot only accepts connections from your local network until you set a username and
-            password. Open Pilot from a device on your network and go to{" "}
-            <strong>Settings → App Settings → Security</strong>.
-          </p>
-        )}
-
-        {status !== null && !noLogin && (
+        {canLogIn && (
           <>
             <label style={labelStyle}>
               Username
@@ -144,7 +144,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {status !== null && !noLogin && (
+        {canLogIn && (
           <button
             type="submit"
             disabled={!canSubmit}
