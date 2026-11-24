@@ -77,7 +77,7 @@ func TestService_CRUDAndMatcher(t *testing.T) {
 		t.Fatalf("not normalized: %+v", p)
 	}
 
-	m, err := svc.Matcher(ctx)
+	m, err := LoadMatcher(ctx, svc.q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestService_CRUDAndMatcher(t *testing.T) {
 	if err != nil || p.Enabled {
 		t.Fatalf("update: %+v %v", p, err)
 	}
-	if m, _ = svc.Matcher(ctx); func() bool { ok, _ := m.Check("Show.S01E01.CAM-GRP", ""); return !ok }() {
+	if m, _ = LoadMatcher(ctx, svc.q); func() bool { ok, _ := m.Check("Show.S01E01.CAM-GRP", ""); return !ok }() {
 		t.Fatal("disabled profile still applied")
 	}
 

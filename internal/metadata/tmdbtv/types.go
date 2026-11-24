@@ -15,7 +15,7 @@ type SearchResult struct {
 }
 
 // PaginatedSeries is a page of series results from a TMDB list endpoint
-// (popular, trending, top-rated, on-the-air, discover-by-genre).
+// (popular, trending, browse, discover-by-genre).
 type PaginatedSeries struct {
 	Results    []SearchResult
 	Page       int

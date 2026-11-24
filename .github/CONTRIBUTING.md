@@ -24,7 +24,7 @@ cd web/ui && npm run build  # confirm TypeScript build is clean
 - `go test ./...` must pass (run with `-race` for concurrency-sensitive code)
 - Follow existing patterns — read similar files before writing new ones
 - New service methods need corresponding tests
-- The release-search / stallwatcher / blocklist files are regression-guarded — see [CLAUDE.md](../CLAUDE.md) for the full list. `make test` before touching any of them
+- The release-search, stall-watcher, blocklist and authentication tests pin behaviour that has broken before. Run `make test` before touching that code, and fix the code rather than the test when one fails
 - Security-sensitive code (auth, credentials, external HTTP) warrants extra attention and a comment
 
 **TypeScript / React:**
@@ -46,11 +46,11 @@ cd web/ui && npm run build  # confirm TypeScript build is clean
 - One logical change per PR
 - Include a clear description of what changed and why
 - Reference the issue number if there is one (`Fixes #123`)
-- Make sure both `go build ./...` and `cd web/ui && npm run build` pass before submitting
+- Make sure `make check` and `make test` pass before submitting
 
 ## Adding a plugin
 
-Pilot plugins live under `plugins/` — download-client plugins, notification plugins, and indexer plugins each follow a consistent interface. Read an existing plugin in the same category before writing a new one.
+Pilot plugins live under `plugins/` — download clients, indexers, media servers and import lists each follow a consistent interface. Read an existing plugin in the same category before writing a new one.
 
 ## Questions
 

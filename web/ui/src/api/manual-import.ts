@@ -2,7 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 import type { Quality } from "@/types";
 
-export interface ManualEpisode {
+interface ManualEpisode {
   id: string;
   season_number: number;
   episode_number: number;

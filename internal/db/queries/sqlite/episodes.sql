@@ -75,9 +75,6 @@ JOIN series s ON s.id = e.series_id
 WHERE s.monitored = 1 AND e.monitored = 1 AND e.has_file = 0
   AND e.air_date IS NOT NULL AND e.air_date <= strftime('%Y-%m-%d', 'now');
 
--- name: DeleteEpisodesBySeriesID :exec
-DELETE FROM episodes WHERE series_id = ?;
-
 -- name: ListEpisodesByAirDateRange :many
 SELECT e.id, e.series_id, e.season_id, e.season_number, e.episode_number, e.absolute_number, e.air_date, e.title, e.overview, e.monitored, e.has_file, e.still_path, e.runtime_minutes, s.title as series_title
 FROM episodes e

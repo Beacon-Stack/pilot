@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
 	"sync"
 	"time"
 
@@ -836,30 +835,6 @@ type autoSearchParams struct {
 	Episode   int
 	EpisodeID string
 	Source    string
-}
-
-// mergeQueryResults merges the results of several query variations,
-// keeping the first occurrence of each GUID, and re-ranks the whole list.
-// Each query's results arrive ranked, but concatenating them is not: a
-// better release found only by a later variation would sit below the
-// first query's results, and auto-search (which takes the top viable
-// result) would never pick it.
-func mergeQueryResults(perQuery [][]indexer.SearchResult) []indexer.SearchResult {
-	seen := make(map[string]struct{})
-	var merged []indexer.SearchResult
-	for _, results := range perQuery {
-		for _, r := range results {
-			if _, ok := seen[r.GUID]; ok {
-				continue
-			}
-			seen[r.GUID] = struct{}{}
-			merged = append(merged, r)
-		}
-	}
-	sort.SliceStable(merged, func(i, j int) bool {
-		return indexer.RanksAbove(merged[i], merged[j])
-	})
-	return merged
 }
 
 // pickBestViable returns the release to grab from viable, which is in

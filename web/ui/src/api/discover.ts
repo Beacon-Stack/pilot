@@ -1,28 +1,28 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 
-export interface DiscoverCast {
+interface DiscoverCast {
   id: number;
   name: string;
   character: string;
   profile_path: string;
 }
 
-export interface DiscoverCrew {
+interface DiscoverCrew {
   id: number;
   name: string;
   job: string;
   profile_path: string;
 }
 
-export interface DiscoverRecommendation {
+interface DiscoverRecommendation {
   tmdb_id: number;
   title: string;
   year: number;
   poster_path: string;
 }
 
-export interface DiscoverSeason {
+interface DiscoverSeason {
   season_number: number;
   episode_count: number;
   air_date: string;
@@ -60,7 +60,7 @@ export function useDiscoverSeries(tmdbId: number) {
 
 // ── Browse (auto-populated categories) ───────────────────────────────────────
 
-export interface DiscoverListItem {
+interface DiscoverListItem {
   tmdb_id: number;
   title: string;
   year: number;
@@ -78,26 +78,6 @@ export interface DiscoverListResponse {
 export interface TMDBGenre {
   id: number;
   name: string;
-}
-
-export type DiscoverCategory = "trending" | "popular" | "top-rated" | "on-the-air";
-
-export function useDiscover(category: DiscoverCategory, page: number) {
-  return useQuery({
-    queryKey: ["discover", category, page],
-    queryFn: () => apiFetch<DiscoverListResponse>(`/discover/${category}?page=${page}`),
-    enabled: page > 0,
-    staleTime: 5 * 60_000,
-  });
-}
-
-export function useDiscoverByGenre(genreId: number, page: number) {
-  return useQuery({
-    queryKey: ["discover", "genre", genreId, page],
-    queryFn: () => apiFetch<DiscoverListResponse>(`/discover/genre/${genreId}?page=${page}`),
-    enabled: genreId > 0 && page > 0,
-    staleTime: 5 * 60_000,
-  });
 }
 
 export function useGenreList() {

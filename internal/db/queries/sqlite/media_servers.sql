@@ -9,9 +9,6 @@ SELECT * FROM media_server_configs WHERE id = ?;
 -- name: ListMediaServerConfigs :many
 SELECT * FROM media_server_configs ORDER BY name ASC;
 
--- name: ListEnabledMediaServers :many
-SELECT * FROM media_server_configs WHERE enabled = TRUE ORDER BY name ASC;
-
 -- name: UpdateMediaServerConfig :one
 UPDATE media_server_configs SET
     name       = ?,

@@ -37,9 +37,6 @@ INSERT INTO import_exclusions (id, tmdb_id, title, year, created_at)
 VALUES (?, ?, ?, ?, ?)
 RETURNING *;
 
--- name: GetImportExclusionByTMDBID :one
-SELECT * FROM import_exclusions WHERE tmdb_id = ?;
-
 -- name: ListImportExclusions :many
 SELECT * FROM import_exclusions ORDER BY title ASC;
 

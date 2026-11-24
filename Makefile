@@ -17,7 +17,7 @@ LDFLAGS   := -ldflags "\
 
 IMAGE ?= ghcr.io/beacon-stack/pilot
 
-.PHONY: build run dev test test/unit test/cover test/race test/frontend \
+.PHONY: build run dev deadcode deadcode/go test test/unit test/cover test/race test/frontend \
         lint typecheck check generate clean docker docker/push help
 
 ## build: Compile the binary into ./bin/pilot
@@ -65,8 +65,15 @@ lint:
 typecheck:
 	cd web/ui && npm run typecheck
 
-## check: Run all pre-push checks (Go lint + TypeScript type-check + frontend tests)
-check: lint typecheck test/frontend
+## deadcode: Fail on unreachable Go code or unused frontend files and exports
+deadcode: deadcode/go
+	cd web/ui && npm run deadcode
+
+deadcode/go:
+	@out="$$(go run golang.org/x/tools/cmd/deadcode@v0.53.0 -test ./...)"; echo "$$out"; test -z "$$out"
+
+## check: Run all pre-push checks (lint, dead code, type-check, frontend tests)
+check: lint deadcode typecheck test/frontend
 
 ## generate: Regenerate sqlc query code
 generate:

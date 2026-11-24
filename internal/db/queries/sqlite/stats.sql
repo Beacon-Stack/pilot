@@ -9,11 +9,6 @@ SELECT * FROM stats_snapshots
 ORDER BY snapshot_at DESC
 LIMIT ?;
 
--- name: LatestStatsSnapshot :one
-SELECT * FROM stats_snapshots
-ORDER BY snapshot_at DESC
-LIMIT 1;
-
 -- name: CountAllEpisodes :one
 SELECT COUNT(*) FROM episodes;
 
@@ -28,9 +23,6 @@ SELECT COALESCE(SUM(size_bytes), 0) FROM episode_files;
 
 -- name: CountEpisodeFiles :one
 SELECT COUNT(*) FROM episode_files;
-
--- name: ListEpisodeFileQualities :many
-SELECT quality_json FROM episode_files;
 
 -- name: ListEpisodeFileQualitiesWithSeriesIDs :many
 SELECT series_id, quality_json FROM episode_files;

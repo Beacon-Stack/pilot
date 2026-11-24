@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiFetch } from "./client";
-import type { EpisodeFile, RenamePreviewItem } from "@/types";
+import type { EpisodeFile } from "@/types";
 
 // ── Episode files ─────────────────────────────────────────────────────────────
 
@@ -29,32 +29,6 @@ export function useDeleteEpisodeFile() {
 }
 
 // ── Rename preview / execute ─────────────────────────────────────────────────
-
-export function useRenamePreview(seriesId: string) {
-  return useQuery({
-    queryKey: ["series", seriesId, "rename-preview"],
-    queryFn: () =>
-      apiFetch<RenamePreviewItem[]>(`/series/${seriesId}/rename?dry_run=true`, {
-        method: "POST",
-      }),
-    enabled: false, // only triggered manually
-  });
-}
-
-export function useRenameExecute(seriesId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      apiFetch<RenamePreviewItem[]>(`/series/${seriesId}/rename?dry_run=false`, {
-        method: "POST",
-      }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["series", seriesId, "files"] });
-      toast.success("Rename complete");
-    },
-    onError: (err) => toast.error((err as Error).message),
-  });
-}
 
 // ── Library scan task ────────────────────────────────────────────────────────
 

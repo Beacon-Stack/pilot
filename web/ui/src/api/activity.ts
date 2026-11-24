@@ -8,7 +8,7 @@ import { apiFetch } from "./client";
 // "grab" / "import" are legacy values left valid for back-compat — the
 // API still accepts them as filter inputs but the new emit pipeline
 // never writes them.
-export type ActivityCategory =
+type ActivityCategory =
   | "grab_succeeded"
   | "grab_failed"
   | "import_succeeded"
@@ -49,7 +49,7 @@ export function useActivity(opts?: { category?: string; since?: string; limit?: 
   });
 }
 
-export type AttentionKind = "grab_failed" | "import_failed" | "stalled";
+type AttentionKind = "grab_failed" | "import_failed" | "stalled";
 
 export interface AttentionItem {
   kind: AttentionKind;

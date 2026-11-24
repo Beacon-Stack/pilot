@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import type { BlocklistEntry, BlocklistPage } from "@/types";
+import type { BlocklistPage } from "@/types";
 
 export function useBlocklist(page = 1, perPage = 50) {
   return useQuery({
@@ -28,6 +28,3 @@ export function useClearBlocklist() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["blocklist"] }),
   });
 }
-
-// Re-export types so callers can import from one place.
-export type { BlocklistEntry };

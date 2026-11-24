@@ -11,7 +11,7 @@ export interface CollectionStats {
   recently_added: number;
 }
 
-export interface StoragePoint {
+interface StoragePoint {
   captured_at: string;
   total_bytes: number;
   file_count: number;
@@ -106,7 +106,7 @@ export interface GenreBucket {
   count: number;
 }
 
-export interface IndexerStat {
+interface IndexerStat {
   indexer_id: string;
   indexer_name: string;
   grab_count: number;

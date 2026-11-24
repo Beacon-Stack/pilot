@@ -117,45 +117,6 @@ func (q *Queries) CreateGrabHistory(ctx context.Context, arg CreateGrabHistoryPa
 	return i, err
 }
 
-const getGrabByClientItemID = `-- name: GetGrabByClientItemID :one
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error, content_path, import_attempts, import_last_attempt_at FROM grab_history WHERE client_item_id = ? LIMIT 1
-`
-
-func (q *Queries) GetGrabByClientItemID(ctx context.Context, clientItemID *string) (GrabHistory, error) {
-	row := q.db.QueryRowContext(ctx, getGrabByClientItemID, clientItemID)
-	var i GrabHistory
-	err := row.Scan(
-		&i.ID,
-		&i.SeriesID,
-		&i.EpisodeID,
-		&i.SeasonNumber,
-		&i.IndexerID,
-		&i.ReleaseGuid,
-		&i.ReleaseTitle,
-		&i.ReleaseSource,
-		&i.ReleaseResolution,
-		&i.ReleaseCodec,
-		&i.ReleaseHdr,
-		&i.Protocol,
-		&i.Size,
-		&i.DownloadClientID,
-		&i.ClientItemID,
-		&i.DownloadStatus,
-		&i.DownloadedBytes,
-		&i.ScoreBreakdown,
-		&i.GrabbedAt,
-		&i.Source,
-		&i.InfoHash,
-		&i.ImportStatus,
-		&i.ImportedAt,
-		&i.ImportError,
-		&i.ContentPath,
-		&i.ImportAttempts,
-		&i.ImportLastAttemptAt,
-	)
-	return i, err
-}
-
 const getGrabByID = `-- name: GetGrabByID :one
 SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error, content_path, import_attempts, import_last_attempt_at FROM grab_history WHERE id = ?
 `
@@ -431,61 +392,6 @@ type ListGrabHistoryParams struct {
 
 func (q *Queries) ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams) ([]GrabHistory, error) {
 	rows, err := q.db.QueryContext(ctx, listGrabHistory, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GrabHistory
-	for rows.Next() {
-		var i GrabHistory
-		if err := rows.Scan(
-			&i.ID,
-			&i.SeriesID,
-			&i.EpisodeID,
-			&i.SeasonNumber,
-			&i.IndexerID,
-			&i.ReleaseGuid,
-			&i.ReleaseTitle,
-			&i.ReleaseSource,
-			&i.ReleaseResolution,
-			&i.ReleaseCodec,
-			&i.ReleaseHdr,
-			&i.Protocol,
-			&i.Size,
-			&i.DownloadClientID,
-			&i.ClientItemID,
-			&i.DownloadStatus,
-			&i.DownloadedBytes,
-			&i.ScoreBreakdown,
-			&i.GrabbedAt,
-			&i.Source,
-			&i.InfoHash,
-			&i.ImportStatus,
-			&i.ImportedAt,
-			&i.ImportError,
-			&i.ContentPath,
-			&i.ImportAttempts,
-			&i.ImportLastAttemptAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listGrabHistoryByEpisode = `-- name: ListGrabHistoryByEpisode :many
-SELECT id, series_id, episode_id, season_number, indexer_id, release_guid, release_title, release_source, release_resolution, release_codec, release_hdr, protocol, size, download_client_id, client_item_id, download_status, downloaded_bytes, score_breakdown, grabbed_at, source, info_hash, import_status, imported_at, import_error, content_path, import_attempts, import_last_attempt_at FROM grab_history WHERE episode_id = ? ORDER BY grabbed_at DESC
-`
-
-func (q *Queries) ListGrabHistoryByEpisode(ctx context.Context, episodeID *string) ([]GrabHistory, error) {
-	rows, err := q.db.QueryContext(ctx, listGrabHistoryByEpisode, episodeID)
 	if err != nil {
 		return nil, err
 	}

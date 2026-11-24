@@ -17,9 +17,6 @@ RETURNING *;
 -- name: ListGrabHistoryBySeries :many
 SELECT * FROM grab_history WHERE series_id = ? ORDER BY grabbed_at DESC;
 
--- name: ListGrabHistoryByEpisode :many
-SELECT * FROM grab_history WHERE episode_id = ? ORDER BY grabbed_at DESC;
-
 -- name: ListGrabHistory :many
 SELECT * FROM grab_history ORDER BY grabbed_at DESC LIMIT ? OFFSET ?;
 
@@ -55,9 +52,6 @@ SELECT * FROM grab_history
    AND (info_hash IS NULL OR info_hash = '')
    AND grabbed_at < sqlc.arg('older_than')
  ORDER BY grabbed_at ASC;
-
--- name: GetGrabByClientItemID :one
-SELECT * FROM grab_history WHERE client_item_id = ? LIMIT 1;
 
 -- name: GetGrabByInfoHash :one
 SELECT * FROM grab_history WHERE info_hash = ? ORDER BY grabbed_at DESC LIMIT 1;

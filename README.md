@@ -43,7 +43,7 @@ Pilot stands on its own as a Sonarr alternative. It comes into its own as part o
 **Automation**
 
 - Automatic RSS sync on a configurable schedule
-- Auto-search scored against your quality profile and custom formats
+- Auto-search scored against your quality profile and release profiles
 - Auto-import of completed downloads with rename support
 - Configurable episode naming (standard, daily, anime)
 - Season folder organization
@@ -161,9 +161,9 @@ If the full stack is running, Pilot pulls shared indexers and quality profiles f
 
 **Stallwatcher.** `internal/core/stallwatcher/service.go` polls the download client's stall endpoint on a configurable interval, classifies stalled torrents by reason, and blocklists them. The per-episode circuit breaker caps auto-blocklist events at three strikes per 24 hours so a misconfigured indexer can't trigger a retry storm.
 
-**Interactive search ranking.** The season-level interactive search orders releases by Quality → Custom Format Score → Protocol → Episode Count. The Episode Count tier is what lifts season packs above individual episodes within the same quality tier, so pack-type filter pills (Season Pack / Episodes / All) default to Season Pack when the search is season-scoped.
+**Search ranking.** Releases are ordered by quality, then revision (PROPER/REPACK), then episode count, then seed count in log buckets, then age. The episode-count tier is what lifts season packs above single episodes of the same quality. Seed buckets with an age cap stop an old torrent with an inflated seed count from winning.
 
-**Regression suite.** `make test` runs the full suite in about two seconds. The guarded files and the failure modes each test exists to prevent are listed in [CLAUDE.md](CLAUDE.md).
+**Tests.** `make test` runs the Go suite; the ranking, stall-watcher, blocklist and authentication tests pin behaviour that has broken before, so fix the code rather than the test when one fails.
 
 **API surface.** Everything the UI does is available through the REST API — OpenAPI docs at `/api/docs`.
 
@@ -182,8 +182,8 @@ make build    # compile to bin/pilot
 make run      # build + run
 make dev      # hot reload (requires air)
 make test     # go test ./...
-make check    # golangci-lint + tsc --noEmit
-make sqlc     # regenerate sqlc code
+make check    # lint, dead-code checks, type-check, frontend tests
+make generate # regenerate database code after changing SQL
 ```
 
 ## Contributing

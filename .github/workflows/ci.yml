@@ -26,11 +26,8 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests (with race detector)
-        run: go test -race -timeout 120s ./...
-
-      - name: Run tests (coverage)
-        run: go test -coverprofile=coverage.out -timeout 120s ./...
+      - name: Run tests (race detector, coverage)
+        run: go test -race -coverprofile=coverage.out -timeout 180s ./...
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -57,6 +54,9 @@ jobs:
       - name: Run golangci-lint
         run: golangci-lint run
 
+      - name: No unreachable code
+        run: make deadcode/go
+
   test-frontend:
     name: Test Frontend
     runs-on: ubuntu-latest
@@ -81,6 +81,9 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: No unused files or exports
+        run: npm run deadcode
 
       # Same command the Docker image runs, so a broken frontend build
       # fails the PR instead of the post-merge image push.
@@ -170,7 +173,7 @@ jobs:
             type=ref,event=branch
             type=sha,prefix=sha-
 
-      - name: Build and push (main — alpine with ffprobe)
+      - name: Build and push (main)
         uses: docker/build-push-action@v5
         with:
           context: .
