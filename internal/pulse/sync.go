@@ -342,6 +342,16 @@ func buildDownloadClientSettings(r sdk.DownloadClient) json.RawMessage {
 		"pulse":    true, // marker so we know this was synced
 	}
 
+	// What the client needs to let this app in, when Pulse has it: a
+	// password the owner entered there, or for a client registered with
+	// Pulse (Haul) the API key it registered.
+	if r.Password != "" {
+		m["password"] = r.Password
+	}
+	if r.APIKey != "" {
+		m["api_key"] = r.APIKey
+	}
+
 	if r.Category != "" {
 		m["category"] = r.Category
 	}
