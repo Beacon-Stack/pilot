@@ -169,7 +169,7 @@ If the full stack is running, Pilot pulls shared indexers and quality profiles f
 
 ## Privacy
 
-Pilot makes outbound connections only to services you explicitly configure: TMDB for metadata, your indexers, your download clients, your media servers, and your notification targets. No telemetry, no analytics, no crash reporting, no update checks. Credentials are stored locally and never written to logs.
+Pilot makes outbound connections only to services you explicitly configure: TMDB for metadata, your indexers, your download clients, your media servers, and your notification targets. It asks GitHub about new versions only when you press Check for updates, and your browser loads the interface fonts from Google Fonts. No telemetry, no analytics, no crash reporting. Credentials are stored locally and never written to logs.
 
 ## Built with Claude
 
