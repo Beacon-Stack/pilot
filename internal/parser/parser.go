@@ -1,3 +1,6 @@
+// Package parser reads release names and file names: the show title, year,
+// season and episodes, and the quality, audio, language and release-group
+// tags.
 package parser
 
 import "strings"
@@ -36,14 +39,8 @@ func Parse(input string) ParsedRelease {
 	// Quality name label
 	p.QualityName = buildQualityName(p.Resolution, p.Source, p.Codec, p.HDR)
 
-	// Episode info — must run before title extraction so episode tokens
-	// can be stripped from the title input.
-	p.EpisodeInfo = ParseEpisodeInfo(input)
-
-	// Title + year: strip episode tokens first so they don't pollute the show name.
-	titleInput := stripEpisodeTokens(input)
-	normalized := normalize(titleInput)
-	p.Title, p.Year = extractTitle(normalized)
+	ep := parseEpisode(input)
+	p.Title, p.Year, p.EpisodeInfo = ep.Title, ep.Year, ep.EpisodeInfo
 
 	return p
 }

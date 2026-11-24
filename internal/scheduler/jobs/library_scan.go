@@ -11,11 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/parser"
+
 	"github.com/google/uuid"
 
 	"github.com/beacon-stack/pilot/internal/core/library"
 	"github.com/beacon-stack/pilot/internal/core/mediacheck"
-	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/unmapped"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
@@ -232,7 +233,7 @@ func importScannedFile(
 	}
 	// Then the parsed show title.
 	if !ok {
-		series, ok = seriesByTitle[strings.ToLower(parsed.ShowTitle)]
+		series, ok = seriesByTitle[strings.ToLower(parsed.Title)]
 	}
 	if !ok {
 		// Fallback: try matching against the top-level folder name within the library root.
@@ -245,7 +246,7 @@ func importScannedFile(
 	}
 	if !ok {
 		logger.Debug("library scan: no matching series for title",
-			"title", parsed.ShowTitle,
+			"title", parsed.Title,
 			"path", path,
 		)
 		return nil

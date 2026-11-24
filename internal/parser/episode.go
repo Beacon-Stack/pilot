@@ -1,146 +1,176 @@
 package parser
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-// EpisodeInfo holds parsed season/episode data from a release title.
+// EpisodeInfo holds the TV-episode-specific fields parsed from a filename.
 type EpisodeInfo struct {
-	Season          int    // 0 if not found
-	Episodes        []int  // empty if season pack or daily/anime only
-	AbsoluteEpisode int    // for anime absolute numbering
-	AirDate         string // "2024-01-15" for daily shows
-	IsSeasonPack    bool   // true if "S01" with no episode number
-	IsDaily         bool
-	IsAnime         bool
+	// Season is the parsed season number (1-indexed; 0 = specials / unknown).
+	Season int
+
+	// Episodes is the list of episode numbers found in the filename.
+	// A multi-episode file like S02E03E04 will have [3, 4].
+	Episodes []int
+
+	// IsSeasonPack is true when the filename or directory name indicates an
+	// entire season rather than individual episodes (e.g. "Show.S02.BluRay").
+	IsSeasonPack bool
+
+	// AbsoluteEpisode is the parsed absolute episode number from anime-
+	// style titles ("[Group] Show - 48 [1080p]" → 48). Zero when the
+	// title doesn't match the absolute-pattern OR when SxxExx took
+	// precedence (the SxxExx form is preferred whenever both could
+	// apply, since it's less ambiguous).
+	AbsoluteEpisode int
 }
 
-var (
-	// Standard: S01E05 or multi-episode S01E05E06 or S01E05-E06
-	reStdEpisode = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,3})(?:[-E]E?\d{1,3})*`)
+// episodeParse is what parseEpisode finds in a name.
+type episodeParse struct {
+	Title       string
+	Year        int
+	EpisodeInfo EpisodeInfo
+}
 
-	// All episode numbers within a matched SxxExx token.
-	reEpisodeNum = regexp.MustCompile(`(?i)E(\d{1,3})`)
+// seEpisodeRe matches patterns like S01E02, S01E02E03, s1e2, etc.
+// Group 1: season; groups 2…n: episode numbers (one per "E\d+" token).
+var seEpisodeRe = regexp.MustCompile(`(?i)[._\s-]S(\d{1,2})((?:E\d{1,3})+)`)
 
-	// Season only: S## (no episode component).  We check post-match that
-	// no E## follows, since Go's RE2 doesn't support negative lookahead.
-	reSeasonOnly = regexp.MustCompile(`(?i)(S\d{1,2})`)
+// seasonPackRe matches a bare season marker with no episode number, in
+// both the compact form (S02) and the word form (Season 2 / Season.2).
+// The word form matters: Pilot deliberately issues a "<Title> Season N"
+// query variant to find these releases, and dropping them here silently
+// discarded every result that query variant produced.
+var seasonPackRe = regexp.MustCompile(`(?i)(?:^|[._\s-])(?:S(\d{1,2})|Season[._\s]+(\d{1,2}))(?:[._\s-]|$)`)
 
-	// Daily: 2024.01.15, 2024-01-15, or "2024 01 15" (after dot-normalization).
-	// The space separator is the normalized form of dots/underscores.
-	reDaily = regexp.MustCompile(`(\d{4})[.\- ](\d{2})[.\- ](\d{2})`)
+// episodeNumsRe extracts individual episode numbers from a token like E01E02E03.
+var episodeNumsRe = regexp.MustCompile(`(?i)E(\d{1,3})`)
 
-	// Anime bracket group marker at the very start: [Group] or (Group)
-	reAnimeBracketGroup = regexp.MustCompile(`^[\[\(][A-Za-z0-9][^\]\)]*[\]\)]`)
+// yearRe matches a 4-digit year (1900–2099).
+var yearRe = regexp.MustCompile(`(?:^|[._\s(-])((?:19|20)\d{2})(?:[._\s)-]|$)`)
 
-	// Anime absolute episode: " - 05" or " - 123" (2-4 digits after " - ")
-	reAnimeAbsolute = regexp.MustCompile(`(?:^|\s)-\s*(\d{2,4})(?:\s|\[|$)`)
+// absoluteEpisodeDashRe matches the fansub-standard dash-separated
+// form: "<title> - 48 [1080p]", "Title.-.48.1080p", etc. The dash
+// anchor + the surrounding separators keep this from firing on years,
+// sizes, or trailing release-group dashes.
+var absoluteEpisodeDashRe = regexp.MustCompile(`(?i)[._\s][-_][._\s](\d{1,4})(?:v\d+)?(?:[._\s]|$)`)
 
-	// Used to confirm an S## match is NOT immediately followed by E##.
-	reEpisodeFollow = regexp.MustCompile(`(?i)^S\d{1,2}E\d`)
+// absoluteEpisodeParenRe matches an explicit absolute marker in
+// parentheses: "S03E01 (E48)". Used when a release tagger preserves
+// the absolute number alongside a TVDB-style season split. Only the
+// parenthesized form — bare "E48" appears too often in unrelated
+// contexts (codec strings, scene tags) to match safely on its own.
+var absoluteEpisodeParenRe = regexp.MustCompile(`(?i)\(E(\d{1,4})\)`)
 
-	// stripRe matches tokens to remove before title extraction.
-	// Season-pack (bare S##) is handled by a separate pass in stripEpisodeTokens
-	// so we do not need a lookahead here.
-	episodeStripRe = regexp.MustCompile(
-		`(?i)` +
-			`(?:` +
-			// Standard + multi-episode: S01E05, S01E05E06, S01E05-E06
-			`S\d{1,2}E\d{1,3}(?:[-E]E?\d{1,3})*` +
-			`|` +
-			// Daily: YYYY.MM.DD / YYYY-MM-DD / YYYY MM DD (dot, hyphen, or space)
-			`\d{4}[.\- ]\d{2}[.\- ]\d{2}` +
-			`|` +
-			// Anime absolute: " - 05" / " - 123"
-			`\s-\s*\d{2,4}(?:\s|\[|$)` +
-			`)`,
-	)
-
-	// seasonOnlyStripRe matches bare S## tokens that are not part of a SxxExx
-	// string.  We strip these separately after the broader episode strip.
-	seasonOnlyStripRe = regexp.MustCompile(`(?i)\bS\d{1,2}\b`)
-)
-
-// ParseEpisodeInfo extracts TV episode metadata from a raw release title.
-// It tries each format in priority order and returns on the first match.
-func ParseEpisodeInfo(input string) EpisodeInfo {
-	// Normalize separators for matching (dots/underscores → spaces).
-	norm := strings.NewReplacer(".", " ", "_", " ").Replace(input)
-
-	// 1. Standard SxxExx (also handles multi-episode S01E05E06 / S01E05-E06)
-	if m := reStdEpisode.FindString(norm); m != "" {
-		season, episodes := parseStdEpisodeToken(m)
-		return EpisodeInfo{
-			Season:   season,
-			Episodes: episodes,
+// parseEpisode extracts the show title, year and season/episode position
+// from a file name or release title. It is lenient: what can't be
+// determined is left at its zero value.
+func parseEpisode(filename string) episodeParse {
+	// Strip leading path component if present.
+	filename = strings.TrimSuffix(filename, "/")
+	if idx := strings.LastIndexAny(filename, "/\\"); idx >= 0 {
+		filename = filename[idx+1:]
+	}
+	// Strip the file extension — but only a KNOWN one. Parse also runs on
+	// release titles, and blindly truncating at the last dot destroyed
+	// titles whose final dot-separated token is short ("S.W.A.T. S05E01"
+	// → "S.W.A.T", losing the episode token before any regex ran).
+	if dot := strings.LastIndex(filename, "."); dot > 0 {
+		if _, ok := knownFileExtensions[strings.ToLower(filename[dot+1:])]; ok {
+			filename = filename[:dot]
 		}
 	}
 
-	// 2. Season pack: S## with no E## anywhere in the token.
-	//    We search for the first S## and verify the match isn't part of SxxExx.
-	if m := reSeasonOnly.FindStringIndex(norm); m != nil {
-		token := norm[m[0]:]
-		if !reEpisodeFollow.MatchString(token) {
-			sNum := reSeasonOnly.FindStringSubmatch(norm)
-			s, _ := strconv.Atoi(sNum[1][1:]) // strip leading 'S'
-			return EpisodeInfo{
-				Season:       s,
-				IsSeasonPack: true,
+	var result episodeParse
+
+	// ── Year ─────────────────────────────────────────────────────────────────
+	if m := yearRe.FindStringSubmatch(filename); len(m) >= 2 {
+		if y, err := strconv.Atoi(m[1]); err == nil {
+			result.Year = y
+		}
+	}
+
+	// ── Season + episode numbers ──────────────────────────────────────────────
+	if m := seEpisodeRe.FindStringSubmatch(filename); len(m) >= 3 {
+		season, _ := strconv.Atoi(m[1])
+		result.EpisodeInfo.Season = season
+
+		for _, em := range episodeNumsRe.FindAllStringSubmatch(m[2], -1) {
+			n, _ := strconv.Atoi(em[1])
+			result.EpisodeInfo.Episodes = append(result.EpisodeInfo.Episodes, n)
+		}
+
+		// Extract show title: everything before the SxxExx token.
+		titlePart := seEpisodeRe.Split(filename, 2)[0]
+		result.Title = cleanTitle(titlePart)
+
+		// Additive absolute extraction: a release tagger may emit BOTH
+		// SxxExx and an explicit (Eabs) marker (e.g. "S03E01 (E48)").
+		// When that's present, capture the absolute too — anime-aware
+		// filtering downstream uses it to match against the user's
+		// requested episode regardless of season layout.
+		if am := absoluteEpisodeParenRe.FindStringSubmatch(filename); len(am) >= 2 {
+			if n, _ := strconv.Atoi(am[1]); n > 0 {
+				result.EpisodeInfo.AbsoluteEpisode = n
+			}
+		}
+		return result
+	}
+
+	// ── Season pack (no episode number) ──────────────────────────────────────
+	if m := seasonPackRe.FindStringSubmatchIndex(filename); m != nil {
+		// Group 1 is the compact form (S02), group 2 the word form
+		// (Season 2) — exactly one is set.
+		numStart, numEnd := m[2], m[3]
+		if numStart < 0 {
+			numStart, numEnd = m[4], m[5]
+		}
+		season, _ := strconv.Atoi(filename[numStart:numEnd])
+		result.EpisodeInfo.Season = season
+		result.EpisodeInfo.IsSeasonPack = true
+
+		result.Title = cleanTitle(filename[:m[0]])
+		return result
+	}
+
+	// ── Anime absolute episode number ────────────────────────────────────────
+	// Tried only when no SxxExx and no season pack matched. Fansub
+	// releases like "[Group] Jujutsu Kaisen - 48 [1080p].mkv" land here.
+	// Year / resolution markers are excluded by the regex's shape
+	// (mandatory dash, no trailing "p" or extra digits). The year Re
+	// already ran above so result.Year is set independently.
+	if m := absoluteEpisodeDashRe.FindStringSubmatchIndex(filename); m != nil {
+		// Reject the match if it overlaps the parsed year — protects
+		// against "Show - 2024" being read as episode 2024 when the
+		// real release year token contains the same characters.
+		yearMatch := yearRe.FindStringIndex(filename)
+		if yearMatch == nil || m[2] >= yearMatch[1] || m[3] <= yearMatch[0] {
+			n, _ := strconv.Atoi(filename[m[2]:m[3]])
+			if n > 0 {
+				result.EpisodeInfo.AbsoluteEpisode = n
+				// Title is everything before the " - NN" token.
+				result.Title = cleanTitle(filename[:m[0]])
+				return result
 			}
 		}
 	}
 
-	// 3. Daily show: YYYY.MM.DD or YYYY-MM-DD
-	if m := reDaily.FindStringSubmatch(norm); m != nil {
-		airDate := fmt.Sprintf("%s-%s-%s", m[1], m[2], m[3])
-		return EpisodeInfo{
-			AirDate: airDate,
-			IsDaily: true,
-		}
-	}
-
-	// 4. Anime absolute numbering — only when a leading bracket group is present.
-	if reAnimeBracketGroup.MatchString(input) {
-		if m := reAnimeAbsolute.FindStringSubmatch(norm); m != nil {
-			ep, _ := strconv.Atoi(m[1])
-			return EpisodeInfo{
-				AbsoluteEpisode: ep,
-				IsAnime:         true,
-			}
-		}
-	}
-
-	return EpisodeInfo{}
+	// ── No season/episode information found ───────────────────────────────────
+	result.Title = cleanTitle(filename)
+	return result
 }
 
-// parseStdEpisodeToken extracts the season number and all episode numbers from
-// a matched SxxExx token such as "S01E05", "S01E05E06", or "S01E05-E06".
-func parseStdEpisodeToken(token string) (season int, episodes []int) {
-	upper := strings.ToUpper(token)
-
-	sIdx := strings.Index(upper, "S")
-	eIdx := strings.Index(upper, "E")
-	if sIdx < 0 || eIdx < 0 {
-		return 0, nil
-	}
-	season, _ = strconv.Atoi(upper[sIdx+1 : eIdx])
-
-	for _, em := range reEpisodeNum.FindAllStringSubmatch(upper, -1) {
-		ep, _ := strconv.Atoi(em[1])
-		episodes = append(episodes, ep)
-	}
-	return season, episodes
-}
-
-// stripEpisodeTokens removes episode/season markers from s so that title
-// extraction does not include them.
-func stripEpisodeTokens(s string) string {
-	// First pass: strip standard episode tokens, daily dates, and anime markers.
-	result := episodeStripRe.ReplaceAllString(s, " ")
-	// Second pass: strip bare season tokens (S01, S02, ...).
-	result = seasonOnlyStripRe.ReplaceAllString(result, " ")
-	return strings.TrimSpace(result)
+// knownFileExtensions is the set of extensions Parse strips before
+// parsing. Media containers, subtitle/sidecar files, archives, and the
+// fake-upload favorite .exe — never bare words or codec tokens ("264" in
+// "H.264", "1" in "DD5.1" survive because they're not in the set).
+var knownFileExtensions = map[string]struct{}{
+	"mkv": {}, "mp4": {}, "avi": {}, "m4v": {}, "mov": {}, "wmv": {},
+	"ts": {}, "m2ts": {}, "mpg": {}, "mpeg": {}, "webm": {}, "flv": {},
+	"ogm": {}, "divx": {}, "iso": {}, "img": {},
+	"rar": {}, "zip": {}, "7z": {},
+	"srt": {}, "sub": {}, "idx": {}, "nfo": {}, "torrent": {},
+	"mka": {}, "mks": {}, "exe": {},
 }

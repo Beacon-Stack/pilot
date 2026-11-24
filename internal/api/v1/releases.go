@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/parser"
+
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
@@ -18,7 +20,6 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/decision"
 	"github.com/beacon-stack/pilot/internal/core/downloader"
 	"github.com/beacon-stack/pilot/internal/core/indexer"
-	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
@@ -1095,7 +1096,7 @@ func filterByEpisode(results []indexer.SearchResult, seriesTitle string, alterna
 		// Series-title gate — strict equality (after normalization) against
 		// any of the canonical/alternate titles. See parser.TitleMatches
 		// and TitleMatchesAny for semantics.
-		if !parser.TitleMatchesAny(candidates, parsed.ShowTitle) {
+		if !parser.TitleMatchesAny(candidates, parsed.Title) {
 			continue
 		}
 

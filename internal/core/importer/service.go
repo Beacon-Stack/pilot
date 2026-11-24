@@ -22,13 +22,12 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/mediacheck"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
-	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/renamer"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/diskspace"
 	"github.com/beacon-stack/pilot/internal/events"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -755,11 +754,11 @@ func qualityFromGrab(g db.GrabHistory) plugin.Quality {
 		Codec:      plugin.Codec(g.ReleaseCodec),
 		HDR:        plugin.HDRFormat(g.ReleaseHdr),
 	}
-	q.Name = releaseparser.QualityName(q)
+	q.Name = parser.QualityName(q)
 	// The revision (PROPER/REPACK) isn't a grab_history column; recover it
 	// from the release title. Without it an imported PROPER looks like an
 	// original, and RSS sync would grab the same PROPER again as an upgrade.
-	q.Revision = releaseparser.Parse(g.ReleaseTitle).Revision.Version
+	q.Revision = parser.Parse(g.ReleaseTitle).Revision.Version
 	return q
 }
 

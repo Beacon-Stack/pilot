@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	db "github.com/beacon-stack/pilot/internal/db/generated"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -30,7 +30,7 @@ func renameQuality(f db.EpisodeFile) plugin.Quality {
 	if q.Name != "" {
 		return q
 	}
-	p := releaseparser.Parse(filepath.Base(f.Path))
+	p := parser.Parse(filepath.Base(f.Path))
 	if known(string(p.Source)) {
 		q.Source = p.Source
 	}
@@ -43,7 +43,7 @@ func renameQuality(f db.EpisodeFile) plugin.Quality {
 	if known(string(p.HDR)) {
 		q.HDR = p.HDR
 	}
-	q.Name = releaseparser.QualityName(q)
+	q.Name = parser.QualityName(q)
 	return q
 }
 

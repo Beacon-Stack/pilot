@@ -19,14 +19,14 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/quality"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // rssRelease builds a release the way GetRecent does: quality parsed
 // from the title.
 func rssRelease(title, guid string, seeds int) indexer.SearchResult {
-	q := releaseparser.Parse(title).Quality()
+	q := parser.Parse(title).Quality()
 	return indexer.SearchResult{
 		Release:      plugin.Release{Title: title, GUID: guid, Seeds: seeds, Quality: q},
 		QualityScore: q.Score(),

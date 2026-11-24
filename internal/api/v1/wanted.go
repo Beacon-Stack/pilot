@@ -17,7 +17,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -155,7 +155,7 @@ func qualityDisplayName(q plugin.Quality) string {
 	if q.Name != "" {
 		return q.Name
 	}
-	return releaseparser.QualityName(q)
+	return parser.QualityName(q)
 }
 
 // ── Search all ───────────────────────────────────────────────────────────────

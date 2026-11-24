@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/beacon-stack/pilot/internal/core/indexer"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 func result(title, guid string, seeds int) indexer.SearchResult {
-	q := releaseparser.Parse(title).Quality()
+	q := parser.Parse(title).Quality()
 	return indexer.SearchResult{
 		Release:      plugin.Release{Title: title, GUID: guid, Seeds: seeds, AgeDays: 1, Quality: q},
 		QualityScore: q.Score(),

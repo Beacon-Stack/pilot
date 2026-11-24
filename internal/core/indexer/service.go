@@ -28,11 +28,10 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/language"
-	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/internal/ratelimit"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -524,9 +523,9 @@ func applyLanguagePreference(results []SearchResult, pref language.Preference) {
 		return
 	}
 	for i := range results {
-		langs := make([]releaseparser.Language, 0, len(results[i].Languages))
+		langs := make([]parser.Language, 0, len(results[i].Languages))
 		for _, l := range results[i].Languages {
-			langs = append(langs, releaseparser.Language(l))
+			langs = append(langs, parser.Language(l))
 		}
 		if !pref.Accepts(langs) {
 			results[i].FilterReasons = append(results[i].FilterReasons, language.FilterReason)
@@ -619,7 +618,7 @@ func newSearchResult(r plugin.Release, indexerID, indexerName string) SearchResu
 	if r.Indexer == "" {
 		r.Indexer = indexerName
 	}
-	parsed := releaseparser.Parse(r.Title)
+	parsed := parser.Parse(r.Title)
 	r.Quality = withParsedQuality(parsed, r.Quality)
 	pt, count := classifyRelease(r.Title)
 	langs := make([]string, 0, len(parsed.Languages))
@@ -639,7 +638,7 @@ func newSearchResult(r plugin.Release, indexerID, indexerName string) SearchResu
 
 // withParsedQuality fills q from the release title when the indexer gave
 // no quality, and always fills the revision (PROPER/REPACK) if missing.
-func withParsedQuality(rp releaseparser.ParsedRelease, q plugin.Quality) plugin.Quality {
+func withParsedQuality(rp parser.ParsedRelease, q plugin.Quality) plugin.Quality {
 	parsed := rp.Quality()
 	if q.Resolution == "" && q.Source == "" {
 		return parsed
