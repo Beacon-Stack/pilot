@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/beacon-stack/pilot/internal/api/middleware"
+	"github.com/beacon-stack/pulse/pkg/auth"
 )
 
 func TestBackupsAPI(t *testing.T) {
@@ -78,7 +78,7 @@ func TestBackupsAPI(t *testing.T) {
 // A real database is far bigger than the 1 MiB limit on ordinary
 // requests; the restore upload used to be cut off at it.
 func TestRestoreUpload_AcceptsLargeDatabase(t *testing.T) {
-	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	e := newTestEnvWith(t, routerTestKey, auth.Settings{})
 	auth := map[string]string{"X-Api-Key": routerTestKey}
 
 	db := make([]byte, 3<<20)

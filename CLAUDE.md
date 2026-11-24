@@ -35,9 +35,11 @@ together.
 
 ## Authentication
 
-`internal/api/middleware/auth.go` is the only place requests are
-authenticated: API key, login session, or a local address under a host
-name a web page can't own.
+Requests are authenticated in one place: the shared `pkg/auth` in the
+Pulse module, mounted in `internal/api/router.go`. Change the rules
+there, for all four apps. By default the local network gets in without a
+login and everyone else is refused; a login can be required from outside
+or from everyone.
 
 - `Sec-Fetch-Site` is a cross-site check, never a credential.
 - New routes go on `protected` in `internal/api/router.go` (the huma API

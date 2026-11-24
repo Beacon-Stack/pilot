@@ -91,7 +91,7 @@ The compose file is [`docker/docker-compose.yml`](docker/docker-compose.yml). Th
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-The web UI is at `http://<this-host>:8383`. No login is needed from your own network; to reach Pilot from elsewhere, set a username and password in Settings → App Settings → Security. Scripts and other apps use the API key from Settings → App Settings.
+The web UI is at `http://<this-host>:8383`. No login is needed from your own network, and connections from anywhere else are refused. To reach Pilot from outside, or to put a login in front of it for everyone, set a username and password in Settings → App Settings → Security.
 
 ### Running it with the other Beacon apps
 

@@ -1,21 +1,27 @@
-// Browser auth, Sonarr-style. On your own network the server lets the UI
-// straight in (auth.required = "disabled_for_local", the default). From
-// anywhere else the user logs in with a username and password and the
-// server issues an HttpOnly `pilot_session` cookie, which fetch/WebSocket
-// send automatically for same-origin requests. So no token handling is
-// needed here — only login, logout, status, and bouncing to /login on 401.
+// Browser side of the shared login (pulse/pkg/auth), the same in every
+// Beacon app. By default the server lets the local network straight in.
+// When a login is required it issues an HttpOnly session cookie, which
+// fetch and WebSocket send on their own for same-origin requests, so
+// there is no token to handle here: only login, logout, status, and
+// sending the user to /login on a 401.
 
-const LOGIN_PATH = "/login";
+export const LOGIN_PATH = "/login";
 
 const AUTH_ENDPOINTS = ["/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/status"];
 
 export interface AuthStatus {
+  /** The app's name, for messages. */
+  app: string;
   authenticated: boolean;
-  /** How this browser got in: a login session, the local-network bypass, or not at all. */
+  /** How this browser got in: a login session, the local network, or not at all. */
   method: "session" | "local" | "api_key" | "none";
-  required: "disabled_for_local" | "enabled";
+  /** The rule in force. */
+  required: "none" | "disabled_for_local" | "enabled";
   credentials_configured: boolean;
-  /** Set when Pilot was opened under a name it doesn't recognise as this server, so it asks for a login. */
+  /** Why this browser was not let in. */
+  reason?: "login_required" | "not_local" | "untrusted_host" | "bad_api_key";
+  /** The same, in words. */
+  detail?: string;
   untrusted_host?: string;
 }
 
@@ -31,7 +37,7 @@ export async function login(username: string, password: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   });
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 429) {
     const body = (await res.json().catch(() => null)) as { detail?: string } | null;
     throw new Error(body?.detail || "Incorrect username or password.");
   }
@@ -62,9 +68,9 @@ function requestPath(input: RequestInfo | URL): string | null {
 }
 
 /**
- * Wraps window.fetch so any 401 from our own /api sends the user to the
- * login page. Installed once at startup; covers apiFetch, the vendored
- * @beacon-shared code, and raw fetch calls alike.
+ * Wraps window.fetch so any 401 from the app's own /api sends the user to
+ * the login page, which says why they weren't let in. Install once at
+ * startup; it covers every fetch in the app.
  */
 export function installAuthRedirect(): void {
   const original = window.fetch.bind(window);

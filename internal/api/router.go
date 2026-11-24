@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/beacon-stack/pulse/pkg/auth"
+	"github.com/beacon-stack/pulse/pkg/auth/authapi"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
@@ -52,8 +55,10 @@ import (
 
 // RouterConfig holds everything the router needs to function.
 type RouterConfig struct {
-	Auth         config.Secret
-	AuthSettings middleware.AuthSettings
+	Auth config.Secret
+	// Gate decides who may use the app (pulse/pkg/auth). When nil, one is
+	// built from Auth with default settings: no login, local network only.
+	Gate *auth.Auth
 	// AllowedHosts is server.allowed_hosts: extra names trusted for
 	// local, no-login access.
 	AllowedHosts           []string
@@ -120,18 +125,20 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	})
 
 	// Browser login/logout/status — the only unauthenticated /api routes.
-	auth := middleware.NewAuth(cfg.Auth.Value(), cfg.AuthSettings)
-	auth.SetAllowedHosts(cfg.AllowedHosts)
-	r.Get("/api/v1/auth/status", auth.StatusHandler())
-	r.Post("/api/v1/auth/login", auth.LoginHandler())
-	r.Post("/api/v1/auth/logout", auth.LogoutHandler())
+	gate := cfg.Gate
+	if gate == nil {
+		gate = auth.New(auth.Options{App: appinfo.AppName, APIKey: cfg.Auth.Value(), AllowedHosts: cfg.AllowedHosts}, auth.Settings{})
+	}
+	r.Get("/api/v1/auth/status", gate.StatusHandler())
+	r.Post("/api/v1/auth/login", gate.LoginHandler())
+	r.Post("/api/v1/auth/logout", gate.LogoutHandler())
 
 	// Every route registered on `protected` (including the huma API and
 	// its docs) requires an X-Api-Key header, a session cookie, or (by
 	// default) a request from a local address. Auth is
 	// attached per route rather than by path prefix so nothing can route
 	// around it.
-	protected := r.With(auth.Middleware)
+	protected := r.With(gate.Middleware)
 
 	// Pulse sync webhook — called by Beacon Pulse when configs change.
 	if cfg.PulseSyncHandler != nil {
@@ -158,8 +165,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	humaConfig.OpenAPIPath = "/api/openapi"
 	humaConfig.SchemasPath = "/api/schemas"
 	humaConfig.Info.Description = appinfo.AppName + " TV series manager API. " +
-		"Requests from local addresses need no credentials unless auth.required is \"enabled\". " +
-		"Browsers elsewhere log in with POST /api/v1/auth/login; other clients provide X-Api-Key."
+		"By default requests from the local network need no credentials and others are refused. " +
+		"When a login is required, browsers log in with POST /api/v1/auth/login; other clients provide X-Api-Key."
 
 	humaAPI := humachi.New(protected, humaConfig)
 
@@ -178,7 +185,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	oapi.Security = []map[string][]string{{"ApiKeyAuth": {}}}
 
-	v1.RegisterAuthSettingsRoutes(humaAPI, auth, cfg.ConfigFile)
+	authapi.Register(humaAPI, gate)
 	v1.RegisterSystemRoutes(humaAPI, cfg.StartTime, cfg.DBType, cfg.DBPath, cfg.ConfigFile, cfg.Auth.Value(), cfg.TMDBKeyConfigured, cfg.TMDBKeyIsDefault, cfg.Logger)
 	v1.RegisterUpdateRoutes(humaAPI)
 	v1.RegisterRuntimeRoutes(humaAPI, cfg.StartTime)

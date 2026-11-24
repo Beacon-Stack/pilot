@@ -35,7 +35,7 @@ import StatsPage from "@/pages/stats/StatsPage";
 import DiscoverPage from "@/pages/discover/DiscoverPage";
 import DiscoverDetailPage from "@/pages/discover/DiscoverDetailPage";
 import PersonDetailPage from "@/pages/people/PersonDetailPage";
-import LoginPage from "@/pages/login/LoginPage";
+import LoginPage from "@beacon-shared/LoginPage";
 import ReleaseProfilesPage from "@/pages/settings/release-profiles/ReleaseProfilesPage";
 import DelayProfilePage from "@/pages/settings/delay-profile/DelayProfilePage";
 import LanguagePage from "@/pages/settings/languages/LanguagePage";

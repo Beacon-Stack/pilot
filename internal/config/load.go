@@ -40,7 +40,7 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetDefault("server.port", DefaultPort)
 	v.SetDefault("log.level", DefaultLogLevel)
 	v.SetDefault("log.format", DefaultLogFormat)
-	v.SetDefault("auth.required", "disabled_for_local")
+	v.SetDefault("auth.required", "none")
 
 	// Config file location
 	if cfgFile != "" {
@@ -66,6 +66,7 @@ func Load(cfgFile string) (*Config, error) {
 	_ = v.BindEnv("server.allowed_hosts", "PILOT_SERVER_ALLOWED_HOSTS") // comma-separated
 	_ = v.BindEnv("auth.api_key", "PILOT_AUTH_API_KEY")
 	_ = v.BindEnv("auth.password_hash", "PILOT_AUTH_PASSWORD_HASH")
+	_ = v.BindEnv("auth.local_networks", "PILOT_AUTH_LOCAL_NETWORKS") // comma-separated
 	_ = v.BindEnv("tmdb.api_key", "PILOT_TMDB_API_KEY")
 	_ = v.BindEnv("trakt.client_id", "PILOT_TRAKT_CLIENT_ID")
 	_ = v.BindEnv("database.path", "PILOT_DATABASE_PATH")

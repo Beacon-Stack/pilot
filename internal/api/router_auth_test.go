@@ -25,10 +25,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beacon-stack/pulse/pkg/auth"
+
 	"github.com/coder/websocket"
 	_ "modernc.org/sqlite"
 
-	"github.com/beacon-stack/pilot/internal/api/middleware"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/backup"
@@ -61,16 +62,16 @@ const (
 // strictSettings requires a login from every address. httptest clients
 // connect from 127.0.0.1, so the default (disabled_for_local) would let
 // them straight in; the strict tests below use this instead.
-func strictSettings(t *testing.T) middleware.AuthSettings {
+func strictSettings(t *testing.T) auth.Settings {
 	t.Helper()
-	old := middleware.PasswordIterations
-	middleware.PasswordIterations = 1000
-	t.Cleanup(func() { middleware.PasswordIterations = old })
-	hash, err := middleware.HashPassword(routerTestPass)
+	old := auth.PasswordIterations
+	auth.PasswordIterations = 1000
+	t.Cleanup(func() { auth.PasswordIterations = old })
+	hash, err := auth.HashPassword(routerTestPass)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return middleware.AuthSettings{Required: middleware.AuthEnabled, Username: routerTestUser, PasswordHash: hash}
+	return auth.Settings{Required: auth.RequiredEverywhere, Username: routerTestUser, PasswordHash: hash}
 }
 
 func newTestEnv(t *testing.T, apiKey string) *testEnv {
@@ -78,7 +79,7 @@ func newTestEnv(t *testing.T, apiKey string) *testEnv {
 	return newTestEnvWith(t, apiKey, strictSettings(t))
 }
 
-func newTestEnvWith(t *testing.T, apiKey string, settings middleware.AuthSettings) *testEnv {
+func newTestEnvWith(t *testing.T, apiKey string, settings auth.Settings) *testEnv {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "pilot.db")
@@ -95,7 +96,7 @@ func newTestEnvWith(t *testing.T, apiKey string, settings middleware.AuthSetting
 	var pulseCalls atomic.Int32
 	h := NewRouter(RouterConfig{
 		Auth:                   config.Secret(apiKey),
-		AuthSettings:           settings,
+		Gate:                   auth.New(auth.Options{App: "Pilot", APIKey: apiKey, Store: auth.FileStore{Path: filepath.Join(dir, "auth.json")}}, settings),
 		ConfigFile:             filepath.Join(dir, "config.yaml"),
 		Logger:                 logger,
 		StartTime:              time.Now(),
@@ -120,7 +121,7 @@ func newTestEnvWith(t *testing.T, apiKey string, settings middleware.AuthSetting
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return &testEnv{srv: srv, dbPath: dbPath, configPath: filepath.Join(dir, "config.yaml"), pulseCalls: &pulseCalls}
+	return &testEnv{srv: srv, dbPath: dbPath, configPath: filepath.Join(dir, "auth.json"), pulseCalls: &pulseCalls}
 }
 
 // result is the bits of a response the tests inspect. The body is already
@@ -415,7 +416,7 @@ func TestAuth_WebSocket(t *testing.T) {
 var remote = map[string]string{"X-Forwarded-For": "203.0.113.9", "Sec-Fetch-Site": "same-origin"}
 
 func TestAuth_DefaultLocalNeedsNoLogin(t *testing.T) {
-	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	e := newTestEnvWith(t, routerTestKey, auth.Settings{})
 	sameOrigin := map[string]string{"Sec-Fetch-Site": "same-origin"}
 	r, _ := e.do(t, "GET", "/api/v1/system/status", sameOrigin, "")
 	if r.StatusCode != http.StatusOK {
@@ -437,7 +438,7 @@ func TestAuth_DefaultLocalNeedsNoLogin(t *testing.T) {
 }
 
 func TestAuth_DefaultRemoteStillNeedsLogin(t *testing.T) {
-	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	e := newTestEnvWith(t, routerTestKey, auth.Settings{})
 	for _, ep := range protectedEndpoints {
 		resp, body := e.do(t, ep.method, ep.path, remote, "")
 		if resp.StatusCode != http.StatusUnauthorized {
@@ -455,7 +456,7 @@ func TestAuth_DefaultRemoteStillNeedsLogin(t *testing.T) {
 // A malicious web page open in a browser on the LAN must not be able to
 // drive the API through the local bypass.
 func TestAuth_DefaultLocalCrossSiteRejected(t *testing.T) {
-	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	e := newTestEnvWith(t, routerTestKey, auth.Settings{})
 	resp, _ := e.do(t, "POST", "/api/v1/hooks/pulse/sync", map[string]string{"Sec-Fetch-Site": "cross-site"}, "")
 	if resp.StatusCode != http.StatusForbidden || e.pulseCalls.Load() != 0 {
 		t.Fatalf("cross-site POST via local bypass: status = %d calls = %d, want 403 and 0", resp.StatusCode, e.pulseCalls.Load())
@@ -467,7 +468,7 @@ func TestAuth_DefaultLocalCrossSiteRejected(t *testing.T) {
 }
 
 func TestAuth_Status(t *testing.T) {
-	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	e := newTestEnvWith(t, routerTestKey, auth.Settings{})
 	_, body := e.do(t, "GET", "/api/v1/auth/status", map[string]string{"Sec-Fetch-Site": "same-origin"}, "")
 	if !strings.Contains(body, `"authenticated":true`) || !strings.Contains(body, `"method":"local"`) ||
 		!strings.Contains(body, `"credentials_configured":false`) {
@@ -486,7 +487,7 @@ func TestAuth_Status(t *testing.T) {
 }
 
 func TestAuth_LoginWithoutCredentialsConfigured(t *testing.T) {
-	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	e := newTestEnvWith(t, routerTestKey, auth.Settings{})
 	resp, _ := e.do(t, "POST", "/api/v1/auth/login", remote, `{"username":"admin","password":"anything"}`)
 	if resp.StatusCode != http.StatusUnauthorized || len(resp.Cookies()) != 0 {
 		t.Fatalf("status = %d, want 401 with no cookie", resp.StatusCode)
@@ -499,11 +500,11 @@ func TestAuth_LoginWithoutCredentialsConfigured(t *testing.T) {
 }
 
 func TestAuth_SettingsFlow(t *testing.T) {
-	old := middleware.PasswordIterations
-	middleware.PasswordIterations = 1000
-	t.Cleanup(func() { middleware.PasswordIterations = old })
+	old := auth.PasswordIterations
+	auth.PasswordIterations = 1000
+	t.Cleanup(func() { auth.PasswordIterations = old })
 
-	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	e := newTestEnvWith(t, routerTestKey, auth.Settings{})
 	local := map[string]string{"Sec-Fetch-Site": "same-origin", "Content-Type": "application/json"}
 
 	// Can't require a login everywhere before one exists.
@@ -531,7 +532,7 @@ func TestAuth_SettingsFlow(t *testing.T) {
 	r, _ = e.do(t, "POST", "/api/v1/auth/login", remote, `{"username":"me","password":"long enough pw"}`)
 	var cookie *http.Cookie
 	for _, c := range r.Cookies() {
-		if c.Name == middleware.SessionCookieName {
+		if c.Name == "pilot_session" {
 			cookie = c
 		}
 	}

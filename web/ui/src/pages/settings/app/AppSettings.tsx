@@ -15,7 +15,7 @@ import {
 import type { ThemeMode } from "@/theme";
 import { apiFetch } from "@/api/client";
 import ScheduledBackups from "./ScheduledBackups";
-import SecuritySection from "./SecuritySection";
+import Security from "@beacon-shared/Security";
 import { cardStyle, sectionHeaderStyle } from "@/lib/styles";
 
 // Shared styles
@@ -577,7 +577,7 @@ export default function AppSettings() {
         </div>
 
         {/* Security (login) */}
-        <SecuritySection />
+        <Security />
 
         {/* API Key */}
         <APIKeySection />

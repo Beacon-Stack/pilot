@@ -63,14 +63,16 @@ type LogConfig struct {
 type AuthConfig struct {
 	// APIKey authenticates scripts and other services (X-Api-Key).
 	APIKey Secret `mapstructure:"api_key"`
-	// Required is "disabled_for_local" (default: browsers on your own
-	// network open the UI without logging in, like Sonarr) or "enabled"
-	// (everyone logs in).
-	Required string `mapstructure:"required"`
-	// Username and PasswordHash are the browser login. PasswordHash is
-	// set from Settings → App Settings; it is never the plain password.
+	// Required, Username and PasswordHash are where older versions kept
+	// the login. They are read once, the first time a version that keeps
+	// it in auth.json starts; change the login in Settings after that.
+	Required     string `mapstructure:"required"`
 	Username     string `mapstructure:"username"`
 	PasswordHash Secret `mapstructure:"password_hash"`
+	// LocalNetworks are extra address ranges (CIDR) that count as the
+	// local network, on top of the private ranges and any added in
+	// Settings. Env: PILOT_AUTH_LOCAL_NETWORKS (comma-separated).
+	LocalNetworks []string `mapstructure:"local_networks"`
 }
 
 // TMDBConfig holds the TMDB (themoviedb.org) API credentials. Pilot uses
