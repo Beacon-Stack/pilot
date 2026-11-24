@@ -15,6 +15,8 @@ export interface AuthStatus {
   method: "session" | "local" | "api_key" | "none";
   required: "disabled_for_local" | "enabled";
   credentials_configured: boolean;
+  /** Set when Pilot was opened under a name it doesn't recognise as this server, so it asks for a login. */
+  untrusted_host?: string;
 }
 
 export async function getAuthStatus(): Promise<AuthStatus> {

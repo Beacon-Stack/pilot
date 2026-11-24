@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -74,25 +77,44 @@ func (s AuthSettings) LoginRequiredEverywhere() bool {
 // from the API key and the password hash, so rotating the API key or
 // changing the password invalidates every session.
 type Auth struct {
-	apiKey []byte
-	ttl    time.Duration
-	now    func() time.Time
+	apiKey  []byte
+	ttl     time.Duration
+	now     func() time.Time
+	limiter *attemptLimiter
 
-	mu       sync.RWMutex
-	settings AuthSettings
-	signKey  []byte
+	mu           sync.RWMutex
+	settings     AuthSettings
+	signKey      []byte
+	allowedHosts []string // extra Host names trusted for local, no-login access
 }
 
 // NewAuth builds an Auth for the given API key and settings. An empty API
 // key rejects every request (fail closed).
 func NewAuth(apiKey string, settings AuthSettings) *Auth {
 	a := &Auth{
-		apiKey: []byte(apiKey),
-		ttl:    DefaultSessionTTL,
-		now:    time.Now,
+		apiKey:  []byte(apiKey),
+		ttl:     DefaultSessionTTL,
+		now:     time.Now,
+		limiter: newAttemptLimiter(),
 	}
 	a.SetSettings(settings)
 	return a
+}
+
+// SetAllowedHosts sets extra host names (server.allowed_hosts) under
+// which local addresses may use Pilot without logging in, besides IP
+// addresses, localhost, single-word and home-network names.
+func (a *Auth) SetAllowedHosts(hosts []string) {
+	a.mu.Lock()
+	a.allowedHosts = append([]string(nil), hosts...)
+	a.mu.Unlock()
+}
+
+func (a *Auth) hostTrusted(r *http.Request) bool {
+	a.mu.RLock()
+	allowed := a.allowedHosts
+	a.mu.RUnlock()
+	return localHostName(r.Host, allowed)
 }
 
 // Settings returns the current authentication settings.
@@ -152,10 +174,91 @@ func (a *Auth) authenticate(r *http.Request) authMethod {
 	if c, err := r.Cookie(SessionCookieName); err == nil && a.verifyToken(c.Value) {
 		return authSession
 	}
-	if !a.Settings().LoginRequiredEverywhere() && clientIsLocal(r) {
+	// A local address is only trusted under a host name a web page can't
+	// own (see host.go): otherwise a DNS-rebinding page could use the
+	// visitor's browser as its local address. Sessions and API keys don't
+	// need this: a browser never sends Pilot's cookie to another domain.
+	if !a.Settings().LoginRequiredEverywhere() && clientIsLocal(r) && a.hostTrusted(r) {
 		return authLocal
 	}
 	return authNone
+}
+
+// untrustedHost reports whether r would have been let in as a local
+// address but for its Host header, so the error can say what to do.
+func (a *Auth) untrustedHost(r *http.Request) bool {
+	return !a.Settings().LoginRequiredEverywhere() && clientIsLocal(r) && !a.hostTrusted(r)
+}
+
+func untrustedHostMessage(r *http.Request) string {
+	return "Pilot was opened as \"" + hostName(r.Host) + "\", a name it doesn't recognise as this server, so it won't skip the login for it. " +
+		"Use the server's IP address or local name, log in, or add this name to server.allowed_hosts (PILOT_SERVER_ALLOWED_HOSTS)."
+}
+
+// caller is who a request was let in as, for handlers that need to know.
+type caller struct {
+	method authMethod
+	peer   string // the address that connected
+}
+
+type callerKey struct{}
+
+func withCaller(r *http.Request, m authMethod) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), callerKey{}, caller{method: m, peer: peerAddr(r)}))
+}
+
+// peerAddr is the address that connected, without the port.
+func peerAddr(r *http.Request) string {
+	if ip, ok := parseIP(r.RemoteAddr); ok {
+		return ip.String()
+	}
+	return r.RemoteAddr
+}
+
+// ErrWrongPassword and ErrTooManyAttempts are returned by
+// ConfirmPassword.
+var ErrWrongPassword = errors.New("the current password is wrong")
+
+// ErrTooManyAttempts carries how long to wait.
+type ErrTooManyAttempts struct{ Wait time.Duration }
+
+func (e ErrTooManyAttempts) Error() string {
+	return "Too many wrong passwords. Try again in " + waitText(e.Wait) + "."
+}
+
+func waitText(d time.Duration) string {
+	if d <= time.Minute {
+		return "a minute"
+	}
+	return fmt.Sprintf("%d minutes", int((d+time.Minute-1)/time.Minute))
+}
+
+// ConfirmPassword checks the current password before a change to the
+// login itself, so a device that is merely on the network (let in
+// without a login) can't replace the password and lock the owner out. A
+// request made with the API key doesn't need it: the key is the stronger
+// credential and is how a forgotten password gets reset. With no login
+// set up there is nothing to confirm.
+//
+// ctx must come from a request that passed Middleware.
+func (a *Auth) ConfirmPassword(ctx context.Context, password string) error {
+	s := a.Settings()
+	if !s.CredentialsConfigured() {
+		return nil
+	}
+	c, _ := ctx.Value(callerKey{}).(caller)
+	if c.method == authAPIKey {
+		return nil
+	}
+	if d := a.limiter.wait(c.peer); d > 0 {
+		return ErrTooManyAttempts{Wait: d}
+	}
+	if !CheckPassword(s.PasswordHash, password) {
+		a.limiter.fail(c.peer)
+		return ErrWrongPassword
+	}
+	a.limiter.ok(c.peer)
+	return nil
 }
 
 // Middleware rejects requests that are not authenticated. Mount it on the
@@ -163,7 +266,9 @@ func (a *Auth) authenticate(r *http.Request) authMethod {
 // path-prefix filter, so a route can't slip past it through path tricks.
 func (a *Auth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch a.authenticate(r) {
+		method := a.authenticate(r)
+		r = withCaller(r, method)
+		switch method {
 		case authAPIKey:
 			next.ServeHTTP(w, r)
 		case authSession, authLocal:
@@ -176,6 +281,10 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		default:
+			if a.untrustedHost(r) {
+				writeAuthError(w, http.StatusUnauthorized, untrustedHostMessage(r))
+				return
+			}
 			writeAuthError(w, http.StatusUnauthorized, "Authentication required: log in or provide a valid X-Api-Key header.")
 		}
 	})
@@ -219,12 +328,18 @@ func (a *Auth) StatusHandler() http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		body := map[string]any{
 			"authenticated":          method != authNone,
 			"method":                 method.String(),
 			"required":               s.Required,
 			"credentials_configured": s.CredentialsConfigured(),
-		})
+		}
+		if method == authNone && a.untrustedHost(r) {
+			// Tell the login screen why the UI didn't just open.
+			body["untrusted_host"] = hostName(r.Host)
+			body["detail"] = untrustedHostMessage(r)
+		}
+		_ = json.NewEncoder(w).Encode(body)
 	}
 }
 
@@ -251,14 +366,22 @@ func (a *Auth) LoginHandler() http.HandlerFunc {
 				"No login is set up yet. Open Pilot from your local network and set a username and password in Settings → App Settings.")
 			return
 		}
+		peer := peerAddr(r)
+		if d := a.limiter.wait(peer); d > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(int(d.Seconds())+1))
+			writeAuthError(w, http.StatusTooManyRequests, ErrTooManyAttempts{Wait: d}.Error())
+			return
+		}
 		// Always run the password hash so a wrong username takes as
 		// long as a wrong password.
 		passOK := CheckPassword(s.PasswordHash, body.Password)
 		userOK := subtle.ConstantTimeCompare([]byte(body.Username), []byte(s.Username)) == 1
 		if !passOK || !userOK {
+			a.limiter.fail(peer)
 			writeAuthError(w, http.StatusUnauthorized, "Incorrect username or password.")
 			return
 		}
+		a.limiter.ok(peer)
 		token, err := a.issueToken()
 		if err != nil {
 			writeAuthError(w, http.StatusInternalServerError, "Could not create session.")

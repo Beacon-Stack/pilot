@@ -5,6 +5,12 @@
 server:
   host: "0.0.0.0"
   port: 8383
+  # Extra names Pilot may be opened under without a login from your own
+  # network, e.g. behind a reverse proxy. IP addresses, localhost,
+  # single-word names and .local/.lan/.home/.internal names always work.
+  # Any other name has to log in (this stops a web page from reaching
+  # Pilot through your browser). Env: PILOT_SERVER_ALLOWED_HOSTS (commas).
+  # allowed_hosts: ["pilot.example.com", "*.example.com"]
 
 database:
   driver: sqlite

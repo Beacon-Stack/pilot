@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/beacon-stack/pilot/internal/api/middleware"
 )
 
 func TestBackupsAPI(t *testing.T) {
@@ -70,5 +72,29 @@ func TestBackupsAPI(t *testing.T) {
 	}
 	if resp, _ = e.do(t, "DELETE", "/api/v1/system/backups/"+created.Name, auth, ""); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("second delete: %d", resp.StatusCode)
+	}
+}
+
+// A real database is far bigger than the 1 MiB limit on ordinary
+// requests; the restore upload used to be cut off at it.
+func TestRestoreUpload_AcceptsLargeDatabase(t *testing.T) {
+	e := newTestEnvWith(t, routerTestKey, middleware.AuthSettings{})
+	auth := map[string]string{"X-Api-Key": routerTestKey}
+
+	db := make([]byte, 3<<20)
+	copy(db, "SQLite format 3\x00")
+	resp, body := e.do(t, "POST", "/api/v1/system/restore", auth, string(db))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("3 MiB restore upload: %d %s", resp.StatusCode, body)
+	}
+	if info, err := os.Stat(e.dbPath + ".restore"); err != nil || info.Size() != int64(len(db)) {
+		t.Fatalf("staged file: %v %v", info, err)
+	}
+
+	// Everything else keeps the 1 MiB limit.
+	resp, _ = e.do(t, "PUT", "/api/v1/system/auth", map[string]string{"X-Api-Key": routerTestKey, "Content-Type": "application/json"},
+		`{"required":"disabled_for_local","username":"`+strings.Repeat("a", 2<<20)+`"}`)
+	if resp.StatusCode < 400 {
+		t.Fatalf("2 MiB JSON body should be refused, got %d", resp.StatusCode)
 	}
 }

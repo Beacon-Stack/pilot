@@ -52,8 +52,11 @@ import (
 
 // RouterConfig holds everything the router needs to function.
 type RouterConfig struct {
-	Auth                   config.Secret
-	AuthSettings           middleware.AuthSettings
+	Auth         config.Secret
+	AuthSettings middleware.AuthSettings
+	// AllowedHosts is server.allowed_hosts: extra names trusted for
+	// local, no-login access.
+	AllowedHosts           []string
 	Logger                 *slog.Logger
 	StartTime              time.Time
 	DB                     *sql.DB
@@ -95,6 +98,8 @@ type RouterConfig struct {
 	PulseSyncHandler       http.HandlerFunc
 }
 
+const restorePath = "/api/v1/system/restore"
+
 // NewRouter builds and returns the application HTTP handler.
 func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
@@ -102,7 +107,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// Global middleware — applied to every request including /health.
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.SecurityHeaders)
-	r.Use(middleware.MaxRequestBodySize(1 << 20)) // 1 MiB
+	// 1 MiB, except the database restore upload, which limits itself.
+	r.Use(middleware.MaxRequestBodySize(1<<20, restorePath))
 	r.Use(middleware.RequestLogger(cfg.Logger))
 	r.Use(middleware.Recovery(cfg.Logger))
 
@@ -115,6 +121,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	// Browser login/logout/status — the only unauthenticated /api routes.
 	auth := middleware.NewAuth(cfg.Auth.Value(), cfg.AuthSettings)
+	auth.SetAllowedHosts(cfg.AllowedHosts)
 	r.Get("/api/v1/auth/status", auth.StatusHandler())
 	r.Post("/api/v1/auth/login", auth.LoginHandler())
 	r.Post("/api/v1/auth/logout", auth.LogoutHandler())
@@ -140,7 +147,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// Backup / restore — registered directly on chi (binary body/response, not JSON).
 	if cfg.DB != nil && cfg.DBPath != "" {
 		protected.Get("/api/v1/system/backup", v1.BackupHandler(cfg.DB, cfg.DBPath, cfg.Logger))
-		protected.Post("/api/v1/system/restore", v1.RestoreHandler(cfg.DBPath, cfg.Logger))
+		protected.Post(restorePath, v1.RestoreHandler(cfg.DBPath, cfg.Logger))
 	}
 	if cfg.BackupService != nil {
 		protected.Get("/api/v1/system/backups/{name}/download", v1.BackupDownloadHandler(cfg.BackupService, cfg.Logger))

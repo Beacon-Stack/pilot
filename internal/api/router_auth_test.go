@@ -544,7 +544,17 @@ func TestAuth_SettingsFlow(t *testing.T) {
 	}
 
 	// Require login everywhere (keeping the password); LAN now needs it too.
+	// Once a login exists, changing it takes the current password: a
+	// device that's merely on the network can't lock the owner out.
 	r, _ = e.do(t, "PUT", "/api/v1/system/auth", local, `{"required":"enabled","username":"me"}`)
+	if r.StatusCode != http.StatusForbidden {
+		t.Fatalf("change without the current password: status = %d, want 403", r.StatusCode)
+	}
+	r, _ = e.do(t, "PUT", "/api/v1/system/auth", local, `{"required":"enabled","username":"intruder","password":"taken over!","current_password":"a guess"}`)
+	if r.StatusCode != http.StatusForbidden {
+		t.Fatalf("change with a wrong current password: status = %d, want 403", r.StatusCode)
+	}
+	r, _ = e.do(t, "PUT", "/api/v1/system/auth", local, `{"required":"enabled","username":"me","current_password":"long enough pw"}`)
 	if r.StatusCode != http.StatusOK {
 		t.Fatalf("enable: status = %d", r.StatusCode)
 	}
@@ -555,7 +565,8 @@ func TestAuth_SettingsFlow(t *testing.T) {
 		t.Fatalf("session after enabling (same password): status = %d, want 200", r.StatusCode)
 	}
 
-	// Changing the password logs existing sessions out.
+	// Changing the password logs existing sessions out. The API key
+	// needs no current password: it's how a forgotten one is reset.
 	apiKey := map[string]string{"X-Api-Key": routerTestKey, "Content-Type": "application/json"}
 	r, _ = e.do(t, "PUT", "/api/v1/system/auth", apiKey, `{"required":"enabled","username":"me","password":"a new password"}`)
 	if r.StatusCode != http.StatusOK {

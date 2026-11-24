@@ -63,6 +63,7 @@ func Load(cfgFile string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Explicit bindings for keys that contain underscores.
+	_ = v.BindEnv("server.allowed_hosts", "PILOT_SERVER_ALLOWED_HOSTS") // comma-separated
 	_ = v.BindEnv("auth.api_key", "PILOT_AUTH_API_KEY")
 	_ = v.BindEnv("auth.password_hash", "PILOT_AUTH_PASSWORD_HASH")
 	_ = v.BindEnv("tmdb.api_key", "PILOT_TMDB_API_KEY")

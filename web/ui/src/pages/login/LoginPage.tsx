@@ -94,7 +94,15 @@ export default function LoginPage() {
           <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-secondary)" }}>Checking…</p>
         )}
 
-        {noLogin && (
+        {status?.untrusted_host && (
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--color-text-secondary)" }}>
+            Pilot doesn't recognise <strong>{status.untrusted_host}</strong> as its own address, so it
+            asks for a login here. Open it by IP address or local name
+            {noLogin ? "" : ", sign in below,"} or add this name to <code>server.allowed_hosts</code>.
+          </p>
+        )}
+
+        {noLogin && !status?.untrusted_host && (
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--color-text-secondary)" }}>
             Pilot only accepts connections from your local network until you set a username and
             password. Open Pilot from a device on your network and go to{" "}

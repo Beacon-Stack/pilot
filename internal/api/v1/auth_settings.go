@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -23,9 +24,10 @@ type authSettingsOutput struct {
 
 type updateAuthSettingsInput struct {
 	Body struct {
-		Required string `json:"required" enum:"disabled_for_local,enabled" doc:"When a login is needed"`
-		Username string `json:"username" doc:"Login username. Empty removes the login (only allowed with disabled_for_local)."`
-		Password string `json:"password,omitempty" doc:"New password. Omit to keep the current one."`
+		Required        string `json:"required" enum:"disabled_for_local,enabled" doc:"When a login is needed"`
+		Username        string `json:"username" doc:"Login username. Empty removes the login (only allowed with disabled_for_local)."`
+		Password        string `json:"password,omitempty" doc:"New password. Omit to keep the current one."`
+		CurrentPassword string `json:"current_password,omitempty" doc:"The current password. Needed to change the login once one is set, unless the request uses the API key."`
 	}
 }
 
@@ -57,8 +59,19 @@ func RegisterAuthSettingsRoutes(api huma.API, auth *middleware.Auth, configFile 
 		Path:        "/api/v1/system/auth",
 		Summary:     "Update authentication settings",
 		Tags:        []string{"System"},
-	}, func(_ context.Context, in *updateAuthSettingsInput) (*authSettingsOutput, error) {
+	}, func(ctx context.Context, in *updateAuthSettingsInput) (*authSettingsOutput, error) {
 		cur := auth.Settings()
+		if err := auth.ConfirmPassword(ctx, in.Body.CurrentPassword); err != nil {
+			var tooMany middleware.ErrTooManyAttempts
+			switch {
+			case errors.As(err, &tooMany):
+				return nil, huma.NewError(http.StatusTooManyRequests, err.Error())
+			case in.Body.CurrentPassword == "":
+				return nil, huma.NewError(http.StatusForbidden, "Enter the current password to change the login.")
+			default:
+				return nil, huma.NewError(http.StatusForbidden, "The current password is wrong.")
+			}
+		}
 		next := middleware.AuthSettings{
 			Required:     in.Body.Required,
 			Username:     strings.TrimSpace(in.Body.Username),
