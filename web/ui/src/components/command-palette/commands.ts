@@ -1,35 +1,10 @@
 import type { ElementType } from "react";
 import type { NavigateFunction } from "react-router-dom";
+import { mainNav, settingsNav } from "@/layouts/nav";
 import {
-  Activity,
-  LayoutDashboard,
-  CalendarDays,
-  Bookmark,
-  BarChart2,
-  Download,
-  History,
-  Library,
-  Film,
-  SlidersHorizontal,
-  Gauge,
-  Search,
-  Settings2,
-  Bell,
-  MonitorPlay,
-  Ban,
-  ArrowDownToLine,
-  Server,
-  Paintbrush,
-  ListPlus,
   Rss,
   HardDrive,
   RotateCw,
-  Compass,
-  Filter,
-  Timer,
-  Languages,
-  FolderSync,
-  FolderInput,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -47,35 +22,55 @@ export interface Command {
 
 // ── Navigation commands ──────────────────────────────────────────────────────
 
-export const NAV_COMMANDS: Command[] = [
-  { id: "nav:dashboard",        category: "navigation", label: "Dashboard",            keywords: ["home", "overview"],       icon: LayoutDashboard, onSelect: (n) => n("/") },
-  { id: "nav:discover",         category: "navigation", label: "Discover",             keywords: ["search", "add", "find", "new"], icon: Compass,  onSelect: (n) => n("/discover") },
-  { id: "nav:activity",         category: "navigation", label: "Activity",             keywords: ["events", "timeline", "log"], icon: Activity,     onSelect: (n) => n("/activity") },
-  { id: "nav:calendar",         category: "navigation", label: "Calendar",             keywords: ["schedule", "upcoming"],   icon: CalendarDays,    onSelect: (n) => n("/calendar") },
-  { id: "nav:wanted",           category: "navigation", label: "Wanted",               keywords: ["missing", "cutoff"],      icon: Bookmark,        onSelect: (n) => n("/wanted") },
-  { id: "nav:stats",            category: "navigation", label: "Statistics",            keywords: ["graphs", "charts"],       icon: BarChart2,       onSelect: (n) => n("/stats") },
-  { id: "nav:queue",            category: "navigation", label: "Queue",                keywords: ["downloads", "progress"],  icon: Download,        onSelect: (n) => n("/queue") },
-  { id: "nav:history",          category: "navigation", label: "History",              keywords: ["grabs", "past"],          icon: History,         onSelect: (n) => n("/history") },
+// Search words and stable IDs for the sidebar's pages, by path. The pages
+// themselves (label, icon, order) come from the sidebar's list in
+// layouts/nav.ts, so the palette can't drift from the sidebar.
+const NAV_EXTRA: Record<string, { id: string; keywords: string[] }> = {
+  "/settings/providers": { id: "nav:providers", keywords: ["tmdb", "trakt", "api key", "metadata"] },
+  "/settings/system/logs": { id: "nav:logs", keywords: ["log", "debug", "errors"] },
+  "/": { id: "nav:dashboard", keywords: ["home", "overview"] },
+  "/discover": { id: "nav:discover", keywords: ["search", "add", "find", "new"] },
+  "/activity": { id: "nav:activity", keywords: ["events", "timeline", "log"] },
+  "/calendar": { id: "nav:calendar", keywords: ["schedule", "upcoming"] },
+  "/wanted": { id: "nav:wanted", keywords: ["missing", "cutoff"] },
+  "/stats": { id: "nav:stats", keywords: ["graphs", "charts"] },
+  "/queue": { id: "nav:queue", keywords: ["downloads", "progress"] },
+  "/history": { id: "nav:history", keywords: ["grabs", "past"] },
+  "/manual-import": { id: "nav:manual-import", keywords: ["import", "files", "folder", "existing", "disk"] },
+  "/settings/libraries": { id: "nav:libraries", keywords: ["settings", "root", "path"] },
+  "/settings/media-management": { id: "nav:media-management", keywords: ["settings", "rename", "format"] },
+  "/settings/quality-profiles": { id: "nav:quality-profiles", keywords: ["settings", "quality"] },
+  "/settings/quality-definitions": { id: "nav:quality-defs", keywords: ["settings", "size", "limits"] },
+  "/settings/release-profiles": { id: "nav:release-profiles", keywords: ["settings", "must contain", "ignore", "terms"] },
+  "/settings/delay-profile": { id: "nav:delay-profile", keywords: ["settings", "usenet", "torrent", "wait", "protocol"] },
+  "/settings/languages": { id: "nav:languages", keywords: ["settings", "language", "audio", "dub", "multi"] },
+  "/settings/indexers": { id: "nav:indexers", keywords: ["settings", "torznab", "newznab"] },
+  "/settings/download-clients": { id: "nav:download-clients", keywords: ["settings", "qbittorrent", "deluge"] },
+  "/settings/remote-path-mappings": { id: "nav:remote-path-mappings", keywords: ["settings", "docker", "container", "path", "download", "mapping"] },
+  "/settings/notifications": { id: "nav:notifications", keywords: ["settings", "discord", "webhook"] },
+  "/settings/media-servers": { id: "nav:media-servers", keywords: ["settings", "plex", "jellyfin"] },
+  "/settings/import-lists": { id: "nav:import-lists", keywords: ["settings", "trakt", "tmdb"] },
+  "/settings/blocklist": { id: "nav:blocklist", keywords: ["settings", "block", "ban"] },
+  "/settings/import": { id: "nav:import", keywords: ["settings", "sonarr"] },
+  "/settings/system": { id: "nav:system", keywords: ["settings", "health", "tasks"] },
+  "/settings/app": { id: "nav:app-settings", keywords: ["settings", "theme", "api key"] },
+};
 
-  // Settings
-  { id: "nav:libraries",         category: "navigation", label: "Libraries",            keywords: ["settings", "root", "path"],         icon: Library,            onSelect: (n) => n("/settings/libraries") },
-  { id: "nav:media-management",  category: "navigation", label: "Media Management",     keywords: ["settings", "rename", "format"],      icon: Film,               onSelect: (n) => n("/settings/media-management") },
-  { id: "nav:quality-profiles",  category: "navigation", label: "Quality Profiles",     keywords: ["settings", "quality"],               icon: SlidersHorizontal,  onSelect: (n) => n("/settings/quality-profiles") },
-  { id: "nav:quality-defs",      category: "navigation", label: "Quality Definitions",  keywords: ["settings", "size", "limits"],        icon: Gauge,              onSelect: (n) => n("/settings/quality-definitions") },
-  { id: "nav:indexers",          category: "navigation", label: "Indexers",             keywords: ["settings", "torznab", "newznab"],    icon: Search,             onSelect: (n) => n("/settings/indexers") },
-  { id: "nav:download-clients",  category: "navigation", label: "Download Clients",    keywords: ["settings", "qbittorrent", "deluge"], icon: Settings2,          onSelect: (n) => n("/settings/download-clients") },
-  { id: "nav:notifications",     category: "navigation", label: "Notifications",        keywords: ["settings", "discord", "webhook"],    icon: Bell,               onSelect: (n) => n("/settings/notifications") },
-  { id: "nav:media-servers",     category: "navigation", label: "Media Servers",        keywords: ["settings", "plex", "jellyfin"],      icon: MonitorPlay,        onSelect: (n) => n("/settings/media-servers") },
-  { id: "nav:release-profiles",  category: "navigation", label: "Release Profiles",     keywords: ["settings", "must contain", "ignore", "terms"], icon: Filter, onSelect: (n) => n("/settings/release-profiles") },
-  { id: "nav:manual-import",     category: "navigation", label: "Manual Import",        keywords: ["import", "files", "folder", "existing", "disk"], icon: FolderInput, onSelect: (n) => n("/manual-import") },
-  { id: "nav:remote-path-mappings", category: "navigation", label: "Remote Path Mappings", keywords: ["settings", "docker", "container", "path", "download", "mapping"], icon: FolderSync, onSelect: (n) => n("/settings/remote-path-mappings") },
-  { id: "nav:languages",         category: "navigation", label: "Languages",            keywords: ["settings", "language", "audio", "dub", "multi"], icon: Languages, onSelect: (n) => n("/settings/languages") },
-  { id: "nav:delay-profile",     category: "navigation", label: "Delay Profile",        keywords: ["settings", "usenet", "torrent", "wait", "protocol"], icon: Timer, onSelect: (n) => n("/settings/delay-profile") },
-  { id: "nav:import-lists",      category: "navigation", label: "Import Lists",         keywords: ["settings", "trakt", "tmdb"],         icon: ListPlus,           onSelect: (n) => n("/settings/import-lists") },
-  { id: "nav:blocklist",         category: "navigation", label: "Blocklist",            keywords: ["settings", "block", "ban"],          icon: Ban,                onSelect: (n) => n("/settings/blocklist") },
-  { id: "nav:import",            category: "navigation", label: "Import",               keywords: ["settings", "sonarr"],                icon: ArrowDownToLine,    onSelect: (n) => n("/settings/import") },
-  { id: "nav:system",            category: "navigation", label: "System",               keywords: ["settings", "health", "tasks"],       icon: Server,             onSelect: (n) => n("/settings/system") },
-  { id: "nav:app-settings",      category: "navigation", label: "App Settings",         keywords: ["settings", "theme", "api key"],      icon: Paintbrush,         onSelect: (n) => n("/settings/app") },
+// Pages reachable from the palette but not the sidebar.
+const PALETTE_ONLY: Command[] = [
+
+];
+
+export const NAV_COMMANDS: Command[] = [
+  ...[...mainNav, ...settingsNav].map((item): Command => ({
+    id: NAV_EXTRA[item.to]?.id ?? `nav:${item.to.replace(/^\/(settings\/)?/, "").replace(/\//g, "-") || "dashboard"}`,
+    category: "navigation",
+    label: item.label,
+    keywords: NAV_EXTRA[item.to]?.keywords ?? [],
+    icon: item.icon,
+    onSelect: (n) => n(item.to),
+  })),
+  ...PALETTE_ONLY,
 ];
 
 // ── Action commands ──────────────────────────────────────────────────────────
