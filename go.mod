@@ -3,7 +3,7 @@ module github.com/beacon-stack/pilot
 go 1.25.0
 
 require (
-	github.com/beacon-stack/pulse v0.4.1-0.20261124200048-a82e43abd90b
+	github.com/beacon-stack/pulse v0.4.1-0.20261124204555-27adac51e923
 	github.com/coder/websocket v1.8.14
 	github.com/danielgtaylor/huma/v2 v2.37.3
 	github.com/go-chi/chi/v5 v5.2.5
