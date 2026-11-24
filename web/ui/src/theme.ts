@@ -1,4 +1,4 @@
-// ── Theme system ──────────────────────────────────────────────────────────────
+// Theme system
 // Themes are stored in localStorage and applied by setting CSS custom properties
 // on document.documentElement. The default values live in index.css; themes
 // override them at runtime without any server round-trip.
@@ -32,10 +32,10 @@ export interface ThemePreset {
   };
 }
 
-// ── Presets ───────────────────────────────────────────────────────────────────
+// Presets
 
 export const THEME_PRESETS: ThemePreset[] = [
-  // ── Dark themes ──────────────────────────────────────────────────────────
+  // Dark themes
   {
     id: "pilot",
     label: "Pilot",
@@ -366,7 +366,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     },
   },
 
-  // ── Light themes ─────────────────────────────────────────────────────────
+  // Light themes
   {
     id: "gruvbox-light",
     label: "Gruvbox Light",
@@ -500,13 +500,13 @@ export const THEME_PRESETS: ThemePreset[] = [
 const DEFAULT_DARK_PRESET = "pilot";
 const DEFAULT_LIGHT_PRESET = "beacon-light";
 
-// ── Storage keys ──────────────────────────────────────────────────────────────
+// Storage keys
 
 const KEY_MODE = "pilot-theme-mode";
 const KEY_DARK = "pilot-theme-dark";
 const KEY_LIGHT = "pilot-theme-light";
 
-// ── Apply ─────────────────────────────────────────────────────────────────────
+// Apply
 
 function applyPreset(preset: ThemePreset): void {
   const root = document.documentElement;
@@ -583,7 +583,7 @@ export function setThemePreset(resolvedMode: "dark" | "light", presetId: string)
   }
 }
 
-// ── UI Preferences ───────────────────────────────────────────────────────────
+// UI Preferences
 
 const KEY_TOOLTIPS = "pilot-ui-tooltips";
 

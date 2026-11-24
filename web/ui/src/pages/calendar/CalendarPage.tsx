@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useCalendar } from "@/api/calendar";
 import type { CalendarEpisode } from "@/types";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 function episodeBorderColor(ep: CalendarEpisode): string {
   if (!ep.monitored) return "var(--color-border-default)";
@@ -33,7 +33,7 @@ const MONTH_NAMES = [
 ];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// ── Episode chip ──────────────────────────────────────────────────────────────
+// Episode chip
 
 function EpisodeChip({
   episode,
@@ -113,7 +113,7 @@ function EpisodeChip({
   );
 }
 
-// ── Day cell ──────────────────────────────────────────────────────────────────
+// Day cell
 
 function DayCell({
   date,
@@ -191,7 +191,7 @@ function DayCell({
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// Page
 
 export default function CalendarPage() {
   const navigate = useNavigate();

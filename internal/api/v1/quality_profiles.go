@@ -11,7 +11,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── Request / response shapes ─────────────────────────────────────────────────
+// Request / response shapes
 
 type qualityProfileBody struct {
 	ID                   string           `json:"id"                        doc:"Profile UUID"`
@@ -35,7 +35,7 @@ type qualityProfileInput struct {
 	UpgradeUntilCFScore  *int             `json:"upgrade_until_cf_score,omitempty"  doc:"CF score ceiling (default: 0)"`
 }
 
-// ── Output wrappers ───────────────────────────────────────────────────────────
+// Output wrappers
 
 type qualityProfileOutput struct {
 	Body *qualityProfileBody
@@ -47,7 +47,7 @@ type qualityProfileListOutput struct {
 
 type qualityProfileDeleteOutput struct{}
 
-// ── Input wrappers ────────────────────────────────────────────────────────────
+// Input wrappers
 
 type qualityProfileCreateInput struct {
 	Body qualityProfileInput
@@ -66,7 +66,7 @@ type qualityProfileDeleteInput struct {
 	ID string `path:"id"`
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 func profileToBody(p quality.Profile) *qualityProfileBody {
 	return &qualityProfileBody{
@@ -102,7 +102,7 @@ func inputToQualityCreateRequest(in qualityProfileInput) quality.CreateRequest {
 	}
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterQualityProfileRoutes registers all /api/v1/quality-profiles endpoints.
 func RegisterQualityProfileRoutes(api huma.API, qualitySvc *quality.Service) {

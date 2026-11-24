@@ -357,9 +357,7 @@ func parseAgeDays(pubDate string) float64 {
 	return time.Since(t).Hours() / 24
 }
 
-// ---------------------------------------------------------------------------
 // XML types
-// ---------------------------------------------------------------------------
 
 type rssResponse struct {
 	XMLName xml.Name   `xml:"rss"`

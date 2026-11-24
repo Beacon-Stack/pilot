@@ -10,7 +10,7 @@ import PageHeader from "@/components/PageHeader";
 import Modal from "@beacon-shared/Modal";
 import type { Library } from "@/types";
 
-// ── Library form modal ────────────────────────────────────────────────────────
+// Library form modal
 
 interface LibraryFormProps {
   initial?: Library;
@@ -282,7 +282,7 @@ function LibraryForm({ initial, onClose }: LibraryFormProps) {
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// Main page
 
 export default function LibraryList() {
   const { data: libraries, isLoading } = useLibraries();

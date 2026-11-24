@@ -16,7 +16,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── Result types ─────────────────────────────────────────────────────────────
+// Result types
 
 // PreviewResult summarises what would be imported from a Sonarr instance.
 type PreviewResult struct {
@@ -79,8 +79,6 @@ type CategoryResult struct {
 	Skipped  int `json:"skipped"`
 	Failed   int `json:"failed"`
 }
-
-// ── Service ──────────────────────────────────────────────────────────────────
 
 // Service orchestrates the one-time import from a Sonarr instance.
 type Service struct {
@@ -193,7 +191,7 @@ func (s *Service) Execute(ctx context.Context, sonarrURL, apiKey string, opts Im
 	libraryPathMap := map[string]string{}
 	var firstProfileID string
 
-	// ── 1. Quality profiles ───────────────────────────────────────────────────
+	// 1. Quality profiles
 	if opts.QualityProfiles {
 		profiles, err := c.GetQualityProfiles(ctx)
 		if err != nil {
@@ -230,7 +228,7 @@ func (s *Service) Execute(ctx context.Context, sonarrURL, apiKey string, opts Im
 		}
 	}
 
-	// ── 2. Libraries (from root folders) ──────────────────────────────────────
+	// 2. Libraries (from root folders)
 	if opts.Libraries {
 		folders, err := c.GetRootFolders(ctx)
 		if err != nil {
@@ -260,7 +258,7 @@ func (s *Service) Execute(ctx context.Context, sonarrURL, apiKey string, opts Im
 		}
 	}
 
-	// ── 3. Indexers ───────────────────────────────────────────────────────────
+	// 3. Indexers
 	if opts.Indexers {
 		snrIndexers, err := c.GetIndexers(ctx)
 		if err != nil {
@@ -304,7 +302,7 @@ func (s *Service) Execute(ctx context.Context, sonarrURL, apiKey string, opts Im
 		}
 	}
 
-	// ── 4. Download clients ───────────────────────────────────────────────────
+	// 4. Download clients
 	if opts.DownloadClients {
 		snrClients, err := c.GetDownloadClients(ctx)
 		if err != nil {
@@ -349,7 +347,7 @@ func (s *Service) Execute(ctx context.Context, sonarrURL, apiKey string, opts Im
 		}
 	}
 
-	// ── 5. Series ─────────────────────────────────────────────────────────────
+	// 5. Series
 	if opts.Series {
 		snrSeries, err := c.GetSeries(ctx)
 		if err != nil {
@@ -405,7 +403,7 @@ func (s *Service) Execute(ctx context.Context, sonarrURL, apiKey string, opts Im
 	return result, nil
 }
 
-// ── Mapping helpers ──────────────────────────────────────────────────────────
+// Mapping helpers
 
 func mapIndexerKind(contract string) string {
 	switch contract {

@@ -14,7 +14,7 @@ import { useQualityProfiles } from "@/api/quality";
 import { useLibraries } from "@/api/libraries";
 import type { ImportListConfig, ImportListRequest } from "@/types";
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// Constants
 
 interface KindDef {
   value: string;
@@ -47,7 +47,7 @@ const MONITOR_TYPE_OPTIONS = [
   { value: "none",         label: "None"            },
 ];
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// Helpers
 
 function strSetting(settings: Record<string, unknown>, key: string): string {
   const v = settings[key];
@@ -58,7 +58,7 @@ function kindDef(value: string): KindDef | undefined {
   return KINDS.find((k) => k.value === value);
 }
 
-// ── Shared styles ──────────────────────────────────────────────────────────────
+// Shared styles
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -99,7 +99,7 @@ function actionBtn(color: string, bg: string): React.CSSProperties {
   };
 }
 
-// ── Form state ─────────────────────────────────────────────────────────────────
+// Form state
 
 interface FormState {
   name: string;
@@ -195,7 +195,7 @@ function formToRequest(f: FormState): ImportListRequest {
   };
 }
 
-// ── Modal ──────────────────────────────────────────────────────────────────────
+// Modal
 
 interface ImportListModalProps {
   editing: ImportListConfig | null;
@@ -522,7 +522,7 @@ function ImportListModal({ editing, onClose }: ImportListModalProps) {
   );
 }
 
-// ── Row actions ────────────────────────────────────────────────────────────────
+// Row actions
 
 function RowActions({ cfg, onEdit }: { cfg: ImportListConfig; onEdit: () => void }) {
   const [confirming, setConfirming] = useState(false);
@@ -578,7 +578,7 @@ function RowActions({ cfg, onEdit }: { cfg: ImportListConfig; onEdit: () => void
   );
 }
 
-// ── Kind badge ─────────────────────────────────────────────────────────────────
+// Kind badge
 
 const GROUP_COLORS: Record<string, { bg: string; fg: string }> = {
   TMDb:  { bg: "color-mix(in srgb, var(--color-accent) 12%, transparent)",  fg: "var(--color-accent)"  },
@@ -598,7 +598,7 @@ function SourceBadge({ kind }: { kind: string }) {
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// Page
 
 export default function ImportListList() {
   const { data, isLoading, error } = useImportLists();

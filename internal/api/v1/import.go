@@ -9,7 +9,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/sonarrimport"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 type sonarrPreviewBody struct {
 	URL    string `json:"url"     minLength:"1" doc:"Sonarr base URL (e.g. http://localhost:8989)"`
@@ -38,7 +38,7 @@ type sonarrExecuteOutput struct {
 	Body *sonarrimport.ImportResult
 }
 
-// ── Registration ─────────────────────────────────────────────────────────────
+// Registration
 
 func RegisterImportRoutes(api huma.API, svc *sonarrimport.Service) {
 	tags := []string{"Import"}

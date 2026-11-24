@@ -322,7 +322,7 @@ func TestSearchStream_TimeoutSkipsFallbackQuery(t *testing.T) {
 	}
 }
 
-// ── Struggling indexers ─────────────────────────────────────────────────────
+// Struggling indexers
 
 func TestIndexerHealth_WindowNotStreak(t *testing.T) {
 	var h indexerHealth

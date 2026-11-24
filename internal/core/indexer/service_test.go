@@ -171,7 +171,7 @@ func TestSearchSort_AgeTiebreakerOnTies(t *testing.T) {
 	}
 }
 
-// ── Filter pass tests ────────────────────────────────────────────────────────
+// Filter pass tests
 //
 // These exercise applyMinSeedersFilter() directly. The filter is the
 // primary safety net against dead/inflated torrents in Pilot's search
@@ -445,7 +445,7 @@ func sortSearchResults(results []SearchResult) {
 	})
 }
 
-// ── Ingestion: quality parsed from the title ─────────────────────────────────
+// Ingestion: quality parsed from the title
 //
 // Indexer plugins return releases with an empty Quality. Search() used to
 // copy that through, so every result had QualityScore 0 and the "quality
@@ -532,7 +532,7 @@ func TestSearchSort_ProperDoesNotBeatHigherQuality(t *testing.T) {
 	}
 }
 
-// ── Release profiles ─────────────────────────────────────────────────────────
+// Release profiles
 
 // Releases a release profile rejects are tagged, not dropped (like
 // min_seeders): interactive search shows them grayed with an override;

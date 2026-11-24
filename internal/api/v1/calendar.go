@@ -10,7 +10,7 @@ import (
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 type calendarInput struct {
 	Start string `query:"start" doc:"Start date inclusive (YYYY-MM-DD)"`

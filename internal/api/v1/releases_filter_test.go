@@ -248,7 +248,7 @@ func TestApplyQualityProfile_ResolutionFloor(t *testing.T) {
 	}
 }
 
-// ── Alternate titles ────────────────────────────────────────────────────────
+// Alternate titles
 
 // The headline alt-title regression case. Indexers respond with releases
 // that use marketing/regional names for "Andor" — when the series carries
@@ -329,7 +329,7 @@ func TestFilterByEpisode_AlternateContainingCanonicalIsHarmless(t *testing.T) {
 	}
 }
 
-// ── TVDB → absolute conversion path ─────────────────────────────────────────
+// TVDB → absolute conversion path
 
 // Headline regression: when TMDB structures Jujutsu Kaisen as a single
 // season but TVDB tags releases by "true" cour seasons, a release named

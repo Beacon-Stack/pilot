@@ -1,15 +1,6 @@
-// Package indexer manages indexer configurations and orchestrates release searches.
-//
-// ⚠ Before changing anything in this file — especially `seedWeight`,
-// `applyMinSeedersFilter`, or the `Search()` sort/filter closure — run:
-//
-//	go test ./internal/core/indexer/...
-//
-// The tests in service_test.go lock down the dead-torrent regression fix:
-// the 847-seeders-on-a-5-year-old-release bug would have been caught by
-// `TestSearchSort_ReproducesIncident` if the suite had existed at the time.
-// See pilot/CLAUDE.md "Regression guard: dead-torrent release search" for
-// the full list of guarded files and the rationale.
+// Package indexer manages indexer configurations and runs release
+// searches: it queries every enabled indexer, tags releases that fail a
+// filter, and ranks the results (see searchResultLess).
 package indexer
 
 import (
@@ -28,11 +19,10 @@ import (
 
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	"github.com/beacon-stack/pilot/internal/core/language"
-	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/releaseprofile"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/internal/ratelimit"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/pkg/plugin"
@@ -524,9 +514,9 @@ func applyLanguagePreference(results []SearchResult, pref language.Preference) {
 		return
 	}
 	for i := range results {
-		langs := make([]releaseparser.Language, 0, len(results[i].Languages))
+		langs := make([]parser.Language, 0, len(results[i].Languages))
 		for _, l := range results[i].Languages {
-			langs = append(langs, releaseparser.Language(l))
+			langs = append(langs, parser.Language(l))
 		}
 		if !pref.Accepts(langs) {
 			results[i].FilterReasons = append(results[i].FilterReasons, language.FilterReason)
@@ -567,30 +557,6 @@ func applyMinSeedersFilter(results []SearchResult, minByIndexer map[string]int) 
 	}
 }
 
-// seedWeight returns a compressed, age-aware score for the seed count used
-// as a ranking tiebreaker after quality.
-//
-// Public indexers frequently report stale or inflated seeder counts — a
-// 5-year-old dead torrent can show "847 seeders" because the number hasn't
-// been refreshed since it was healthy. Treating seed count linearly lets
-// those inflated numbers dominate rankings, which is exactly the bug this
-// function exists to defend against. Sonarr's DownloadDecisionComparer
-// uses round(log10(seeders)) for the same reason: it compresses the range
-// so a claim of 847 lives in the same bucket as a real 30, eliminating the
-// incentive for the top-ranked result to win on fake numbers alone.
-//
-// Buckets:
-//
-//	0 seeders       → 0
-//	1 seeder        → 0
-//	2-3 seeders     → 0  (log10 < 0.5 rounds to 0)
-//	4-31 seeders    → 1
-//	32-316 seeders  → 2
-//	317+ seeders    → 3+
-//
-// For releases older than 1 year, the bucket is capped at 1: an 847-claim
-// on a 5-year-old release ranks no higher than a 5-seeder release of the
-// same vintage, because both numbers are stale beyond useful.
 // classifyRelease parses a release title into a pack type and episode count.
 // Season packs get a sentinel-large effective episode count in the sort
 // comparator (see effectiveEpisodeCount) so they beat partial packs and
@@ -612,14 +578,12 @@ func classifyRelease(title string) (PackType, int) {
 
 // newSearchResult builds the SearchResult for one release returned by an
 // indexer. Indexer plugins don't parse quality, so it is parsed here from
-// the title. Before this, every release kept an empty Quality: the
-// "quality first" sort tier compared zeros, ranking fell through to seeds
-// and age, and grabs recorded no quality.
+// the title; ranking and grab history both depend on it.
 func newSearchResult(r plugin.Release, indexerID, indexerName string) SearchResult {
 	if r.Indexer == "" {
 		r.Indexer = indexerName
 	}
-	parsed := releaseparser.Parse(r.Title)
+	parsed := parser.Parse(r.Title)
 	r.Quality = withParsedQuality(parsed, r.Quality)
 	pt, count := classifyRelease(r.Title)
 	langs := make([]string, 0, len(parsed.Languages))
@@ -639,7 +603,7 @@ func newSearchResult(r plugin.Release, indexerID, indexerName string) SearchResu
 
 // withParsedQuality fills q from the release title when the indexer gave
 // no quality, and always fills the revision (PROPER/REPACK) if missing.
-func withParsedQuality(rp releaseparser.ParsedRelease, q plugin.Quality) plugin.Quality {
+func withParsedQuality(rp parser.ParsedRelease, q plugin.Quality) plugin.Quality {
 	parsed := rp.Quality()
 	if q.Resolution == "" && q.Source == "" {
 		return parsed
@@ -705,6 +669,29 @@ func effectiveEpisodeCount(r SearchResult) int {
 	}
 }
 
+// seedWeight returns a compressed, age-aware score for the seed count used
+// as a ranking tiebreaker after quality.
+//
+// Public indexers frequently report stale or inflated seeder counts — a
+// 5-year-old dead torrent can show "847 seeders" because the number hasn't
+// been refreshed since it was healthy. Treating seed count linearly lets
+// those inflated numbers dominate rankings. Sonarr's DownloadDecisionComparer
+// uses round(log10(seeders)) for the same reason: it compresses the range
+// so a claim of 847 lives in the same bucket as a real 30, eliminating the
+// incentive for the top-ranked result to win on fake numbers alone.
+//
+// Buckets:
+//
+//	0 seeders       → 0
+//	1 seeder        → 0
+//	2-3 seeders     → 0  (log10 < 0.5 rounds to 0)
+//	4-31 seeders    → 1
+//	32-316 seeders  → 2
+//	317+ seeders    → 3+
+//
+// For releases older than 1 year, the bucket is capped at 1: an 847-claim
+// on a 5-year-old release ranks no higher than a 5-seeder release of the
+// same vintage, because both numbers are stale beyond useful.
 func seedWeight(seeds int, ageDays float64) int {
 	if seeds <= 0 {
 		return 0
@@ -716,11 +703,9 @@ func seedWeight(seeds int, ageDays float64) int {
 	return bucket
 }
 
-// Outcome summarizes one indexer's contribution to a search —
-// the raw material for the per-indexer breakdown the UI shows instead of
-// a bare "No releases found." This data was previously computed and
-// thrown away, which made "half the fleet is broken" indistinguishable
-// from "nothing matched".
+// Outcome summarizes one indexer's contribution to a search. The UI shows
+// it per indexer, so "half the indexers failed" looks different from
+// "nothing matched".
 type Outcome struct {
 	IndexerID   string
 	IndexerName string
@@ -954,9 +939,8 @@ func (s *Service) runGroup(ctx context.Context, cfg Config, g SearchGroup, inter
 
 // searchSlotted waits for the indexer's rate limit, then takes one of the
 // global concurrency slots for the request alone. The wait comes first
-// and holds nothing: an indexer waiting out its own rate limit used to
-// sit on a slot (and spend its timeout) while faster indexers queued
-// behind it.
+// and holds nothing, so an indexer waiting out its own rate limit doesn't
+// keep faster indexers queued behind it.
 func (s *Service) searchSlotted(ctx context.Context, cfg Config, idx plugin.Indexer, q plugin.SearchQuery, interactive bool) ([]plugin.Release, error) {
 	if err := s.rl.Wait(ctx, cfg.ID, extractRateLimit(cfg.Settings)); err != nil {
 		return nil, fmt.Errorf("waiting for this indexer's rate limit: %w", err)

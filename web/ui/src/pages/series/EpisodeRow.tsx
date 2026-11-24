@@ -24,8 +24,8 @@ interface Props {
   onReimport?: (infoHash: string) => void;
   // orphanedGrab is set when grab_history has a completed grab for
   // this episode but the file isn't (yet) in the library. Distinct
-  // from haulRecord: this signal works for grabs predating Phase 1-4
-  // because grab_history always carried episode_id.
+  // from haulRecord: this works for every grab, because grab_history
+  // always carries episode_id.
   orphanedGrab?: SeriesGrabHistoryItem;
   onReimportGrab?: (grabId: string) => void;
 }
@@ -284,8 +284,7 @@ function HaulBadge({ record, onReimport }: { record: HaulRecord; onReimport?: (i
 // label and whether the badge is clickable:
 //
 //   completed   → yellow "Grabbed · Import" button. The grab
-//                 finished but the file wasn't auto-linked (the
-//                 anime-importer bug class). Click runs
+//                 finished but the file wasn't auto-linked. Click runs
 //                 /api/v1/grabs/{id}/reimport.
 //   downloading → blue "Downloading" pill, no action. The grab is in
 //                 flight in Haul; the user shouldn't double-grab.

@@ -6,8 +6,7 @@ import (
 )
 
 // junkTitleRE matches what vandalised TMDB titles contain: phone numbers
-// ("+1-888-805-5591") and web addresses. Seen on 2026-11-22: a real
-// Netflix series listed as "Ticket+1-888-805-5591 or US +1-888-...".
+// ("+1-888-805-5591") and web addresses.
 var junkTitleRE = regexp.MustCompile(`\d[\d\s().-]{8,}\d|(?i)https?://|www\.|\.(com|net|org)\b`)
 
 // displayTitle returns a title fit to show: the localized title, or the

@@ -210,7 +210,7 @@ export interface ReleaseSearchResponse {
   done?: boolean;
 }
 
-// ── Download Clients ────────────────────────────────────────────────────────
+// Download Clients
 
 export interface DownloadClientConfig {
   id: string;
@@ -236,9 +236,9 @@ export interface TestResult {
   message?: string;
 }
 
-// ── Notifications ───────────────────────────────────────────────────────────
+// Notifications
 
-// ── Media Servers ────────────────────────────────────────────────────────────
+// Media Servers
 
 export interface MediaServerConfig {
   id: string;
@@ -257,7 +257,7 @@ export interface MediaServerRequest {
   settings: Record<string, unknown>;
 }
 
-// ── Blocklist ────────────────────────────────────────────────────────────────
+// Blocklist
 
 interface BlocklistEntry {
   id: string;
@@ -280,7 +280,7 @@ export interface BlocklistPage {
   per_page: number;
 }
 
-// ── Quality Definitions ──────────────────────────────────────────────────────
+// Quality Definitions
 
 export interface QualityDefinition {
   id: string;
@@ -302,9 +302,9 @@ export interface QualityDefinitionUpdate {
   preferred_size: number;
 }
 
-// ── Custom Formats ───────────────────────────────────────────────────────────
+// Custom Formats
 
-// ── Queue ────────────────────────────────────────────────────────────────────
+// Queue
 
 export interface QueueItem {
   grab_id: string;
@@ -320,7 +320,7 @@ export interface QueueItem {
   grabbed_at: string;
 }
 
-// ── Calendar ─────────────────────────────────────────────────────────────────
+// Calendar
 
 export interface CalendarEpisode {
   id: string;
@@ -335,7 +335,7 @@ export interface CalendarEpisode {
   monitored: boolean;
 }
 
-// ── Wanted ────────────────────────────────────────────────────────────────────
+// Wanted
 
 // Matches wantedEpisodeBody in internal/api/v1/wanted.go.
 export interface WantedEpisode {
@@ -365,7 +365,7 @@ export interface WantedResponse {
   per_page: number;
 }
 
-// ── Media Management ─────────────────────────────────────────────────────────
+// Media Management
 
 export interface MediaManagement {
   rename_episodes: boolean;
@@ -384,7 +384,7 @@ export interface MediaManagement {
   recycle_bin_cleanup_days: number;
 }
 
-// ── Import Lists ─────────────────────────────────────────────────────────
+// Import Lists
 export interface ImportListConfig {
   id: string;
   name: string;
@@ -427,7 +427,7 @@ export interface ImportListSyncResult {
   errors: string[];
 }
 
-// ── Sonarr Import ────────────────────────────────────────────────────────
+// Sonarr Import
 export interface SonarrPreviewResult {
   version: string;
   series_count: number;
@@ -460,7 +460,7 @@ export interface CategoryResult {
   failed: number;
 }
 
-// ── Custom Format Scoring ───────────────────────────────────────────────────
+// Custom Format Scoring
 
 interface ScoreDimension {
   name: string;
@@ -476,7 +476,7 @@ export interface ScoreBreakdown {
   dimensions: ScoreDimension[];
 }
 
-// ── Filesystem Browsing ─────────────────────────────────────────────────────
+// Filesystem Browsing
 
 interface FsDirEntry {
   name: string;

@@ -10,7 +10,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── Newznab <error> document handling ───────────────────────────────────────
+// Newznab <error> document handling
 
 // Mirror of the torznab plugin's regression guard (see torznab_test.go for
 // the 2026-08-16 incident background): an <error> document served with

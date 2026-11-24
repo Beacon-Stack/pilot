@@ -1,164 +1,118 @@
 package parser
 
 import (
-	"regexp"
-	"strconv"
 	"strings"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
-// stopTokens marks the boundary between title and quality metadata.
-var stopTokens = []string{
-	// TV episode markers — must come first so they stop title extraction early
-	`S\d\d`,
-	// resolutions / scan type
-	"2160p", "1080p", "1080i", "720p", "720i", "576p", "480p", "4k", "uhd",
-	// source
-	"bluray", "blu-ray", "bdrip", "brrip", "dvdrip", "dvdscr", "dvd",
-	"webrip", "web-rip", "web-dl", "webdl", "web", "hdtv", "hdcam", "cam",
-	"hdrip", "vhsrip", "ts", "hc", "r5",
-	// video codec
-	"x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "divx",
-	"10bit", "10-bit", "hdr", "hdr10", "dolbyvision", "dv",
-	// audio codec
-	"dts", "dts-hd", "dtshd", "dts-x", "dtsx", "truehd", "atmos",
-	"ddplus", "ddp", "dd", "ac3", "aac", "mp3", "flac", "eac3",
-	"lpcm", "pcm", "opus",
-	// channels
-	"7.1", "5.1", "2.0",
-	// misc release flags
-	"repack", "proper", "extended", "theatrical", "directors", "dc",
-	"unrated", "retail", "readnfo", "nfofix", "limited", "complete",
-	"remux", "imax", "hybrid",
-}
-
-var yearRe = regexp.MustCompile(`\b((?:19|20)\d{2})\b`)
-
-// stopRe is built from stopTokens. The S\d\d entry is a raw regex pattern
-// (not escaped) so it matches season markers like S01, S02, etc.
-var stopRe = func() *regexp.Regexp {
-	parts := make([]string, len(stopTokens))
-	for i, t := range stopTokens {
-		// The season-marker token is already a regex pattern; escape all others.
-		if t == `S\d\d` {
-			parts[i] = t
-		} else {
-			parts[i] = regexp.QuoteMeta(t)
+// NormalizeTitle lowercases a title and reduces it to letters and digits
+// so two titles can be compared without being tripped up by dots,
+// underscores, spaces, or punctuation. Unicode-aware: accented letters
+// fold to their ASCII base ("Pokémon" → "pokemon", matching release
+// titles that drop the accent), non-Latin letters are kept (not deleted
+// — deleting them normalized CJK titles to "" and made every comparison
+// fail), and "&" folds to "and" so "Rick & Morty" matches
+// "Rick.and.Morty".
+//
+// Example:
+//
+//	NormalizeTitle("Breaking.Bad") == NormalizeTitle("breaking bad") == "breakingbad"
+func NormalizeTitle(s string) string {
+	s = strings.ReplaceAll(s, "&", " and ")
+	// NFD-decompose so diacritics become combining marks we can drop.
+	s = norm.NFD.String(s)
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case unicode.Is(unicode.Mn, r):
+			// Combining mark (the accent split off by NFD) — drop.
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
 		}
 	}
-	return regexp.MustCompile(`(?i)(?:` + strings.Join(parts, "|") + `)`)
-}()
+	return b.String()
+}
 
-// discNoiseRe matches MakeMKV disc-ripper labels.
-var discNoiseRe = regexp.MustCompile(`(?i)\b(?:Title|Chapter|Disc|Track)\d+\b`)
-
-// ptRe normalises "Pt1" / "Pt.2" → "Part 1" / "Part 2".
-var ptRe = regexp.MustCompile(`(?i)\bPt\.?\s*(\d+)\b`)
-
-const allCapsThreshold = 0.6
-
-// extractTitle parses the movie/show title and year from a normalized string.
-func extractTitle(normalized string) (title string, year int) {
-	// Find earliest stop token.
-	stopIdx := len(normalized)
-	if m := stopRe.FindStringIndex(normalized); m != nil {
-		stopIdx = m[0]
+// TitleMatches reports whether a release's parsed show title refers to the
+// same series as seriesTitle. Comparison is strict after normalization, with
+// one concession: a trailing 4-digit year on the release side is allowed
+// ("Breaking Bad 2008" matches "Breaking Bad") since indexer releases
+// frequently embed the premiere year.
+//
+// There is no fuzzy, substring or word-set matching: those let unrelated
+// releases through, and the wrong show gets grabbed. Use TitleMatchesAny
+// when the series carries explicit alternate titles (from TMDB).
+func TitleMatches(seriesTitle, releaseShowTitle string) bool {
+	s := NormalizeTitle(seriesTitle)
+	r := NormalizeTitle(releaseShowTitle)
+	if s == "" || r == "" {
+		return false
 	}
+	if s == r {
+		return true
+	}
+	if strings.HasPrefix(r, s) {
+		rest := r[len(s):]
+		if len(rest) == 4 && rest >= "1900" && rest <= "2099" {
+			return true
+		}
+	}
+	return false
+}
 
-	// Find the last year at or before the stop position.
-	yearCutAt := stopIdx
-	for _, m := range yearRe.FindAllStringIndex(normalized, -1) {
-		if m[0] > stopIdx {
+// TitleMatchesAny reports whether a release's parsed show title matches
+// any of the supplied candidate titles using the strict TitleMatches
+// rules. Pass the canonical series title together with any alternate
+// titles (from TMDB).
+//
+// This is the right call for indexer-result filtering: an "Andor"
+// series with alternate "Star Wars: Andor" will match release
+// "Star Wars Andor S01..." because one of the candidates ("Star Wars:
+// Andor") is itself a strict match. The strict semantics are preserved
+// per-candidate — no fuzzy logic is added at the aggregate level.
+func TitleMatchesAny(candidates []string, releaseShowTitle string) bool {
+	for _, t := range candidates {
+		if TitleMatches(t, releaseShowTitle) {
+			return true
+		}
+	}
+	return false
+}
+
+// cleanTitle replaces dots, underscores, and multiple spaces with a single
+// space and trims whitespace from both ends. It also strips leading
+// `[group]` prefixes that anime fansubs prepend to release titles
+// ("[SubsPlease] Jujutsu Kaisen" → "Jujutsu Kaisen") so the strict
+// title gate matches canonical TMDB titles. Only consecutive bracket
+// groups at the start are removed; trailing brackets (resolution,
+// language, hash) are left alone — the title gate doesn't read them.
+func cleanTitle(s string) string {
+	s = strings.NewReplacer(".", " ", "_", " ").Replace(s)
+	// Strip leading [Group] bracket prefixes. Loop because some fansubs
+	// stack them ("[Erai-raws][SubsPlease] Show").
+	for {
+		s = strings.TrimSpace(s)
+		if !strings.HasPrefix(s, "[") {
 			break
 		}
-		if y, err := strconv.Atoi(normalized[m[0]:m[1]]); err == nil {
-			year = y
-			yearCutAt = m[0]
+		end := strings.Index(s, "]")
+		if end <= 0 {
+			break
 		}
+		s = s[end+1:]
 	}
-
-	rawTitle := strings.TrimSpace(normalized[:yearCutAt])
-	if rawTitle == "" {
-		// Year-titled movie (e.g. "1917 2019 1080p"): use everything
-		// before the first stop token as the title and drop the year.
-		rawTitle = strings.TrimSpace(normalized[:stopIdx])
-		year = 0
+	// Collapse runs of whitespace.
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
 	}
-
-	rawTitle = strings.TrimRight(rawTitle, " -([{")
-	title = toTitleCase(rawTitle)
-	return title, year
-}
-
-// normalize prepares a raw release name for parsing.
-func normalize(name string) string {
-	// Strip path prefix.
-	if idx := strings.LastIndexAny(name, `/\`); idx >= 0 {
-		name = name[idx+1:]
-	}
-
-	// Strip video file extension.
-	if dot := strings.LastIndex(name, "."); dot > 0 {
-		ext := strings.ToLower(name[dot+1:])
-		videoExts := map[string]bool{
-			"mkv": true, "mp4": true, "avi": true, "mov": true,
-			"wmv": true, "m4v": true, "ts": true, "m2ts": true,
-			"flv": true, "webm": true,
-		}
-		if videoExts[ext] {
-			name = name[:dot]
-		}
-	}
-
-	// Replace separators with spaces.
-	normalized := strings.Map(func(r rune) rune {
-		if r == '.' || r == '_' {
-			return ' '
-		}
-		return r
-	}, name)
-	normalized = strings.Join(strings.Fields(normalized), " ")
-
-	// Remove disc-ripper noise.
-	normalized = discNoiseRe.ReplaceAllString(normalized, " ")
-
-	// Normalize Pt abbreviations.
-	normalized = ptRe.ReplaceAllStringFunc(normalized, func(m string) string {
-		digits := ptRe.FindStringSubmatch(m)
-		if len(digits) < 2 {
-			return m
-		}
-		return "Part " + digits[1]
-	})
-
-	normalized = strings.Join(strings.Fields(normalized), " ")
-
-	// All-caps detection.
-	upper, total := 0, 0
-	for _, r := range normalized {
-		if unicode.IsLetter(r) {
-			total++
-			if unicode.IsUpper(r) {
-				upper++
-			}
-		}
-	}
-	if total > 0 && float64(upper)/float64(total) >= allCapsThreshold {
-		normalized = strings.ToLower(normalized)
-	}
-
-	return normalized
-}
-
-func toTitleCase(s string) string {
-	words := strings.Fields(s)
-	for i, w := range words {
-		if len(w) == 0 {
-			continue
-		}
-		runes := []rune(w)
-		runes[0] = unicode.ToUpper(runes[0])
-		words[i] = string(runes)
-	}
-	return strings.Join(words, " ")
+	// Trim trailing separator characters left over from the split. A
+	// filename like "Show - S01E01 - Title" splits at " S01E01" and
+	// leaves "Show -" — the trailing " -" then breaks downstream
+	// title-equality lookups for legitimately-hyphenated show names
+	// like "Star Wars: Maul - Shadow Lord" (the DB title has no
+	// trailing dash).
+	return strings.TrimRight(strings.TrimSpace(s), " -._")
 }

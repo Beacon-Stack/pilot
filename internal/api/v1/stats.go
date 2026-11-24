@@ -9,7 +9,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/stats"
 )
 
-// ── Output wrappers ───────────────────────────────────────────────────────────
+// Output wrappers
 
 type statsCollectionOutput struct {
 	Body stats.CollectionStats

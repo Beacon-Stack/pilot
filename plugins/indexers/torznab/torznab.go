@@ -139,10 +139,9 @@ const (
 
 // New creates a new Torznab Indexer from the given config.
 //
-// 30s per-call timeout matches Newznab and matches Sonarr/Radarr defaults.
-// A higher value (we used to ship 180s) means a single misbehaving indexer
-// — Cloudflare-walled, dead, or overloaded — pins an interactive search
-// for the worst case before all the parallel goroutines finish.
+// The 30s per-call timeout matches Newznab and the Sonarr/Radarr
+// defaults. A higher value lets one misbehaving indexer (Cloudflare-
+// walled, dead or overloaded) hold up an interactive search.
 func New(cfg Config) *Indexer {
 	return &Indexer{
 		cfg: cfg,
@@ -586,9 +585,7 @@ func parseAgeDays(pubDate string) float64 {
 	return time.Since(t).Hours() / 24
 }
 
-// ---------------------------------------------------------------------------
 // XML types
-// ---------------------------------------------------------------------------
 
 type rssResponse struct {
 	XMLName xml.Name   `xml:"rss"`

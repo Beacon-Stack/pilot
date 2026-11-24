@@ -10,14 +10,14 @@ import (
 // All regexps are compiled once at package init — never inside parse functions.
 
 var (
-	// ── Resolution ───────────────────────────────────────────────────────
+	// Resolution
 	re2160p = regexp.MustCompile(`(?i)(?:\b4k\b|\buhd\b|2160[pi]|3840x2160)`)
 	re1080p = regexp.MustCompile(`(?i)(?:1080[pi]|1920x1080)`)
 	re720p  = regexp.MustCompile(`(?i)(?:720p|1280x720)`)
 	re576p  = regexp.MustCompile(`(?i)576p`)
 	re480p  = regexp.MustCompile(`(?i)(?:480[pi]|640x480|540p)`)
 
-	// ── Source ───────────────────────────────────────────────────────────
+	// Source
 	// RawHD: MPEG-2 HDTV captures (must check MPEG-2 + HDTV combo)
 	reRawHD     = regexp.MustCompile(`(?i)\braw[\s\-]?hd\b`)
 	reMPEG2HDTV = regexp.MustCompile(`(?i)mpeg[\s\-]?2`)
@@ -60,13 +60,13 @@ var (
 	reCAM       = regexp.MustCompile(`(?i)(?:hd|hq|new)?cam(?:rip)?\b`)
 	reWorkprint = regexp.MustCompile(`(?i)(?:\bworkprint\b|\bwp\b)`)
 
-	// ── HDR ──────────────────────────────────────────────────────────────
+	// HDR
 	reDolbyVision = regexp.MustCompile(`(?i)(?:\bdv\b|dovi|dolby[\s\-.]?vision)`)
 	reHDR10Plus   = regexp.MustCompile(`(?i)(?:hdr10\+|hdr10plus)`)
 	reHDR10       = regexp.MustCompile(`(?i)hdr(?:10)?`)
 	reHLG         = regexp.MustCompile(`(?i)\bhlg\b`)
 
-	// ── Codec ────────────────────────────────────────────────────────────
+	// Codec
 	reX265 = regexp.MustCompile(`(?i)x265|h[\s\-.]?265|hevc`)
 	reX264 = regexp.MustCompile(`(?i)x264|h[\s\-.]?264|avc`)
 	reAV1  = regexp.MustCompile(`(?i)\bav1\b`)

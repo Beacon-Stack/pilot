@@ -18,10 +18,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/beacon-stack/pilot/internal/core/parser"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/events"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -113,7 +112,7 @@ func matchSeries(refs []seriesRef, path string) (db.Series, bool) {
 		titles = append(titles, base[:loc[0]])
 	}
 	for _, name := range []string{base, filepath.Base(filepath.Dir(path)), filepath.Base(filepath.Dir(filepath.Dir(path)))} {
-		titles = append(titles, releaseparser.Parse(name).Title)
+		titles = append(titles, parser.Parse(name).Title)
 	}
 	for _, title := range titles {
 		if strings.TrimSpace(title) == "" {
@@ -131,7 +130,7 @@ func matchSeries(refs []seriesRef, path string) (db.Series, bool) {
 // episodeInfo parses season and episodes from the file name, falling
 // back to the folder name for the season.
 func episodeInfo(path string) (int, []int) {
-	info := releaseparser.Parse(filepath.Base(path)).EpisodeInfo
+	info := parser.Parse(filepath.Base(path)).EpisodeInfo
 	if len(info.Episodes) > 0 {
 		return info.Season, info.Episodes
 	}
@@ -139,9 +138,9 @@ func episodeInfo(path string) (int, []int) {
 }
 
 func qualityFromName(name string) plugin.Quality {
-	p := releaseparser.Parse(name)
+	p := parser.Parse(name)
 	q := p.Quality()
-	q.Name = releaseparser.QualityName(q)
+	q.Name = parser.QualityName(q)
 	q.Revision = p.Revision.Version
 	return q
 }
@@ -211,7 +210,7 @@ func (s *Service) ScanManual(ctx context.Context, path, seriesID string) ([]Cand
 		if st, err := os.Stat(f); err == nil {
 			c.Size = st.Size()
 		}
-		parsed := releaseparser.Parse(filepath.Base(f))
+		parsed := parser.Parse(filepath.Base(f))
 		for _, l := range parsed.Languages {
 			c.Languages = append(c.Languages, string(l))
 		}
@@ -341,7 +340,7 @@ func (s *Service) importManualItem(ctx context.Context, it ManualItem, move bool
 		q = qualityFromName(filepath.Base(path))
 	}
 	if q.Name == "" {
-		q.Name = releaseparser.QualityName(q)
+		q.Name = parser.QualityName(q)
 	}
 
 	recorded := map[string]bool{}

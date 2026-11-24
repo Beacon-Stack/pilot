@@ -24,9 +24,8 @@ func SecurityHeaders(next http.Handler) http.Handler {
 }
 
 // MaxRequestBodySize limits request bodies to maxBytes, except on the
-// exempt paths, whose handlers set their own (larger) limit: the limit
-// here can't be raised once it is in place, so a 500 MiB database
-// restore used to stop at this one.
+// exempt paths, whose handlers set their own larger limit. They have to
+// be exempt: a limit set here can't be raised further down the chain.
 func MaxRequestBodySize(maxBytes int64, exempt ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

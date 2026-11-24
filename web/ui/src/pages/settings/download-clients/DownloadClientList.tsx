@@ -17,14 +17,14 @@ import type {
   TestResult,
 } from "@/types";
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// Helpers
 
 function strSetting(settings: Record<string, unknown>, key: string): string {
   const v = settings[key];
   return typeof v === "string" ? v : "";
 }
 
-// ── Shared styles ──────────────────────────────────────────────────────────────
+// Shared styles
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -65,7 +65,7 @@ function actionBtn(color: string, bg: string): React.CSSProperties {
   };
 }
 
-// ── Form state ─────────────────────────────────────────────────────────────────
+// Form state
 
 interface FormState {
   name: string;
@@ -184,7 +184,7 @@ function formToRequest(f: FormState): DownloadClientRequest {
   };
 }
 
-// ── Modal ──────────────────────────────────────────────────────────────────────
+// Modal
 
 interface ModalProps {
   editing: DownloadClientConfig | null;
@@ -656,7 +656,7 @@ function DownloadClientModal({ editing, onClose }: ModalProps) {
   );
 }
 
-// ── Row actions ────────────────────────────────────────────────────────────────
+// Row actions
 
 interface RowActionsProps {
   client: DownloadClientConfig;
@@ -747,7 +747,7 @@ function RowActions({ client, onEdit }: RowActionsProps) {
   );
 }
 
-// ── Badge ──────────────────────────────────────────────────────────────────────
+// Badge
 
 function KindBadge({ kind }: { kind: string }) {
   const labels: Record<string, string> = {
@@ -778,11 +778,10 @@ function KindBadge({ kind }: { kind: string }) {
   );
 }
 
-// ── How downloads are handled ──────────────────────────────────────────────────
+// How downloads are handled
 
-// What Pilot does with finished and failed downloads. These used to be
-// settings, but the endpoints behind them never existed: the behavior
-// below is fixed.
+// What Pilot does with finished and failed downloads. This is fixed
+// behaviour, not a setting.
 function DownloadHandlingNote() {
   return (
     <div
@@ -816,7 +815,7 @@ function DownloadHandlingNote() {
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// Page
 
 export default function DownloadClientList() {
   const { data, isLoading, error } = useDownloadClients();

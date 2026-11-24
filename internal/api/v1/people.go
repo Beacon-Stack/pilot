@@ -9,7 +9,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/show"
 )
 
-// ── Response body shapes ─────────────────────────────────────────────────────
+// Response body shapes
 
 type personCreditBody struct {
 	TMDBID          int    `json:"tmdb_id"                     doc:"TMDB series ID"`
@@ -36,7 +36,7 @@ type personDetailOutput struct {
 	Body *personDetailBody
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterPeopleRoutes registers the /api/v1/people/{id} endpoint.
 func RegisterPeopleRoutes(api huma.API, showSvc *show.Service) {

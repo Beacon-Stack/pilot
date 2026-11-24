@@ -10,15 +10,11 @@ import (
 	"strings"
 
 	db "github.com/beacon-stack/pilot/internal/db/generated"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // renameQuality is the quality a rename renders into {Quality Full}.
-//
-// Rename used to pass an empty quality, so every rename stripped the
-// quality from names the importer had just written ("… WEBRip-1080p
-// x265.mp4" → "….mp4"), and the next import added it back.
 //
 // The stored quality is used when it has a name (importer rows). Rows
 // from the library scan have no name and no source (ffprobe cannot see
@@ -30,7 +26,7 @@ func renameQuality(f db.EpisodeFile) plugin.Quality {
 	if q.Name != "" {
 		return q
 	}
-	p := releaseparser.Parse(filepath.Base(f.Path))
+	p := parser.Parse(filepath.Base(f.Path))
 	if known(string(p.Source)) {
 		q.Source = p.Source
 	}
@@ -43,7 +39,7 @@ func renameQuality(f db.EpisodeFile) plugin.Quality {
 	if known(string(p.HDR)) {
 		q.HDR = p.HDR
 	}
-	q.Name = releaseparser.QualityName(q)
+	q.Name = parser.QualityName(q)
 	return q
 }
 

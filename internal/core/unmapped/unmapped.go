@@ -1,11 +1,10 @@
 // Package unmapped tracks folders in a library root that no series in
 // Pilot claims, so the user can review them (Sonarr's library import).
 //
-// The library scan used to auto-add a series for each such folder from
-// its best TMDB search hit, without asking; a wrong hit added the wrong
-// show and attached files to it. Now Discover records the folder with
-// that best hit as a guess, and nothing is added until the user confirms
-// it (Add, possibly with a different show) or ignores the folder.
+// Discover records each folder with its best TMDB search hit as a guess.
+// Nothing is added until the user confirms it (Add, possibly with a
+// different show) or ignores the folder: a wrong guess added
+// automatically would attach files to the wrong show.
 package unmapped
 
 import (

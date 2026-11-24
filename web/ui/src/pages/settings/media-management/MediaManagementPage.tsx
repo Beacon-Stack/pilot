@@ -6,7 +6,7 @@ import { DOCS_URLS } from "@/lib/docsUrls";
 import type { MediaManagement } from "@/types";
 import { hasQualityToken, setQualityToken } from "@/lib/qualityToken";
 
-// ── Shared styles ─────────────────────────────────────────────────────────────
+// Shared styles
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -29,7 +29,7 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 6,
 };
 
-// ── Preview helper ────────────────────────────────────────────────────────────
+// Preview helper
 
 function previewEpisodeFormat(format: string): string {
   return format
@@ -54,7 +54,7 @@ function previewFolderFormat(format: string): string {
     .replace("{Season:00}", "02");
 }
 
-// ── Toggle row ────────────────────────────────────────────────────────────────
+// Toggle row
 
 interface ToggleRowProps {
   label: string;
@@ -103,7 +103,7 @@ function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
   );
 }
 
-// ── Section card ─────────────────────────────────────────────────────────────
+// Section card
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -130,7 +130,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
   );
 }
 
-// ── Format field ──────────────────────────────────────────────────────────────
+// Format field
 
 function FormatField({
   label,
@@ -171,7 +171,7 @@ function FormatField({
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// Main page
 
 export default function MediaManagementPage() {
   const { data, isLoading } = useMediaManagement();

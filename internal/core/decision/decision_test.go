@@ -75,8 +75,8 @@ func TestMeetsProfileMinimum_ResolutionOnly(t *testing.T) {
 	}
 }
 
-// TODO.md's headline case: a "Bluray only" profile used to accept 1080p
-// WEB-DL, because the gate only compared resolution against the cutoff.
+// A "Bluray only" profile must reject 1080p WEB-DL: the allowed list is
+// the rule, not just the resolution against the cutoff.
 func TestMeetsProfileMinimum_AllowedListIsTheRule(t *testing.T) {
 	blurayOnly := &quality.Profile{
 		Cutoff:    bd1080,

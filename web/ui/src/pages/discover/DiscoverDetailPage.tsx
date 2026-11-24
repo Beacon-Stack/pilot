@@ -40,7 +40,7 @@ const SERIES_TYPES = [
   { value: "anime", label: "Anime" },
 ];
 
-// ── Add Series Modal ─────────────────────────────────────────────────────────
+// Add Series Modal
 // Preserves the full add form from the old AddSeriesDrawer: library, quality
 // profile, monitor type, series type, and monitored. The chosen action
 // (none/interactive/auto) is carried through and handled by the page.
@@ -218,7 +218,7 @@ function QuickAddSeriesModal({
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// Page
 
 export default function DiscoverDetailPage() {
   const { tmdbId } = useParams<{ tmdbId: string }>();

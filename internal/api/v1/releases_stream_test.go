@@ -77,7 +77,7 @@ func TestSeasonPackFound(t *testing.T) {
 	}
 }
 
-// ── Stream endpoint ─────────────────────────────────────────────────────────
+// Stream endpoint
 
 type streamTestQuerier struct {
 	db.Querier

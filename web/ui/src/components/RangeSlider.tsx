@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-// ── Scale ──────────────────────────────────────────────────────────────────────
+// Scale
 // Logarithmic mapping between slider position [0, 1] and MB/min value [0, 800].
 // Position 0 always means "0" (no minimum / no-limit sentinel for min).
 // Max thumb at position ≥ 0.99 maps to stored value 0 (= "no limit").
@@ -28,7 +28,7 @@ function formatValue(value: number, isMax: boolean): string {
   return value % 1 === 0 ? String(value) : value.toFixed(1);
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// Component
 
 export interface RangeSliderProps {
   /** Stored min_size value (MB/min). 0 = no minimum. */
@@ -93,7 +93,7 @@ export function RangeSlider({ minValue, maxValue, preferredValue, onChange }: Ra
     }
   }
 
-  // ── Min thumb ──
+  // Min thumb
   function handleMinPointerDown(e: React.PointerEvent) {
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -106,7 +106,7 @@ export function RangeSlider({ minValue, maxValue, preferredValue, onChange }: Ra
     onChange(positionToValue(clampedPos, false), maxValue, preferredValue);
   }
 
-  // ── Max thumb ──
+  // Max thumb
   function handleMaxPointerDown(e: React.PointerEvent) {
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -124,7 +124,7 @@ export function RangeSlider({ minValue, maxValue, preferredValue, onChange }: Ra
     onChange(minValue, newMax, newPref);
   }
 
-  // ── Preferred thumb ──
+  // Preferred thumb
   function handlePrefPointerDown(e: React.PointerEvent) {
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -142,7 +142,7 @@ export function RangeSlider({ minValue, maxValue, preferredValue, onChange }: Ra
     setDragging(null);
   }
 
-  // ── Labels ──
+  // Labels
 
   const minLabel  = formatValue(minValue, false);
   const maxLabel  = formatValue(maxValue, true);
@@ -168,7 +168,7 @@ export function RangeSlider({ minValue, maxValue, preferredValue, onChange }: Ra
     return "translateX(-50%)";
   }
 
-  // ── Thumb style factories ──
+  // Thumb style factories
 
   function circleThumbStyle(which: "min" | "max", pos: number): React.CSSProperties {
     const isHovered = hoveredThumb === which;

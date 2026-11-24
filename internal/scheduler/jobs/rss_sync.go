@@ -123,26 +123,19 @@ func runRSSSync(
 		seriesByTitle[normalizeRSSTitle(s.Title)] = s
 	}
 
-	// 4. Build per-episode dedup sets so we don't queue duplicate downloads.
+	// 4. Build per-episode sets so the same episode isn't grabbed twice.
 	//
-	// Two cohorts skip a release:
+	// A release is skipped when its episode is in either set:
 	//
-	//  a. activeEpisodes — an in-flight grab already exists for this
-	//     specific episode. Was previously keyed by series_id, which
-	//     blocked legitimate parallel grabs of different episodes in
-	//     the same series. More importantly, the inverse hole let RSS
-	//     re-grab the SAME episode after a grab terminated as
-	//     "completed" but the importer didn't flip has_file=true (the
-	//     11-dupe Maul S01E07 failure mode — see plans/lifecycle-trust.md).
+	//  a. activeEpisodes: a grab for this episode is in flight. Keyed by
+	//     episode, not series, so different episodes of one series can
+	//     download in parallel.
 	//
-	//  b. recentlyCompletedEpisodes — the same episode had a `completed`
-	//     grab within the last completedSkipWindow. Even if has_file is
-	//     false, we don't fire a fresh grab — the importer can be
-	//     stuck or the file may be inflight in haul. Without this guard,
-	//     RSS hammers a release every 15 minutes generating duplicate
-	//     grab_history rows. The window is intentionally short relative
-	//     to typical RSS refresh — the assumption is that 6h is plenty
-	//     for a real importer to finish or surface a failure.
+	//  b. recentlyCompletedEpisodes: a grab for this episode completed
+	//     within completedSkipWindow. Even if has_file is still false,
+	//     the importer may be working or stuck; grabbing again every RSS
+	//     run would only pile up duplicates. Six hours is plenty for an
+	//     import to finish or report a failure.
 	activeGrabs, err := q.ListActiveGrabs(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("listing active grabs: %w", err)
@@ -613,10 +606,9 @@ func extractEpisodeNumbers(title string) (season, episode int, ok bool) {
 // "importer hasn't run / file in flight" race that produced 11
 // duplicate grab_history rows for one release in production.
 func buildRecentlyCompletedEpisodes(ctx context.Context, q db.Querier, since time.Time) (map[string]bool, error) {
-	// Limit MUST be set: it binds to a SQL `LIMIT ?`, and the zero value
-	// means `LIMIT 0` — zero rows, silently. That exact omission made this
-	// entire guard a no-op in production: the map was always empty and RSS
-	// re-grabbed the same fake release every 15 minutes, forever.
+	// Limit must be set: it binds to a SQL `LIMIT ?`, and the zero value
+	// means `LIMIT 0`, which returns no rows and silently disables this
+	// guard.
 	rows, err := q.ListGrabHistoryByStatusSince(ctx, db.ListGrabHistoryByStatusSinceParams{
 		Status: "completed",
 		Since:  since.Format(time.RFC3339),

@@ -22,13 +22,12 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/blocklist"
 	"github.com/beacon-stack/pilot/internal/core/mediacheck"
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
-	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/recyclebin"
 	"github.com/beacon-stack/pilot/internal/core/renamer"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/diskspace"
 	"github.com/beacon-stack/pilot/internal/events"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -94,11 +93,9 @@ type Service struct {
 	recycle   *recyclebin.Service
 }
 
-// NewService creates a new Service. Pass nil for animelist when the
-// caller doesn't have one wired up; the importer just won't resolve
-// anime absolute-numbered files in that case (same as before this
-// dependency existed). blocklistSvc may be nil (tests); hard import
-// failures then simply skip the blocklist step.
+// NewService creates a new Service. animeR may be nil; anime files named
+// by absolute episode number are then not resolved. blocklistSvc may be
+// nil (tests); hard import failures then skip the blocklist step.
 func NewService(q db.Querier, bus *events.Bus, logger *slog.Logger, mm *mediamanagement.Service, animeR AbsoluteEpisodeResolver, blocklistSvc *blocklist.Service) *Service {
 	return &Service{q: q, bus: bus, logger: logger, mm: mm, animeR: animeR, blocklist: blocklistSvc, recycle: recyclebin.New(mm, logger)}
 }
@@ -330,15 +327,9 @@ func (s *Service) importIntoSeries(
 		}
 	}
 
-	// Publish a single TypeImportComplete for the whole grab regardless
-	// of single-file vs season-pack — previously only the directory
-	// path emitted, leaving the activity log silent for ~80% of grabs
-	// (single episodes are far more common than season packs).
-	//
-	// series_title + quality are read by the activity classifier
-	// (internal/core/activity/service.go classify()). The previous emit
-	// omitted both, leaving rows rendered as "Imported release —
-	// unknown" with no series name.
+	// Publish one TypeImportComplete for the whole grab, whether it was a
+	// single file or a season pack. The activity log reads series_title
+	// and quality from it (activity.classify).
 	seriesTitle := ""
 	if series, sErr := s.q.GetSeries(ctx, grab.SeriesID); sErr == nil {
 		seriesTitle = series.Title
@@ -368,17 +359,12 @@ func qualityLabel(q plugin.Quality) string {
 	return string(q.Resolution)
 }
 
-// resolveEpisodeInfo parses srcPath's filename and applies the anime
-// absolute-episode fallback when SxxExx isn't present.
+// resolveEpisodeInfo parses srcPath's filename. When it has no SxxExx but
+// does have an absolute episode number ("[SubsPlease] Jujutsu Kaisen -
+// 48 [1080p].mkv"), the anime list maps that number to the series' TMDB
+// season and episode.
 //
-// Headline regression case: "[SubsPlease] Jujutsu Kaisen - 48 [1080p].mkv"
-// has no SxxExx but does have absolute=48. Without the fallback, the
-// importer skipped the file silently. With the fallback, the animelist
-// service maps absolute → TMDB (season, episode) using the show's
-// tmdbID, and the importer attaches the file to the right row.
-//
-// Pure of filesystem and disk I/O — only DB lookup (GetSeries) and the
-// resolver call. Tested via TestResolveEpisodeInfo_*.
+// It touches no files: only the series lookup and the resolver.
 func (s *Service) resolveEpisodeInfo(
 	ctx context.Context,
 	srcPath string,
@@ -468,11 +454,9 @@ func (s *Service) AttachFile(ctx context.Context, episodeID, seriesID, filePath 
 		return fmt.Errorf("loading media management settings: %w", err)
 	}
 
-	// Compute the destination: the library's series and season folders,
-	// always. With renaming on, the file is named by the episode format;
-	// with it off, it keeps its original name (as in Sonarr). Before, with
-	// renaming off nothing was moved into the library at all: the
-	// download path itself was recorded as the library file.
+	// The destination is always the library's series and season folders.
+	// With renaming on, the file is named by the episode format; with it
+	// off, it keeps its original name (as in Sonarr).
 	var destPath string
 	var minFree uint64
 	{
@@ -755,11 +739,11 @@ func qualityFromGrab(g db.GrabHistory) plugin.Quality {
 		Codec:      plugin.Codec(g.ReleaseCodec),
 		HDR:        plugin.HDRFormat(g.ReleaseHdr),
 	}
-	q.Name = releaseparser.QualityName(q)
+	q.Name = parser.QualityName(q)
 	// The revision (PROPER/REPACK) isn't a grab_history column; recover it
 	// from the release title. Without it an imported PROPER looks like an
 	// original, and RSS sync would grab the same PROPER again as an upgrade.
-	q.Revision = releaseparser.Parse(g.ReleaseTitle).Revision.Version
+	q.Revision = parser.Parse(g.ReleaseTitle).Revision.Version
 	return q
 }
 

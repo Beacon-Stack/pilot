@@ -222,7 +222,7 @@ func (c *Client) SetSeedLimits(ctx context.Context, clientItemID string, ratioLi
 	return nil
 }
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// Auth
 
 func (c *Client) ensureAuth(ctx context.Context) error {
 	c.mu.Lock()
@@ -259,7 +259,7 @@ func (c *Client) loginLocked(ctx context.Context) error {
 	return nil
 }
 
-// ── Torrent add helpers ───────────────────────────────────────────────────────
+// Torrent add helpers
 
 func (c *Client) addMagnet(ctx context.Context, magnetURL string) (string, error) {
 	hash, ok := parseMagnetHash(magnetURL)
@@ -450,7 +450,7 @@ func (c *Client) addFormBase() url.Values {
 	return form
 }
 
-// ── HTTP helpers ─────────────────────────────────────────────────────────────
+// HTTP helpers
 
 func (c *Client) get(ctx context.Context, path string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.URL+path, nil)
@@ -481,7 +481,7 @@ func (c *Client) post(ctx context.Context, path string, form url.Values) (*http.
 	return c.http.Do(req)
 }
 
-// ── Torrent state types ───────────────────────────────────────────────────────
+// Torrent state types
 
 // torrentInfo is the JSON shape returned by /api/v2/torrents/info.
 type torrentInfo struct {
@@ -536,7 +536,7 @@ func mapState(state string) plugin.DownloadStatus {
 	}
 }
 
-// ── Magnet hash parsing ───────────────────────────────────────────────────────
+// Magnet hash parsing
 
 // parseMagnetHash extracts the lowercase hex info hash from a magnet URI.
 // Handles both 40-char hex and 32-char base32 btih encodings.

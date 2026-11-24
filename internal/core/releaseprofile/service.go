@@ -161,7 +161,7 @@ func LoadMatcher(ctx context.Context, q db.Querier) (*Matcher, error) {
 	return NewMatcher(profiles), nil
 }
 
-// ── Matching ─────────────────────────────────────────────────────────────────
+// Matching
 
 type term struct {
 	raw string
@@ -259,7 +259,7 @@ func compileTerm(raw string) (term, error) {
 	return term{raw: raw, sub: strings.ToLower(raw)}, nil
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
 func normalize(req Request) (Request, error) {
 	req.Name = strings.TrimSpace(req.Name)

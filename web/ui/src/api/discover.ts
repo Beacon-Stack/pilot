@@ -58,7 +58,7 @@ export function useDiscoverSeries(tmdbId: number) {
   });
 }
 
-// ── Browse (auto-populated categories) ───────────────────────────────────────
+// Browse (auto-populated categories)
 
 interface DiscoverListItem {
   tmdb_id: number;
@@ -88,7 +88,7 @@ export function useGenreList() {
   });
 }
 
-// ── Browse with filters, search, streaming services ─────────────────────────
+// Browse with filters, search, streaming services
 
 export interface DiscoverBrowseParams {
   category: string;

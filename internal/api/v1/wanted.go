@@ -17,11 +17,11 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/wanted"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
-	releaseparser "github.com/beacon-stack/pilot/internal/parser"
+	"github.com/beacon-stack/pilot/internal/parser"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── Request / response shapes ────────────────────────────────────────────────
+// Request / response shapes
 
 type wantedEpisodeInput struct {
 	Page    int `query:"page"     default:"1"   minimum:"1"`
@@ -155,10 +155,10 @@ func qualityDisplayName(q plugin.Quality) string {
 	if q.Name != "" {
 		return q.Name
 	}
-	return releaseparser.QualityName(q)
+	return parser.QualityName(q)
 }
 
-// ── Search all ───────────────────────────────────────────────────────────────
+// Search all
 
 // maxBulkSearch caps one "search all" run. Each episode searches every
 // indexer, so a very large backlog is better worked through in batches.

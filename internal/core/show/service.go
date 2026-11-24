@@ -1616,7 +1616,7 @@ func toNullString(s string) *string {
 	return &s
 }
 
-// ── Episode file methods ──────────────────────────────────────────────────────
+// Episode file methods
 
 // libraryRootFor returns the root folder of the series' library, or "".
 func (s *Service) libraryRootFor(ctx context.Context, seriesID string) string {

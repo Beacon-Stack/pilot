@@ -15,7 +15,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── Response body shapes ──────────────────────────────────────────────────────
+// Response body shapes
 
 type episodeFileBody struct {
 	ID         string         `json:"id"           doc:"Episode file UUID"`
@@ -40,7 +40,7 @@ type renameMoveBody struct {
 	NewPath string `json:"new_path" doc:"Path after rename"`
 }
 
-// ── Input shapes ──────────────────────────────────────────────────────────────
+// Input shapes
 
 type listEpisodeFilesInput struct {
 	ID string `path:"id" doc:"Series UUID"`
@@ -56,7 +56,7 @@ type renameSeriesInput struct {
 	DryRun bool   `query:"dry_run" doc:"Preview renames without applying them"`
 }
 
-// ── Output shapes ─────────────────────────────────────────────────────────────
+// Output shapes
 
 type listEpisodeFilesOutput struct {
 	Body []*episodeFileBody

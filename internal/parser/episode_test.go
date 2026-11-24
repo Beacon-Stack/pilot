@@ -59,8 +59,8 @@ func TestParse_SeasonWordForm(t *testing.T) {
 			t.Errorf("Parse(%q) = season %d pack=%v, want season %d pack=true",
 				tc.in, got.EpisodeInfo.Season, got.EpisodeInfo.IsSeasonPack, tc.season)
 		}
-		if !TitleMatches(tc.title, got.ShowTitle) {
-			t.Errorf("Parse(%q).ShowTitle = %q, want to match %q", tc.in, got.ShowTitle, tc.title)
+		if !TitleMatches(tc.title, got.Title) {
+			t.Errorf("Parse(%q).Title = %q, want to match %q", tc.in, got.Title, tc.title)
 		}
 	}
 }
@@ -73,8 +73,8 @@ func TestParse_ShortDotTokensSurvive(t *testing.T) {
 	if got.EpisodeInfo.Season != 5 || len(got.EpisodeInfo.Episodes) != 1 || got.EpisodeInfo.Episodes[0] != 1 {
 		t.Fatalf("Parse lost the episode token: %+v", got.EpisodeInfo)
 	}
-	if !TitleMatches("S.W.A.T.", got.ShowTitle) {
-		t.Errorf("ShowTitle = %q, want to match S.W.A.T.", got.ShowTitle)
+	if !TitleMatches("S.W.A.T.", got.Title) {
+		t.Errorf("ShowTitle = %q, want to match S.W.A.T.", got.Title)
 	}
 
 	// Real file extensions still strip.
@@ -192,7 +192,7 @@ func TestTitleMatches_YearNot4Digits(t *testing.T) {
 	}
 }
 
-// ── Anime absolute-episode parsing ─────────────────────────────────────────
+// Anime absolute-episode parsing
 
 // Headline regression for the Jujutsu Kaisen incident: fansub release
 // titles use absolute numbering ("Show - 48"). Without recognizing
@@ -291,7 +291,7 @@ func TestParse_StripsLeadingGroupPrefixes(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.title, func(t *testing.T) {
-			got := Parse(c.title).ShowTitle
+			got := Parse(c.title).Title
 			if got != c.want {
 				t.Errorf("show title: got %q, want %q", got, c.want)
 			}
@@ -304,7 +304,7 @@ func TestParse_StripsLeadingGroupPrefixes(t *testing.T) {
 // negative). Defensive against indexer titles that break our regex
 // assumptions.
 func TestParse_MalformedBracketLeavesTitleAlone(t *testing.T) {
-	got := Parse("[no-closing-bracket Jujutsu Kaisen - 48").ShowTitle
+	got := Parse("[no-closing-bracket Jujutsu Kaisen - 48").Title
 	if got == "" {
 		t.Error("malformed bracket prefix wiped the title")
 	}

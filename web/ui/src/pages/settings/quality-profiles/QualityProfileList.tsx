@@ -7,7 +7,7 @@ import PageHeader from "@/components/PageHeader";
 import QualityProfileEditor from "./QualityProfileEditor";
 import type { QualityProfile } from "@/types";
 
-// ── Profile card ──────────────────────────────────────────────────────────────
+// Profile card
 
 function ProfileCard({
   profile,
@@ -162,7 +162,7 @@ function ProfileCard({
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// Main page
 
 export default function QualityProfileList() {
   const { data: profiles, isLoading } = useQualityProfiles();

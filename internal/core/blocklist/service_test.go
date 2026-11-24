@@ -118,7 +118,7 @@ func (m *mockQuerier) CountRecentStallsForEpisode(ctx context.Context, arg db.Co
 	return m.recentStallsByEpKey[key], nil
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// Tests
 
 func TestAddFromStall_RoundTrip(t *testing.T) {
 	mock := newMock()

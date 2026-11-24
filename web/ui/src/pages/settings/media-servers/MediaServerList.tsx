@@ -12,14 +12,14 @@ import {
 import { toast } from "sonner";
 import type { MediaServerConfig, MediaServerRequest } from "@/types";
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// Helpers
 
 function strSetting(settings: Record<string, unknown>, key: string): string {
   const v = settings[key];
   return typeof v === "string" ? v : "";
 }
 
-// ── Shared styles ──────────────────────────────────────────────────────────────
+// Shared styles
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -60,7 +60,7 @@ function actionBtn(color: string, bg: string): React.CSSProperties {
   };
 }
 
-// ── Form state ─────────────────────────────────────────────────────────────────
+// Form state
 
 interface FormState {
   name: string;
@@ -109,7 +109,7 @@ function formToRequest(f: FormState): MediaServerRequest {
   return { name: f.name, kind: f.kind, enabled: f.enabled, settings };
 }
 
-// ── Kind-specific settings fields ──────────────────────────────────────────────
+// Kind-specific settings fields
 
 function PlexFields({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
   return (
@@ -141,7 +141,7 @@ function EmbyJellyfinFields({ form, setForm }: { form: FormState; setForm: (f: F
   );
 }
 
-// ── Card ───────────────────────────────────────────────────────────────────────
+// Card
 
 function MediaServerCard({
   cfg,
@@ -204,7 +204,7 @@ function MediaServerCard({
   );
 }
 
-// ── Form modal ─────────────────────────────────────────────────────────────────
+// Form modal
 
 function MediaServerForm({
   form,
@@ -324,7 +324,7 @@ function MediaServerForm({
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// Page
 
 export default function MediaServerList() {
   const { data, isLoading, error } = useMediaServers();

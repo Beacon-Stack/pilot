@@ -49,7 +49,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/events"
 )
 
-// ── Fake Haul HTTP server ─────────────────────────────────────────────────────
+// Fake Haul HTTP server
 
 // fakeHaul mimics Haul's GET /api/v1/stalls endpoint. Tests control what
 // stalled torrents it returns via setStalls().
@@ -85,7 +85,7 @@ func (f *fakeHaul) handler() http.Handler {
 	return mux
 }
 
-// ── Mock querier ──────────────────────────────────────────────────────────────
+// Mock querier
 
 // mockQuerier implements db.Querier via embedding — any method the tests
 // don't override panics if called. This is intentional: it forces the
@@ -240,7 +240,7 @@ func newUniqueViolationErr() error {
 	return err
 }
 
-// ── Fake downloader lister ────────────────────────────────────────────────────
+// Fake downloader lister
 
 // fakeDownloaderLister implements stallwatcher's downloadClientLister
 // interface. Tests set the returned list of configs to control which
@@ -253,7 +253,7 @@ func (f *fakeDownloaderLister) List(ctx context.Context) ([]downloader.Config, e
 	return f.configs, nil
 }
 
-// ── Test helper: build a stallwatcher wired to a fake Haul + mock DB ─────────
+// Test helper: build a stallwatcher wired to a fake Haul + mock DB
 
 type testRig struct {
 	stall      *Service
@@ -309,7 +309,7 @@ func newRig(t *testing.T) *testRig {
 	}
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// Tests
 
 // TestTick_BlocklistsStalledGrab is the headline regression test: a grab
 // that matches a stalled info_hash gets blocklisted with the right reason,
@@ -715,7 +715,7 @@ func TestTick_HaulUnreachable(t *testing.T) {
 	}
 }
 
-// ── Stale-grab sweep tests ────────────────────────────────────────────
+// Stale-grab sweep tests
 // The sweep handles the case where a grab gets recorded but never has
 // its info_hash populated (download client never responded, or the
 // grab raced with a haul restart). Those grabs are invisible to the

@@ -11,7 +11,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/mediamanagement"
 )
 
-// ── Response / request shapes ─────────────────────────────────────────────────
+// Response / request shapes
 
 type mediaManagementBody struct {
 	RenameEpisodes           bool   `json:"rename_episodes"            doc:"Rename episode files on import"`
@@ -38,7 +38,7 @@ type mediaManagementInput struct {
 	Body *mediaManagementBody
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 func settingsToBody(s mediamanagement.Settings) *mediaManagementBody {
 	return &mediaManagementBody{
@@ -90,7 +90,7 @@ func bodyToSettings(b *mediaManagementBody, current mediamanagement.Settings) me
 	return st
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterMediaManagementRoutes registers /api/v1/media-management endpoints.
 func RegisterMediaManagementRoutes(api huma.API, svc *mediamanagement.Service) {

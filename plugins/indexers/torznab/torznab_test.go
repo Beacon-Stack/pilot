@@ -11,7 +11,7 @@ import (
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
-// ── Search query construction ───────────────────────────────────────────────
+// Search query construction
 
 // Regression guard: q.Query MUST be sent verbatim to the indexer when
 // issuing a tvsearch. We learned the hard way that many torznab
@@ -131,7 +131,7 @@ func TestSearch_FallsBackToTextSearchOnZeroTVResults(t *testing.T) {
 	}
 }
 
-// ── Torznab <error> document handling ───────────────────────────────────────
+// Torznab <error> document handling
 
 // torznabErrorDoc is the exact document Pulse returned during the
 // 2026-08-16 incident: the upstream Prowlarr definition for
@@ -228,7 +228,7 @@ func TestTest_EmptyBodyStillPasses(t *testing.T) {
 	}
 }
 
-// ── Caps-driven IDs and categories ──────────────────────────────────────────
+// Caps-driven IDs and categories
 
 const capsWithIDs = `<?xml version="1.0"?><caps>
 <searching>
@@ -370,7 +370,7 @@ func TestSearch_PulseCapsWithNonNumericSubcats(t *testing.T) {
 	}
 }
 
-// ── Skipping a tvsearch that can't help ─────────────────────────────────────
+// Skipping a tvsearch that can't help
 
 // modeServer answers tvsearch and text search separately and records
 // which modes were asked for.

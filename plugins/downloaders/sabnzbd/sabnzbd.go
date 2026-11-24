@@ -202,7 +202,7 @@ func (c *Client) Remove(ctx context.Context, clientItemID string, deleteFiles bo
 	return nil
 }
 
-// ── API helpers ──────────────────────────────────────────────────────────────
+// API helpers
 
 func (c *Client) getJSON(ctx context.Context, rawURL string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -237,7 +237,7 @@ func (c *Client) fetchHistory(ctx context.Context, limit int) ([]historySlot, er
 	return h.History.Slots, nil
 }
 
-// ── Response types ───────────────────────────────────────────────────────────
+// Response types
 
 type versionResponse struct {
 	Version string `json:"version"`
@@ -313,7 +313,7 @@ func (s historySlot) toQueueItem() plugin.QueueItem {
 	}
 }
 
-// ── Status mapping ───────────────────────────────────────────────────────────
+// Status mapping
 
 func mapQueueStatus(status string) plugin.DownloadStatus {
 	switch status {

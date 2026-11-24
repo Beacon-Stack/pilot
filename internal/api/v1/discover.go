@@ -12,7 +12,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
 )
 
-// ── Response body shapes ─────────────────────────────────────────────────────
+// Response body shapes
 
 type discoverCastBody struct {
 	ID          int    `json:"id"                     doc:"TMDB person ID"`
@@ -70,7 +70,7 @@ type discoverSeriesDetailOutput struct {
 	Body *discoverSeriesDetailBody
 }
 
-// ── Browse list shapes ────────────────────────────────────────────────────────
+// Browse list shapes
 
 type discoverListItemBody struct {
 	TMDBID     int     `json:"tmdb_id"               doc:"TMDB series ID"`
@@ -156,7 +156,7 @@ func paginatedToBody(pr *tmdbtv.PaginatedSeries) *discoverListBody {
 	return &discoverListBody{Results: items, Page: page, TotalPages: pr.TotalPages}
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterDiscoverRoutes registers the /api/v1/discover/* endpoints used by
 // the Discover detail page.

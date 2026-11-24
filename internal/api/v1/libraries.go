@@ -13,7 +13,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/library"
 )
 
-// ── Request / response shapes ─────────────────────────────────────────────────
+// Request / response shapes
 
 type libraryBody struct {
 	ID                      string    `json:"id"                           doc:"Library UUID"`
@@ -38,7 +38,7 @@ type libraryInput struct {
 	Tags                    []string `json:"tags,omitempty"                doc:"User-defined tags (default: [])"`
 }
 
-// ── Output wrappers ───────────────────────────────────────────────────────────
+// Output wrappers
 
 type libraryOutput struct {
 	Body *libraryBody
@@ -50,7 +50,7 @@ type libraryListOutput struct {
 
 type libraryDeleteOutput struct{}
 
-// ── Input wrappers ────────────────────────────────────────────────────────────
+// Input wrappers
 
 type libraryCreateInput struct {
 	Body libraryInput
@@ -69,7 +69,7 @@ type libraryDeleteInput struct {
 	ID string `path:"id"`
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 func libToBody(lib library.Library) *libraryBody {
 	return &libraryBody{
@@ -118,7 +118,7 @@ func validateLibraryRootPath(path string) error {
 	return nil
 }
 
-// ── Route registration ────────────────────────────────────────────────────────
+// Route registration
 
 // RegisterLibraryRoutes registers all /api/v1/libraries endpoints.
 func RegisterLibraryRoutes(api huma.API, librarySvc *library.Service) {

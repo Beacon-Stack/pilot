@@ -11,11 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beacon-stack/pilot/internal/parser"
+
 	"github.com/google/uuid"
 
 	"github.com/beacon-stack/pilot/internal/core/library"
 	"github.com/beacon-stack/pilot/internal/core/mediacheck"
-	"github.com/beacon-stack/pilot/internal/core/parser"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/core/unmapped"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
@@ -85,9 +86,9 @@ func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.
 		return err
 	}
 
-	// Phase 1: record folders no series claims, for the user to review.
-	// Nothing is added automatically: a wrong TMDB hit used to add the
-	// wrong show and attach files to it.
+	// Step 1: record folders no series claims, for the user to review.
+	// Nothing is added automatically, since a wrong TMDB match would add
+	// the wrong show and attach files to it.
 	if um != nil {
 		for _, lib := range libs {
 			if err := um.Discover(ctx, lib.ID, lib.RootPath); err != nil {
@@ -96,7 +97,7 @@ func runLibraryScan(ctx context.Context, libSvc *library.Service, showSvc *show.
 		}
 	}
 
-	// Phase 2: Match video files to known series/episodes.
+	// Step 2: match video files to known series and episodes.
 	knownPaths, err := q.ListAllEpisodeFilePaths(ctx)
 	if err != nil {
 		return err
@@ -232,7 +233,7 @@ func importScannedFile(
 	}
 	// Then the parsed show title.
 	if !ok {
-		series, ok = seriesByTitle[strings.ToLower(parsed.ShowTitle)]
+		series, ok = seriesByTitle[strings.ToLower(parsed.Title)]
 	}
 	if !ok {
 		// Fallback: try matching against the top-level folder name within the library root.
@@ -245,7 +246,7 @@ func importScannedFile(
 	}
 	if !ok {
 		logger.Debug("library scan: no matching series for title",
-			"title", parsed.ShowTitle,
+			"title", parsed.Title,
 			"path", path,
 		)
 		return nil

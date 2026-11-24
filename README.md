@@ -157,7 +157,7 @@ If the full stack is running, Pilot pulls shared indexers and quality profiles f
 
 ## Power user notes
 
-**Title matching.** The release filter runs every parsed title through a matcher in `internal/core/parser/parser.go` that rejects titles whose parsed show name doesn't match the requested series after normalization. Year suffixes, bracketed edition tags, and common release-group stylings all pass through cleanly. If a legitimate release is being rejected, the matcher is the place to start.
+**Title matching.** The release filter runs every parsed title through a matcher in `internal/parser/title.go` that rejects titles whose parsed show name doesn't match the requested series after normalization. Year suffixes, bracketed edition tags, and common release-group stylings all pass through cleanly. If a legitimate release is being rejected, the matcher is the place to start.
 
 **Stallwatcher.** `internal/core/stallwatcher/service.go` polls the download client's stall endpoint on a configurable interval, classifies stalled torrents by reason, and blocklists them. The per-episode circuit breaker caps auto-blocklist events at three strikes per 24 hours so a misconfigured indexer can't trigger a retry storm.
 

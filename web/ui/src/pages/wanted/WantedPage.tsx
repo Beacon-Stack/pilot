@@ -5,7 +5,7 @@ import { useConfirm } from "@beacon-shared/ConfirmDialog";
 import ManualSearchModal from "@/components/ManualSearchModal";
 import type { WantedEpisode } from "@/types";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 function formatEpisodeCode(season: number, episode: number): string {
   return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
@@ -21,7 +21,7 @@ function formatAirDate(iso?: string): string {
   });
 }
 
-// ── Episode row ───────────────────────────────────────────────────────────────
+// Episode row
 
 function EpisodeRow({
   episode,
@@ -148,7 +148,7 @@ function EpisodeRow({
   );
 }
 
-// ── Table wrapper ─────────────────────────────────────────────────────────────
+// Table wrapper
 
 const COL_HEADERS = ["Series", "Episode", "Episode Title", "Air Date", "Actions"];
 
@@ -205,8 +205,6 @@ function EpisodeTable({
     </table>
   );
 }
-
-// ── Pagination ────────────────────────────────────────────────────────────────
 
 function Pagination({
   page,
@@ -270,7 +268,7 @@ function Pagination({
   );
 }
 
-// ── Missing tab ───────────────────────────────────────────────────────────────
+// Missing tab
 
 const PER_PAGE = 50;
 
@@ -352,7 +350,7 @@ function MissingTab({ onSearch }: { onSearch: (ep: WantedEpisode) => void }) {
   );
 }
 
-// ── Cutoff unmet tab ──────────────────────────────────────────────────────────
+// Cutoff unmet tab
 
 function CutoffTab({ onSearch }: { onSearch: (ep: WantedEpisode) => void }) {
   const [page, setPage] = useState(1);
@@ -432,7 +430,7 @@ function CutoffTab({ onSearch }: { onSearch: (ep: WantedEpisode) => void }) {
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// Page
 
 type WantedTab = "missing" | "cutoff";
 

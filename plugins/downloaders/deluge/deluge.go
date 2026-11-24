@@ -172,7 +172,7 @@ func (c *Client) SetSeedLimits(ctx context.Context, clientItemID string, ratioLi
 	return nil
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// Auth
 
 func (c *Client) ensureAuth(ctx context.Context) error {
 	c.mu.Lock()
@@ -199,7 +199,7 @@ func (c *Client) loginLocked(ctx context.Context) error {
 	return nil
 }
 
-// ── Torrent add helpers ───────────────────────────────────────────────────────
+// Torrent add helpers
 
 func (c *Client) addMagnet(ctx context.Context, magnetURI string) (string, error) {
 	opts := c.addOptions()
@@ -265,7 +265,7 @@ func (c *Client) addOptions() map[string]any {
 	return opts
 }
 
-// ── JSON-RPC helpers ─────────────────────────────────────────────────────────
+// JSON-RPC helpers
 
 type rpcRequest struct {
 	Method string `json:"method"`
@@ -325,7 +325,7 @@ func (c *Client) call(ctx context.Context, method string, params []any, out any)
 	return nil
 }
 
-// ── Status helpers ────────────────────────────────────────────────────────────
+// Status helpers
 
 func torrentFieldsToQueueItem(hash string, fields map[string]json.RawMessage) plugin.QueueItem {
 	var name string
