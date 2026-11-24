@@ -308,7 +308,9 @@ func run() error {
 	// after first run. Started below alongside the rest of the app
 	// lifecycle. Pre-start lookups return false safely (empty index).
 	animeListSvc := animelist.New(
-		filepath.Join(filepath.Dir(cfg.ConfigFile), "anime-list.xml"),
+		// Beside the database: the config file's folder is unknown on a
+		// first start, before the file exists.
+		filepath.Join(filepath.Dir(cfg.Database.Path), "anime-list.xml"),
 		logger,
 	)
 

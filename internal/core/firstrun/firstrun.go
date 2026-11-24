@@ -30,8 +30,8 @@ import (
 const DefaultProfileName = "HD-1080p"
 
 // DefaultLibraryPaths is where the default TV library goes, in order of
-// preference. A path is used when its parent folder exists (the folder
-// itself is created if needed): /data/media/tv for the single /data
+// preference. A path is used when its parent or grandparent folder exists
+// (the folders below are created if needed): /data/media/tv for the single /data
 // mount, /tv for the older layout.
 var DefaultLibraryPaths = []string{"/data/media/tv", "/tv"}
 
@@ -112,14 +112,20 @@ func Run(ctx context.Context, profiles profileStore, libraries libraryStore, opt
 	return nil
 }
 
-// pickLibraryPath returns the first path whose parent directory exists.
+// pickLibraryPath returns the first path whose parent or grandparent
+// folder exists. The grandparent counts so that an empty /data mount gets
+// /data/media/tv created in it; a path with neither is skipped rather
+// than created in the container's own filesystem.
 func pickLibraryPath(paths []string) string {
 	for _, p := range paths {
 		if p == "" {
 			continue
 		}
-		if fi, err := os.Stat(filepath.Dir(filepath.Clean(p))); err == nil && fi.IsDir() {
-			return p
+		parent := filepath.Dir(filepath.Clean(p))
+		for _, dir := range []string{parent, filepath.Dir(parent)} {
+			if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+				return p
+			}
 		}
 	}
 	return ""

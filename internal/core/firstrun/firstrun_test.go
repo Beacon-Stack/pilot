@@ -78,6 +78,26 @@ func TestRun_FreshInstallGetsProfilesAndLibrary(t *testing.T) {
 	}
 }
 
+// The documented setup is one empty folder mounted at /data: the library
+// folder and its parent are both created in it.
+func TestRun_EmptyDataFolderGetsLibrary(t *testing.T) {
+	e := newEnv(t)
+	data := filepath.Join(e.dir, "data")
+	if err := os.Mkdir(data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(data, "media", "tv")
+	e.run(t, root, filepath.Join(e.dir, "nomount", "tv"))
+
+	libs, _ := e.libraries.List(context.Background())
+	if len(libs) != 1 || libs[0].RootPath != root {
+		t.Fatalf("libraries = %+v, want one at %s", libs, root)
+	}
+	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+		t.Fatalf("library folder not created: %v", err)
+	}
+}
+
 func TestRun_IsIdempotent(t *testing.T) {
 	e := newEnv(t)
 	tvRoot := filepath.Join(e.dir, "tv")
