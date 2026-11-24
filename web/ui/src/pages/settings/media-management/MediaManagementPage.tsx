@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import { DOCS_URLS } from "@/lib/docsUrls";
 import type { MediaManagement } from "@/types";
 import { hasQualityToken, setQualityToken } from "@/lib/qualityToken";
+import { labelStyle } from "@/lib/styles";
 
 // Shared styles
 
@@ -19,14 +20,6 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
   boxSizing: "border-box",
   fontFamily: "var(--font-family-mono)",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 12,
-  fontWeight: 500,
-  color: "var(--color-text-secondary)",
-  marginBottom: 6,
 };
 
 // Preview helper

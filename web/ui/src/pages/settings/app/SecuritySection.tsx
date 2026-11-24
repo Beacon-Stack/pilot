@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { apiFetch } from "@/api/client";
+import { cardStyle, sectionHeaderStyle } from "@/lib/styles";
 
 type Required = "disabled_for_local" | "enabled";
 
@@ -9,23 +10,6 @@ interface AuthSettings {
   username: string;
   password_set: boolean;
 }
-
-const card: React.CSSProperties = {
-  background: "var(--color-bg-surface)",
-  border: "1px solid var(--color-border-subtle)",
-  borderRadius: 8,
-  padding: 20,
-  boxShadow: "var(--shadow-card)",
-};
-
-const sectionHeader: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--color-text-muted)",
-  margin: "0 0 12px",
-};
 
 const label: React.CSSProperties = {
   display: "flex",
@@ -99,8 +83,8 @@ export default function SecuritySection() {
   }
 
   return (
-    <form style={card} onSubmit={onSubmit}>
-      <p style={sectionHeader}>Security</p>
+    <form style={cardStyle} onSubmit={onSubmit}>
+      <p style={sectionHeaderStyle}>Security</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <label style={label}>
           Authentication required

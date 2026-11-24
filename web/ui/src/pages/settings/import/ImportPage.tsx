@@ -8,16 +8,9 @@ import type {
   SonarrImportResult,
   CategoryResult,
 } from "@/types";
+import { inputStyle, cardStyle } from "@/lib/styles";
 
 // Shared styles
-
-const cardStyle: React.CSSProperties = {
-  background: "var(--color-bg-surface)",
-  border: "1px solid var(--color-border-subtle)",
-  borderRadius: 8,
-  padding: 20,
-  boxShadow: "var(--shadow-card)",
-};
 
 const labelStyle: React.CSSProperties = {
   display: "block",
@@ -26,18 +19,6 @@ const labelStyle: React.CSSProperties = {
   color: "var(--color-text-secondary)",
   marginBottom: 6,
   letterSpacing: "0.02em",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  background: "var(--color-bg-elevated)",
-  border: "1px solid var(--color-border-default)",
-  borderRadius: 6,
-  padding: "8px 12px",
-  fontSize: 13,
-  color: "var(--color-text-primary)",
-  outline: "none",
 };
 
 const primaryBtnStyle: React.CSSProperties = {
@@ -502,7 +483,7 @@ function StatTile({ label, value, mono }: { label: string; value: string; mono?:
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ ...cardStyle }}>
+    <div style={cardStyle}>
       <p style={sectionLabelStyle}>{title}</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{children}</div>
     </div>

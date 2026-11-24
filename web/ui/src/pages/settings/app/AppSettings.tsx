@@ -16,25 +16,9 @@ import type { ThemeMode } from "@/theme";
 import { apiFetch } from "@/api/client";
 import ScheduledBackups from "./ScheduledBackups";
 import SecuritySection from "./SecuritySection";
+import { cardStyle, sectionHeaderStyle } from "@/lib/styles";
 
 // Shared styles
-
-const card: React.CSSProperties = {
-  background: "var(--color-bg-surface)",
-  border: "1px solid var(--color-border-subtle)",
-  borderRadius: 8,
-  padding: 20,
-  boxShadow: "var(--shadow-card)",
-};
-
-const sectionHeader: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--color-text-muted)",
-  margin: "0 0 12px",
-};
 
 // Mode button helper
 
@@ -307,8 +291,8 @@ function APIKeySection() {
   }
 
   return (
-    <div style={card}>
-      <p style={sectionHeader}>API Key</p>
+    <div style={cardStyle}>
+      <p style={sectionHeaderStyle}>API Key</p>
       <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "0 0 12px" }}>
         Use this key for external integrations (scripts, other *arr apps, Overseerr).
       </p>
@@ -405,8 +389,8 @@ function BackupRestoreSection() {
   }
 
   return (
-    <div style={card}>
-      <p style={sectionHeader}>Backup & Restore</p>
+    <div style={cardStyle}>
+      <p style={sectionHeaderStyle}>Backup & Restore</p>
       <p style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "0 0 16px" }}>
         Download a copy of your database or restore from a previous backup.
       </p>
@@ -519,8 +503,8 @@ export default function AppSettings() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Appearance */}
-        <div style={card}>
-          <p style={sectionHeader}>Appearance</p>
+        <div style={cardStyle}>
+          <p style={sectionHeaderStyle}>Appearance</p>
 
           {/* Mode toggle */}
           <div style={{ marginBottom: 20 }}>
@@ -575,8 +559,8 @@ export default function AppSettings() {
         </div>
 
         {/* UI Preferences */}
-        <div style={card}>
-          <p style={sectionHeader}>UI Preferences</p>
+        <div style={cardStyle}>
+          <p style={sectionHeaderStyle}>UI Preferences</p>
           <ToggleRow
             label="Tooltips"
             description="Show informational tooltips when hovering over UI elements."
