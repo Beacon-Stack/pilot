@@ -90,12 +90,6 @@ func extractTitle(normalized string) (title string, year int) {
 	return title, year
 }
 
-// ParseTitle is a public helper that extracts the show/movie title and year
-// from a raw filename or release name.
-func ParseTitle(name string) (title string, year int) {
-	return extractTitle(normalize(name))
-}
-
 // normalize prepares a raw release name for parsing.
 func normalize(name string) string {
 	// Strip path prefix.

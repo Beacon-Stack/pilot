@@ -18,12 +18,6 @@ SELECT * FROM episode_files WHERE episode_id = ? ORDER BY path ASC;
 -- name: DeleteEpisodeFile :exec
 DELETE FROM episode_files WHERE id = ?;
 
--- name: DeleteEpisodeFilesBySeriesID :exec
-DELETE FROM episode_files WHERE series_id = ?;
-
--- name: CountEpisodeFilesBySeriesID :one
-SELECT COUNT(*) FROM episode_files WHERE series_id = ?;
-
 -- name: ListAllEpisodeFilePaths :many
 SELECT path FROM episode_files;
 

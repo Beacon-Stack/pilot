@@ -148,11 +148,6 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.q.DeleteReleaseProfile(ctx, id)
 }
 
-// Matcher compiles every enabled profile into a Matcher.
-func (s *Service) Matcher(ctx context.Context) (*Matcher, error) {
-	return LoadMatcher(ctx, s.q)
-}
-
 // LoadMatcher compiles the enabled profiles stored in q.
 func LoadMatcher(ctx context.Context, q db.Querier) (*Matcher, error) {
 	rows, err := q.ListEnabledReleaseProfiles(ctx)

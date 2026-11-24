@@ -153,13 +153,6 @@ func lanDialContext(ctx context.Context, network, addr string) (net.Conn, error)
 	return d.DialContext(ctx, network, net.JoinHostPort(addrs[0], port))
 }
 
-// DialContext resolves the host in addr and rejects connections to
-// private/internal network addresses. Use this for non-HTTP clients (e.g. SMTP)
-// that need the same SSRF protection as Transport().
-func DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	return dialContext(ctx, network, addr)
-}
-
 // LANTransport returns an *http.Transport suitable for connecting to
 // user-configured internal services (e.g. a Sonarr instance on the LAN).
 // It allows private/loopback addresses but still blocks cloud-metadata

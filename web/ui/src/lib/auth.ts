@@ -5,7 +5,7 @@
 // send automatically for same-origin requests. So no token handling is
 // needed here — only login, logout, status, and bouncing to /login on 401.
 
-export const LOGIN_PATH = "/login";
+const LOGIN_PATH = "/login";
 
 const AUTH_ENDPOINTS = ["/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/status"];
 

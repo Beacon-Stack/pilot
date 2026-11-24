@@ -91,10 +91,6 @@ type discoverListOutput struct {
 	Body *discoverListBody
 }
 
-type discoverPageInput struct {
-	Page int `query:"page" doc:"1-based page number" default:"1"`
-}
-
 type discoverBrowseInput struct {
 	Category  string  `query:"category" default:"trending" enum:"trending,popular,top-rated,new,coming-soon" doc:"Which list"`
 	Page      int     `query:"page" default:"1" minimum:"1" maximum:"500" doc:"1-based page number"`
@@ -242,28 +238,6 @@ func RegisterDiscoverRoutes(api huma.API, showSvc *show.Service) {
 		}
 		return &discoverSeriesDetailOutput{Body: discoverDetailToBody(detail, inLibrary, librarySeriesID)}, nil
 	})
-
-	// Browse category lists. Static segments take priority over the
-	// {tmdbId} wildcard above, so these coexist with /discover/{tmdbId}.
-	registerList := func(opID, path, summary, category string) {
-		huma.Register(api, huma.Operation{
-			OperationID: opID,
-			Method:      http.MethodGet,
-			Path:        path,
-			Summary:     summary,
-			Tags:        []string{"Discover"},
-		}, func(ctx context.Context, input *discoverPageInput) (*discoverListOutput, error) {
-			pr, err := showSvc.DiscoverList(ctx, category, input.Page)
-			if err != nil {
-				return nil, mapShowError(err, "series")
-			}
-			return &discoverListOutput{Body: paginatedToBody(pr)}, nil
-		})
-	}
-	registerList("discover-trending", "/api/v1/discover/trending", "Trending TV series this week", "trending")
-	registerList("discover-popular", "/api/v1/discover/popular", "Popular TV series", "popular")
-	registerList("discover-top-rated", "/api/v1/discover/top-rated", "Top rated TV series", "top-rated")
-	registerList("discover-on-the-air", "/api/v1/discover/on-the-air", "TV series airing soon", "on-the-air")
 
 	// GET /api/v1/discover/genre/{id}
 	huma.Register(api, huma.Operation{

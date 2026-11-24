@@ -497,8 +497,8 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
 ];
 
-export const DEFAULT_DARK_PRESET = "pilot";
-export const DEFAULT_LIGHT_PRESET = "beacon-light";
+const DEFAULT_DARK_PRESET = "pilot";
+const DEFAULT_LIGHT_PRESET = "beacon-light";
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
@@ -552,7 +552,7 @@ export function getStoredPreset(resolvedMode: "dark" | "light"): string {
 }
 
 /** Find a preset by ID, falling back to the Pilot default. */
-export function findPreset(id: string): ThemePreset {
+function findPreset(id: string): ThemePreset {
   return THEME_PRESETS.find((p) => p.id === id) ?? THEME_PRESETS[0];
 }
 

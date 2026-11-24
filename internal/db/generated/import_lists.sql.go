@@ -116,23 +116,6 @@ func (q *Queries) DeleteImportListConfig(ctx context.Context, id string) error {
 	return err
 }
 
-const getImportExclusionByTMDBID = `-- name: GetImportExclusionByTMDBID :one
-SELECT id, tmdb_id, title, year, created_at FROM import_exclusions WHERE tmdb_id = ?
-`
-
-func (q *Queries) GetImportExclusionByTMDBID(ctx context.Context, tmdbID int64) (ImportExclusion, error) {
-	row := q.db.QueryRowContext(ctx, getImportExclusionByTMDBID, tmdbID)
-	var i ImportExclusion
-	err := row.Scan(
-		&i.ID,
-		&i.TmdbID,
-		&i.Title,
-		&i.Year,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const getImportListConfig = `-- name: GetImportListConfig :one
 SELECT id, name, kind, enabled, settings, search_on_add, monitor, monitor_type, quality_profile_id, library_id, created_at, updated_at FROM import_list_configs WHERE id = ?
 `

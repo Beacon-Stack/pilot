@@ -115,15 +115,6 @@ export function useUpdateSeries(id: string) {
   });
 }
 
-export function useDeleteSeries() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<void>(`/series/${id}`, { method: "DELETE" }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["series"] }); },
-  });
-}
-
 export function useRefreshSeriesMetadata(id: string) {
   const qc = useQueryClient();
   return useMutation({

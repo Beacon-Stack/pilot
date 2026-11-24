@@ -18,7 +18,6 @@ type Querier interface {
 	CountAllEpisodes(ctx context.Context) (int64, error)
 	CountBlocklist(ctx context.Context) (int64, error)
 	CountEpisodeFiles(ctx context.Context) (int64, error)
-	CountEpisodeFilesBySeriesID(ctx context.Context, seriesID string) (int64, error)
 	CountEpisodesBySeriesID(ctx context.Context, seriesID string) (int64, error)
 	CountEpisodesWithFile(ctx context.Context) (int64, error)
 	CountEpisodesWithFileBySeriesID(ctx context.Context, seriesID string) (int64, error)
@@ -48,31 +47,25 @@ type Querier interface {
 	CreateIndexerConfig(ctx context.Context, arg CreateIndexerConfigParams) (IndexerConfig, error)
 	CreateLibrary(ctx context.Context, arg CreateLibraryParams) (Library, error)
 	CreateMediaServerConfig(ctx context.Context, arg CreateMediaServerConfigParams) (MediaServerConfig, error)
-	CreateNotificationConfig(ctx context.Context, arg CreateNotificationConfigParams) (NotificationConfig, error)
 	CreateQualityProfile(ctx context.Context, arg CreateQualityProfileParams) (QualityProfile, error)
 	CreateReleaseProfile(ctx context.Context, arg CreateReleaseProfileParams) (ReleaseProfile, error)
 	CreateRemotePathMapping(ctx context.Context, arg CreateRemotePathMappingParams) (RemotePathMapping, error)
 	CreateSeason(ctx context.Context, arg CreateSeasonParams) (Season, error)
 	CreateSeries(ctx context.Context, arg CreateSeriesParams) (Series, error)
-	DeleteAnimeCourMonitoredBySeriesID(ctx context.Context, seriesID string) error
 	DeleteBlocklistEntry(ctx context.Context, id string) error
 	DeleteBlocklistEntryByGUID(ctx context.Context, releaseGuid string) error
 	DeleteDownloadClientConfig(ctx context.Context, id string) error
 	DeleteEpisodeFile(ctx context.Context, id string) error
-	DeleteEpisodeFilesBySeriesID(ctx context.Context, seriesID string) error
-	DeleteEpisodesBySeriesID(ctx context.Context, seriesID string) error
 	DeleteImportExclusion(ctx context.Context, id string) error
 	DeleteImportListConfig(ctx context.Context, id string) error
 	DeleteIndexerConfig(ctx context.Context, id string) error
 	DeleteLibrary(ctx context.Context, id string) error
 	DeleteMediaServerConfig(ctx context.Context, id string) error
-	DeleteNotificationConfig(ctx context.Context, id string) error
 	DeletePendingRelease(ctx context.Context, id string) error
 	DeletePendingReleaseByEpisode(ctx context.Context, episodeID string) error
 	DeleteQualityProfile(ctx context.Context, id string) error
 	DeleteReleaseProfile(ctx context.Context, id string) error
 	DeleteRemotePathMapping(ctx context.Context, id string) error
-	DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error
 	DeleteSeries(ctx context.Context, id string) error
 	DeleteSetting(ctx context.Context, key string) error
 	DeleteUnmappedFolder(ctx context.Context, id string) error
@@ -81,21 +74,17 @@ type Querier interface {
 	GetEpisode(ctx context.Context, id string) (Episode, error)
 	GetEpisodeFile(ctx context.Context, id string) (EpisodeFile, error)
 	GetEpisodeFileByPath(ctx context.Context, path string) (EpisodeFile, error)
-	GetGrabByClientItemID(ctx context.Context, clientItemID *string) (GrabHistory, error)
 	GetGrabByID(ctx context.Context, id string) (GrabHistory, error)
 	GetGrabByInfoHash(ctx context.Context, infoHash *string) (GrabHistory, error)
 	GetGrabStats(ctx context.Context) (GetGrabStatsRow, error)
-	GetImportExclusionByTMDBID(ctx context.Context, tmdbID int64) (ImportExclusion, error)
 	GetImportListConfig(ctx context.Context, id string) (ImportListConfig, error)
 	GetIndexerConfig(ctx context.Context, id string) (IndexerConfig, error)
 	GetLibrary(ctx context.Context, id string) (Library, error)
 	GetMediaManagement(ctx context.Context) (MediaManagement, error)
 	GetMediaServerConfig(ctx context.Context, id string) (MediaServerConfig, error)
-	GetNotificationConfig(ctx context.Context, id string) (NotificationConfig, error)
 	GetQualityProfile(ctx context.Context, id string) (QualityProfile, error)
 	GetReleaseProfile(ctx context.Context, id string) (ReleaseProfile, error)
 	GetRemotePathMapping(ctx context.Context, id string) (RemotePathMapping, error)
-	GetSeason(ctx context.Context, id string) (Season, error)
 	GetSeries(ctx context.Context, id string) (Series, error)
 	GetSeriesByTMDBID(ctx context.Context, tmdbID int64) (Series, error)
 	GetSeriesYearDistribution(ctx context.Context) ([]GetSeriesYearDistributionRow, error)
@@ -112,7 +101,6 @@ type Querier interface {
 	// the torrent, so different-GUID-same-content cases are caught.
 	IsBlocklistedByGuidOrInfoHash(ctx context.Context, arg IsBlocklistedByGuidOrInfoHashParams) (int64, error)
 	IsBlocklistedByTitle(ctx context.Context, releaseTitle string) (int64, error)
-	LatestStatsSnapshot(ctx context.Context) (StatsSnapshot, error)
 	ListActiveGrabs(ctx context.Context) ([]GrabHistory, error)
 	ListActivities(ctx context.Context, arg ListActivitiesParams) ([]ActivityLog, error)
 	ListAllEpisodeFilePaths(ctx context.Context) ([]string, error)
@@ -135,13 +123,10 @@ type Querier interface {
 	ListEnabledDownloadClients(ctx context.Context) ([]DownloadClientConfig, error)
 	ListEnabledImportLists(ctx context.Context) ([]ImportListConfig, error)
 	ListEnabledIndexers(ctx context.Context) ([]IndexerConfig, error)
-	ListEnabledMediaServers(ctx context.Context) ([]MediaServerConfig, error)
-	ListEnabledNotifications(ctx context.Context) ([]NotificationConfig, error)
 	ListEnabledReleaseProfiles(ctx context.Context) ([]ReleaseProfile, error)
 	// Batched episode + file counts for a page of series, so the series list can
 	// populate counts in a single round-trip instead of two queries per series.
 	ListEpisodeCountsBySeriesIDs(ctx context.Context, seriesIds []string) ([]ListEpisodeCountsBySeriesIDsRow, error)
-	ListEpisodeFileQualities(ctx context.Context) ([]string, error)
 	ListEpisodeFileQualitiesWithSeriesIDs(ctx context.Context) ([]ListEpisodeFileQualitiesWithSeriesIDsRow, error)
 	ListEpisodeFilesByEpisodeID(ctx context.Context, episodeID string) ([]EpisodeFile, error)
 	ListEpisodeFilesBySeriesID(ctx context.Context, seriesID string) ([]EpisodeFile, error)
@@ -153,7 +138,6 @@ type Querier interface {
 	// budget. Oldest attempt first so a backlog drains fairly.
 	ListFailedImports(ctx context.Context, arg ListFailedImportsParams) ([]GrabHistory, error)
 	ListGrabHistory(ctx context.Context, arg ListGrabHistoryParams) ([]GrabHistory, error)
-	ListGrabHistoryByEpisode(ctx context.Context, episodeID *string) ([]GrabHistory, error)
 	ListGrabHistoryBySeries(ctx context.Context, seriesID string) ([]GrabHistory, error)
 	// Used by the Activity page's "Recently imported" and "Needs attention" rails
 	// to window grabs by terminal status and time. grab_history.grabbed_at is
@@ -231,7 +215,6 @@ type Querier interface {
 	UpdateLibrary(ctx context.Context, arg UpdateLibraryParams) (Library, error)
 	UpdateMediaManagement(ctx context.Context, arg UpdateMediaManagementParams) (MediaManagement, error)
 	UpdateMediaServerConfig(ctx context.Context, arg UpdateMediaServerConfigParams) (MediaServerConfig, error)
-	UpdateNotificationConfig(ctx context.Context, arg UpdateNotificationConfigParams) (NotificationConfig, error)
 	UpdateQualityDefinitionSizes(ctx context.Context, arg UpdateQualityDefinitionSizesParams) error
 	UpdateQualityProfile(ctx context.Context, arg UpdateQualityProfileParams) (QualityProfile, error)
 	UpdateReleaseProfile(ctx context.Context, arg UpdateReleaseProfileParams) (ReleaseProfile, error)

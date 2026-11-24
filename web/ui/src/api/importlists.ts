@@ -5,7 +5,6 @@ import type {
   ImportListConfig,
   ImportListRequest,
   ImportExclusion,
-  ImportListPreviewItem,
   ImportListSyncResult,
 } from "@/types";
 
@@ -79,47 +78,10 @@ export function useSyncAllImportLists() {
   });
 }
 
-export function useSyncImportList() {
-  return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<ImportListSyncResult>(`/importlists/${id}/sync`, {
-        method: "POST",
-      }),
-    onError: (err) => toast.error((err as Error).message),
-  });
-}
-
-export function useImportListPreview() {
-  return useMutation({
-    mutationFn: (body: { kind: string; settings: Record<string, unknown> }) =>
-      apiFetch<ImportListPreviewItem[]>("/importlists/preview", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    onError: (err) => toast.error((err as Error).message),
-  });
-}
-
 export function useImportExclusions() {
   return useQuery({
     queryKey: ["importExclusions"],
     queryFn: () => apiFetch<ImportExclusion[]>("/importlists/exclusions"),
-  });
-}
-
-export function useCreateImportExclusion() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Omit<ImportExclusion, "id" | "created_at">) =>
-      apiFetch<ImportExclusion>("/importlists/exclusions", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["importExclusions"] });
-      toast.success("Exclusion added");
-    },
-    onError: (err) => toast.error((err as Error).message),
   });
 }
 

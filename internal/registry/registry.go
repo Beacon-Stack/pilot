@@ -108,17 +108,6 @@ func (r *Registry) NewIndexer(kind string, settings json.RawMessage) (plugin.Ind
 	return factory(settings)
 }
 
-// IndexerKinds returns the list of registered indexer kind strings.
-func (r *Registry) IndexerKinds() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	kinds := make([]string, 0, len(r.indexers))
-	for k := range r.indexers {
-		kinds = append(kinds, k)
-	}
-	return kinds
-}
-
 // RegisterDownloader adds a factory for the given download client kind string.
 // Panics if kind is already registered (caught at startup, not runtime).
 func (r *Registry) RegisterDownloader(kind string, factory DownloaderFactory) {
@@ -160,17 +149,6 @@ func (r *Registry) NewDownloader(kind string, settings json.RawMessage) (plugin.
 		return nil, fmt.Errorf("unknown downloader kind %q", kind)
 	}
 	return factory(settings)
-}
-
-// DownloaderKinds returns the list of registered downloader kind strings.
-func (r *Registry) DownloaderKinds() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	kinds := make([]string, 0, len(r.downloaders))
-	for k := range r.downloaders {
-		kinds = append(kinds, k)
-	}
-	return kinds
 }
 
 // RegisterMediaServer adds a factory for the given media server kind string.
@@ -216,17 +194,6 @@ func (r *Registry) NewMediaServer(kind string, settings json.RawMessage) (plugin
 	return factory(settings)
 }
 
-// MediaServerKinds returns the list of registered media server kind strings.
-func (r *Registry) MediaServerKinds() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	kinds := make([]string, 0, len(r.mediaServers))
-	for k := range r.mediaServers {
-		kinds = append(kinds, k)
-	}
-	return kinds
-}
-
 // RegisterImportList adds a factory for the given import list kind string.
 // Panics if kind is already registered (caught at startup, not runtime).
 func (r *Registry) RegisterImportList(kind string, factory ImportListFactory) {
@@ -268,15 +235,4 @@ func (r *Registry) NewImportList(kind string, settings json.RawMessage) (plugin.
 		return nil, fmt.Errorf("unknown import list kind %q", kind)
 	}
 	return factory(settings)
-}
-
-// ImportListKinds returns the list of registered import list kind strings.
-func (r *Registry) ImportListKinds() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	kinds := make([]string, 0, len(r.importLists))
-	for k := range r.importLists {
-		kinds = append(kinds, k)
-	}
-	return kinds
 }

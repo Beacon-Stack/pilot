@@ -202,55 +202,6 @@ func (q *Queries) InsertStatsSnapshot(ctx context.Context, arg InsertStatsSnapsh
 	return err
 }
 
-const latestStatsSnapshot = `-- name: LatestStatsSnapshot :one
-SELECT id, total_series, total_episodes, monitored_episodes, with_file, missing, total_size_bytes, snapshot_at FROM stats_snapshots
-ORDER BY snapshot_at DESC
-LIMIT 1
-`
-
-func (q *Queries) LatestStatsSnapshot(ctx context.Context) (StatsSnapshot, error) {
-	row := q.db.QueryRowContext(ctx, latestStatsSnapshot)
-	var i StatsSnapshot
-	err := row.Scan(
-		&i.ID,
-		&i.TotalSeries,
-		&i.TotalEpisodes,
-		&i.MonitoredEpisodes,
-		&i.WithFile,
-		&i.Missing,
-		&i.TotalSizeBytes,
-		&i.SnapshotAt,
-	)
-	return i, err
-}
-
-const listEpisodeFileQualities = `-- name: ListEpisodeFileQualities :many
-SELECT quality_json FROM episode_files
-`
-
-func (q *Queries) ListEpisodeFileQualities(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listEpisodeFileQualities)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var quality_json string
-		if err := rows.Scan(&quality_json); err != nil {
-			return nil, err
-		}
-		items = append(items, quality_json)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listEpisodeFileQualitiesWithSeriesIDs = `-- name: ListEpisodeFileQualitiesWithSeriesIDs :many
 SELECT series_id, quality_json FROM episode_files
 `

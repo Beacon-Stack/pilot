@@ -45,18 +45,6 @@ func New(clientID string, logger *slog.Logger) *Client {
 	}
 }
 
-// WithBaseURL overrides the API base URL. Intended for tests only.
-func (c *Client) WithBaseURL(u string) *Client {
-	c.baseURL = u
-	return c
-}
-
-// WithHTTPClient overrides the underlying HTTP client. Intended for tests only.
-func (c *Client) WithHTTPClient(hc *http.Client) *Client {
-	c.http = hc
-	return c
-}
-
 // Show represents a TV show from the Trakt API.
 type Show struct {
 	Title string `json:"title"`

@@ -114,15 +114,6 @@ func (q *Queries) CreateEpisode(ctx context.Context, arg CreateEpisodeParams) (E
 	return i, err
 }
 
-const deleteEpisodesBySeriesID = `-- name: DeleteEpisodesBySeriesID :exec
-DELETE FROM episodes WHERE series_id = ?
-`
-
-func (q *Queries) DeleteEpisodesBySeriesID(ctx context.Context, seriesID string) error {
-	_, err := q.db.ExecContext(ctx, deleteEpisodesBySeriesID, seriesID)
-	return err
-}
-
 const getEpisode = `-- name: GetEpisode :one
 SELECT id, series_id, season_id, season_number, episode_number, absolute_number, air_date, title, overview, monitored, has_file, still_path, runtime_minutes FROM episodes WHERE id = ?
 `

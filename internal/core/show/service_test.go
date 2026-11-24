@@ -325,18 +325,6 @@ func (s *stubMeta) GetPerson(context.Context, int) (*tmdbtv.Person, error) {
 func (s *stubMeta) GetPersonTVCredits(context.Context, int, string) ([]tmdbtv.PersonCredit, error) {
 	return nil, nil
 }
-func (s *stubMeta) GetTrendingTV(context.Context, string, int) (*tmdbtv.PaginatedSeries, error) {
-	return &tmdbtv.PaginatedSeries{}, nil
-}
-func (s *stubMeta) GetPopularTV(context.Context, int) (*tmdbtv.PaginatedSeries, error) {
-	return &tmdbtv.PaginatedSeries{}, nil
-}
-func (s *stubMeta) GetTopRatedTV(context.Context, int) (*tmdbtv.PaginatedSeries, error) {
-	return &tmdbtv.PaginatedSeries{}, nil
-}
-func (s *stubMeta) GetOnTheAirTV(context.Context, int) (*tmdbtv.PaginatedSeries, error) {
-	return &tmdbtv.PaginatedSeries{}, nil
-}
 func (s *stubMeta) DiscoverTVByGenre(context.Context, int, int) (*tmdbtv.PaginatedSeries, error) {
 	return &tmdbtv.PaginatedSeries{}, nil
 }

@@ -502,25 +502,6 @@ func (c *Client) GetPopularTV(ctx context.Context, page int) (*PaginatedSeries, 
 	return pr, nil
 }
 
-// GetTopRatedTV returns the highest-rated TV series from TMDB.
-func (c *Client) GetTopRatedTV(ctx context.Context, page int) (*PaginatedSeries, error) {
-	pr, err := c.fetchTVList(ctx, "/tv/top_rated", pageParams(page))
-	if err != nil {
-		return nil, fmt.Errorf("tmdbtv top rated tv: %w", err)
-	}
-	return pr, nil
-}
-
-// GetOnTheAirTV returns series with episodes airing in the next ~7 days.
-// This is the TV analog to a movies "upcoming" list (TMDB has no /tv/upcoming).
-func (c *Client) GetOnTheAirTV(ctx context.Context, page int) (*PaginatedSeries, error) {
-	pr, err := c.fetchTVList(ctx, "/tv/on_the_air", pageParams(page))
-	if err != nil {
-		return nil, fmt.Errorf("tmdbtv on the air tv: %w", err)
-	}
-	return pr, nil
-}
-
 // DiscoverTVByGenre returns popular series in the given TMDB genre.
 func (c *Client) DiscoverTVByGenre(ctx context.Context, genreID, page int) (*PaginatedSeries, error) {
 	params := pageParams(page)

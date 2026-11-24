@@ -9,17 +9,6 @@ import (
 	"context"
 )
 
-const countEpisodeFilesBySeriesID = `-- name: CountEpisodeFilesBySeriesID :one
-SELECT COUNT(*) FROM episode_files WHERE series_id = ?
-`
-
-func (q *Queries) CountEpisodeFilesBySeriesID(ctx context.Context, seriesID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countEpisodeFilesBySeriesID, seriesID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createEpisodeFile = `-- name: CreateEpisodeFile :one
 INSERT INTO episode_files (id, episode_id, series_id, path, size_bytes, quality_json, imported_at, indexed_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -68,15 +57,6 @@ DELETE FROM episode_files WHERE id = ?
 
 func (q *Queries) DeleteEpisodeFile(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteEpisodeFile, id)
-	return err
-}
-
-const deleteEpisodeFilesBySeriesID = `-- name: DeleteEpisodeFilesBySeriesID :exec
-DELETE FROM episode_files WHERE series_id = ?
-`
-
-func (q *Queries) DeleteEpisodeFilesBySeriesID(ctx context.Context, seriesID string) error {
-	_, err := q.db.ExecContext(ctx, deleteEpisodeFilesBySeriesID, seriesID)
 	return err
 }
 

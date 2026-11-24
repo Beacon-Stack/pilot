@@ -63,19 +63,3 @@ func ValidCategory(c string) bool {
 	_, ok := legacyCategories[Category(c)]
 	return ok
 }
-
-// AllCategories returns the canonical (post-migration) category values.
-// Used by the API handler's docstring and (indirectly) the frontend
-// command-palette suggestions.
-func AllCategories() []Category {
-	return []Category{
-		CategoryGrabSucceeded,
-		CategoryGrabFailed,
-		CategoryImportSucceeded,
-		CategoryImportFailed,
-		CategoryStalled,
-		CategoryShow,
-		CategoryTask,
-		CategoryHealth,
-	}
-}

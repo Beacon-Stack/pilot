@@ -62,10 +62,6 @@ type MetadataProvider interface {
 	GetPerson(ctx context.Context, personID int) (*tmdbtv.Person, error)
 	GetPersonTVCredits(ctx context.Context, personID int, personType string) ([]tmdbtv.PersonCredit, error)
 	GetSeasonEpisodes(ctx context.Context, tmdbID int, seasonNum int) ([]tmdbtv.EpisodeDetail, error)
-	GetTrendingTV(ctx context.Context, window string, page int) (*tmdbtv.PaginatedSeries, error)
-	GetPopularTV(ctx context.Context, page int) (*tmdbtv.PaginatedSeries, error)
-	GetTopRatedTV(ctx context.Context, page int) (*tmdbtv.PaginatedSeries, error)
-	GetOnTheAirTV(ctx context.Context, page int) (*tmdbtv.PaginatedSeries, error)
 	DiscoverTVByGenre(ctx context.Context, genreID, page int) (*tmdbtv.PaginatedSeries, error)
 	GetTVGenres(ctx context.Context) ([]tmdbtv.Genre, error)
 	Browse(ctx context.Context, f tmdbtv.BrowseFilter) (*tmdbtv.PaginatedSeries, error)
@@ -896,26 +892,6 @@ func (s *Service) GetPerson(ctx context.Context, personID int) (*tmdbtv.Person, 
 	}
 
 	return person, credits, nil
-}
-
-// DiscoverList returns a page of series for a browse category
-// ("trending", "popular", "top-rated", "on-the-air").
-func (s *Service) DiscoverList(ctx context.Context, category string, page int) (*tmdbtv.PaginatedSeries, error) {
-	if s.meta == nil {
-		return nil, ErrMetadataNotConfigured
-	}
-	switch category {
-	case "trending":
-		return s.meta.GetTrendingTV(ctx, "week", page)
-	case "popular":
-		return s.meta.GetPopularTV(ctx, page)
-	case "top-rated":
-		return s.meta.GetTopRatedTV(ctx, page)
-	case "on-the-air":
-		return s.meta.GetOnTheAirTV(ctx, page)
-	default:
-		return nil, fmt.Errorf("unknown discover category %q", category)
-	}
 }
 
 // DiscoverBrowse returns a page of a Discover category with filters.

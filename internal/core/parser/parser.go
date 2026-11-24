@@ -8,7 +8,6 @@
 package parser
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -301,21 +300,4 @@ func cleanTitle(s string) string {
 	// like "Star Wars: Maul - Shadow Lord" (the DB title has no
 	// trailing dash).
 	return strings.TrimRight(strings.TrimSpace(s), " -._")
-}
-
-// String returns a human-readable representation of a ParsedRelease for
-// logging and debugging.
-func (p ParsedRelease) String() string {
-	ei := p.EpisodeInfo
-	if len(ei.Episodes) > 0 {
-		eps := make([]string, len(ei.Episodes))
-		for i, e := range ei.Episodes {
-			eps[i] = fmt.Sprintf("E%02d", e)
-		}
-		return fmt.Sprintf("%q S%02d%s", p.ShowTitle, ei.Season, strings.Join(eps, ""))
-	}
-	if ei.IsSeasonPack {
-		return fmt.Sprintf("%q S%02d (season pack)", p.ShowTitle, ei.Season)
-	}
-	return fmt.Sprintf("%q (no episode info)", p.ShowTitle)
 }

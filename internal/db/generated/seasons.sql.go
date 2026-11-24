@@ -39,31 +39,6 @@ func (q *Queries) CreateSeason(ctx context.Context, arg CreateSeasonParams) (Sea
 	return i, err
 }
 
-const deleteSeasonsBySeriesID = `-- name: DeleteSeasonsBySeriesID :exec
-DELETE FROM seasons WHERE series_id = ?
-`
-
-func (q *Queries) DeleteSeasonsBySeriesID(ctx context.Context, seriesID string) error {
-	_, err := q.db.ExecContext(ctx, deleteSeasonsBySeriesID, seriesID)
-	return err
-}
-
-const getSeason = `-- name: GetSeason :one
-SELECT id, series_id, season_number, monitored FROM seasons WHERE id = ?
-`
-
-func (q *Queries) GetSeason(ctx context.Context, id string) (Season, error) {
-	row := q.db.QueryRowContext(ctx, getSeason, id)
-	var i Season
-	err := row.Scan(
-		&i.ID,
-		&i.SeriesID,
-		&i.SeasonNumber,
-		&i.Monitored,
-	)
-	return i, err
-}
-
 const listSeasonsBySeriesID = `-- name: ListSeasonsBySeriesID :many
 SELECT id, series_id, season_number, monitored FROM seasons WHERE series_id = ? ORDER BY season_number ASC
 `

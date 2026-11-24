@@ -9,7 +9,7 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type CommandCategory = "navigation" | "series" | "action";
+type CommandCategory = "navigation" | "series" | "action";
 
 export interface Command {
   id: string;

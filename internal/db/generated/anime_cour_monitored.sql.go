@@ -9,15 +9,6 @@ import (
 	"context"
 )
 
-const deleteAnimeCourMonitoredBySeriesID = `-- name: DeleteAnimeCourMonitoredBySeriesID :exec
-DELETE FROM anime_cour_monitored WHERE series_id = ?
-`
-
-func (q *Queries) DeleteAnimeCourMonitoredBySeriesID(ctx context.Context, seriesID string) error {
-	_, err := q.db.ExecContext(ctx, deleteAnimeCourMonitoredBySeriesID, seriesID)
-	return err
-}
-
 const listAnimeCourMonitored = `-- name: ListAnimeCourMonitored :many
 SELECT series_id, tvdb_season, monitored, updated_at FROM anime_cour_monitored
 WHERE series_id = ?

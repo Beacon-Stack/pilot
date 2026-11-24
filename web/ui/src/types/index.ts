@@ -94,12 +94,6 @@ export interface EpisodeFile {
   indexed_at: string;
 }
 
-export interface RenamePreviewItem {
-  episode_file_id: string;
-  existing_path: string;
-  new_path: string;
-}
-
 export interface Library {
   id: string;
   name: string;
@@ -196,7 +190,7 @@ export interface ReleaseResult {
 // Per-indexer search breakdown: how many results each enabled indexer
 // contributed, or why it failed. Lets the UI distinguish "nothing
 // matched" from "half the indexers are broken".
-export interface IndexerSearchOutcome {
+interface IndexerSearchOutcome {
   indexer_id: string;
   indexer_name: string;
   results: number;
@@ -244,25 +238,6 @@ export interface TestResult {
 
 // ── Notifications ───────────────────────────────────────────────────────────
 
-export interface NotificationConfig {
-  id: string;
-  name: string;
-  kind: string;
-  enabled: boolean;
-  on_events: string[];
-  settings: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface NotificationRequest {
-  name: string;
-  kind: string;
-  enabled: boolean;
-  settings: Record<string, unknown>;
-  on_events?: string[];
-}
-
 // ── Media Servers ────────────────────────────────────────────────────────────
 
 export interface MediaServerConfig {
@@ -284,7 +259,7 @@ export interface MediaServerRequest {
 
 // ── Blocklist ────────────────────────────────────────────────────────────────
 
-export interface BlocklistEntry {
+interface BlocklistEntry {
   id: string;
   series_id?: string;
   series_title?: string;
@@ -328,20 +303,6 @@ export interface QualityDefinitionUpdate {
 }
 
 // ── Custom Formats ───────────────────────────────────────────────────────────
-
-export interface CustomFormat {
-  id: string;
-  name: string;
-  specifications?: unknown[];
-}
-
-export interface CustomFormatPreset {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  default_score: number;
-}
 
 // ── Queue ────────────────────────────────────────────────────────────────────
 
@@ -459,13 +420,6 @@ export interface ImportExclusion {
   created_at: string;
 }
 
-export interface ImportListPreviewItem {
-  tmdb_id: number;
-  title: string;
-  year: number;
-  poster_path?: string;
-}
-
 export interface ImportListSyncResult {
   lists_processed: number;
   series_added: number;
@@ -508,7 +462,7 @@ export interface CategoryResult {
 
 // ── Custom Format Scoring ───────────────────────────────────────────────────
 
-export interface ScoreDimension {
+interface ScoreDimension {
   name: string;
   score: number;
   max: number;
@@ -524,7 +478,7 @@ export interface ScoreBreakdown {
 
 // ── Filesystem Browsing ─────────────────────────────────────────────────────
 
-export interface FsDirEntry {
+interface FsDirEntry {
   name: string;
   path: string;
 }

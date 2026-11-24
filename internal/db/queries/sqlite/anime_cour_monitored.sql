@@ -10,5 +10,3 @@ ON CONFLICT (series_id, tvdb_season) DO UPDATE
     SET monitored = excluded.monitored,
         updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now');
 
--- name: DeleteAnimeCourMonitoredBySeriesID :exec
-DELETE FROM anime_cour_monitored WHERE series_id = ?;

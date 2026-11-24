@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -20,40 +21,31 @@ func result(title, guid string, seeds int) indexer.SearchResult {
 	}
 }
 
-// Regression: merged multi-query results were concatenated, not ranked,
-// so a better release found only by a later query variation lost.
-func TestMergeQueryResults_RanksAcrossQueries(t *testing.T) {
-	merged := mergeQueryResults([][]indexer.SearchResult{
-		{result("Show.S01E05.720p.WEB-DL.x264-GRP", "a", 50)},
-		{result("Show.1x05.1080p.BluRay.x264-GRP", "b", 50), result("Show.S01E05.720p.WEB-DL.x264-GRP", "a", 50)},
-	})
-	if len(merged) != 2 {
-		t.Fatalf("merged %d results, want 2 (deduped by GUID)", len(merged))
-	}
-	if merged[0].GUID != "b" {
-		t.Fatalf("top result = %q, want the 1080p from the second query", merged[0].Title)
-	}
+// ranked puts results in ranking order, as a search returns them.
+func ranked(results ...indexer.SearchResult) []indexer.SearchResult {
+	sort.SliceStable(results, func(i, j int) bool { return indexer.RanksAbove(results[i], results[j]) })
+	return results
 }
 
 // Regression: the "listed on several indexers" preference looked across
 // all qualities, so a 720p on two indexers beat a 2160p on one.
 func TestPickBestViable_MultiIndexerPreferenceStaysInTopQuality(t *testing.T) {
-	viable := mergeQueryResults([][]indexer.SearchResult{{
+	viable := ranked(
 		result("Show.S01E05.2160p.WEB-DL.x265-GRP", "uhd", 10),
 		result("Show.S01E05.720p.WEB-DL.x264-GRP", "hd-1", 10),
 		result("Show.S01E05.720p.WEB-DL.x264-GRP", "hd-2", 10),
-	}})
+	)
 	if got := pickBestViable(viable); got.GUID != "uhd" {
 		t.Fatalf("picked %q (%s), want the 2160p", got.Title, got.GUID)
 	}
 }
 
 func TestPickBestViable_PrefersMultiIndexerWithinTopQuality(t *testing.T) {
-	viable := mergeQueryResults([][]indexer.SearchResult{{
+	viable := ranked(
 		result("Show.S01E05.1080p.WEB-DL.x264-SOLO", "solo", 50),
 		result("Show.S01E05.1080p.WEB-DL.x264-DUO", "duo-1", 50),
 		result("Show.S01E05.1080p.WEB-DL.x264-DUO", "duo-2", 50),
-	}})
+	)
 	if got := pickBestViable(viable); got.Title != "Show.S01E05.1080p.WEB-DL.x264-DUO" {
 		t.Fatalf("picked %q, want the release listed on two indexers", got.Title)
 	}

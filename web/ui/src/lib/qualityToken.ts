@@ -3,7 +3,7 @@
 // it. The formats stay the single source of truth, so a hand-edited format
 // keeps working and the switch simply reflects it.
 
-export const QUALITY_TOKEN = "{Quality Full}";
+const QUALITY_TOKEN = "{Quality Full}";
 
 export function hasQualityToken(format: string): boolean {
   return format.includes(QUALITY_TOKEN);

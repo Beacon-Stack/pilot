@@ -4,7 +4,6 @@
 package pulse
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -97,16 +96,6 @@ func (i *Integration) Close() {
 	if i != nil && i.Client != nil {
 		i.Client.Close()
 	}
-}
-
-// DiscoverDownloadClients returns download clients registered in Pulse.
-func (i *Integration) DiscoverDownloadClients(ctx context.Context) ([]sdk.Service, error) {
-	return i.Client.DiscoverByType(ctx, "download-client")
-}
-
-// DiscoverIndexers returns indexers assigned to this service in Pulse.
-func (i *Integration) DiscoverIndexers(ctx context.Context) ([]sdk.Indexer, error) {
-	return i.Client.MyIndexers(ctx)
 }
 
 // discoverAPIKey attempts to read Pulse's API key from its local config file.
