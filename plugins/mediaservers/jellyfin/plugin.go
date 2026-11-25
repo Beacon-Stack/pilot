@@ -7,10 +7,10 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/beacon-stack/pilot/internal/serveraddr"
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/beacon-stack/pilot/internal/registry"
@@ -60,7 +60,7 @@ type Server struct {
 
 // New creates a new Server from the given config.
 func New(cfg Config) *Server {
-	cfg.URL = strings.TrimRight(cfg.URL, "/")
+	cfg.URL = serveraddr.FromPasted(cfg.URL)
 	transport := safedialer.LANTransport()
 	if cfg.SkipTLSVerify {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for self-signed certs
@@ -113,6 +113,15 @@ func (s *Server) Test(ctx context.Context) error {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("jellyfin: test returned %d: %s", resp.StatusCode, body)
+	}
+	// A 200 is not enough: a web page or a login screen answers 200 too.
+	// The reply has to be the server describing itself.
+	var info struct {
+		ID      string `json:"Id"`
+		Version string `json:"Version"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&info); err != nil || info.ID == "" || info.Version == "" {
+		return fmt.Errorf("jellyfin: %s answered, but not as Jellyfin (use the server's address, such as http://192.168.1.10:8096)", s.cfg.URL)
 	}
 	return nil
 }

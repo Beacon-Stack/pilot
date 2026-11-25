@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/beacon-stack/pilot/internal/serveraddr"
 	"io"
 	"net/http"
 	"strconv"
@@ -62,7 +63,7 @@ type Server struct {
 
 // New creates a new Server from the given config.
 func New(cfg Config) *Server {
-	cfg.URL = strings.TrimRight(cfg.URL, "/")
+	cfg.URL = serveraddr.FromPasted(cfg.URL)
 	transport := safedialer.LANTransport()
 	if cfg.SkipTLSVerify {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for self-signed certs
@@ -181,24 +182,12 @@ func (s *Server) refreshSection(ctx context.Context, key string) error {
 	return nil
 }
 
-// Test verifies that the Plex server is reachable with the configured token.
+// Test checks the address and token by asking the server for its
+// libraries. Any page that answers 200 is not enough: the reply has to be
+// Plex's own.
 func (s *Server) Test(ctx context.Context) error {
-	url := s.cfg.URL
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("plex: building test request: %w", err)
-	}
-	req.Header.Set("X-Plex-Token", s.cfg.Token)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("plex: test request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("plex: test returned %d: %s", resp.StatusCode, body)
+	if _, err := s.getSections(ctx); err != nil {
+		return fmt.Errorf("plex: no valid answer from %s (use the server's address, such as http://192.168.1.10:32400): %w", s.cfg.URL, err)
 	}
 	return nil
 }

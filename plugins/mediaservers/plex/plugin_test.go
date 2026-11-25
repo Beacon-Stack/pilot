@@ -161,3 +161,24 @@ func TestNew_TrimsTrailingSlash(t *testing.T) {
 		t.Errorf("URL = %q, want no trailing slash", s.cfg.URL)
 	}
 }
+
+func TestNew_AcceptsTheAddressCopiedFromTheBrowser(t *testing.T) {
+	s := New(Config{URL: "http://192.168.1.6:32400/web/index.html#!/", Token: "tok"})
+	if want := "http://192.168.1.6:32400"; s.cfg.URL != want {
+		t.Errorf("URL = %q, want %q", s.cfg.URL, want)
+	}
+}
+
+// A page that answers 200 but isn't Plex (the web app, a login page) must
+// not pass the test.
+func TestTest_RejectsAPageThatIsNotPlex(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("<!doctype html><html><body>Plex Web</body></html>"))
+	}))
+	defer srv.Close()
+
+	s := &Server{cfg: Config{URL: srv.URL, Token: "test-token"}, client: srv.Client()}
+	if err := s.Test(context.Background()); err == nil {
+		t.Fatal("Test() = nil for an HTML page, want an error")
+	}
+}
