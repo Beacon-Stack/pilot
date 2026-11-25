@@ -47,7 +47,7 @@ function EpisodeChip({
   return (
     <button
       onClick={onClick}
-      title={`${episode.series_title} — ${formatEpisodeCode(episode.season_number, episode.episode_number)} ${episode.title}`}
+      title={`${episode.series_title} — ${formatEpisodeCode(episode.season_number, episode.episode_number)}${episode.episode_title ? ` ${episode.episode_title}` : ""}`}
       style={{
         display: "flex",
         alignItems: "center",
@@ -102,12 +102,25 @@ function EpisodeChip({
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           lineHeight: 1.3,
+          minWidth: 0,
         }}
       >
-        {episode.series_title}{" "}
-        <span style={{ color: "var(--color-text-muted)" }}>
-          {formatEpisodeCode(episode.season_number, episode.episode_number)}
-        </span>
+        {episode.series_title}
+      </span>
+      {/* The episode code never shrinks: when a series airs two episodes
+          on one day, a long title would otherwise cut it off and the two
+          chips would look the same. */}
+      <span
+        style={{
+          fontSize: 10,
+          color: "var(--color-text-muted)",
+          whiteSpace: "nowrap",
+          lineHeight: 1.3,
+          flexShrink: 0,
+          marginLeft: "auto",
+        }}
+      >
+        {formatEpisodeCode(episode.season_number, episode.episode_number)}
       </span>
     </button>
   );
@@ -171,7 +184,7 @@ function DayCell({
       {/* Episode chips */}
       {episodes.slice(0, 4).map((ep) => (
         <EpisodeChip
-          key={ep.id}
+          key={ep.episode_id}
           episode={ep}
           onClick={() => onEpisodeClick(ep.series_id)}
         />

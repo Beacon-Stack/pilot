@@ -323,13 +323,13 @@ export interface QueueItem {
 // Calendar
 
 export interface CalendarEpisode {
-  id: string;
+  episode_id: string;
   series_id: string;
   series_title: string;
   series_poster_url?: string;
   season_number: number;
   episode_number: number;
-  title: string;
+  episode_title: string;
   air_date: string; // "2024-01-15"
   has_file: boolean;
   monitored: boolean;
