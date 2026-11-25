@@ -280,6 +280,116 @@ func (s *Server) ListMovies(ctx context.Context, sectionKey string) ([]Movie, er
 	return movies, nil
 }
 
+// plexShowContainer is the XML response from
+// /library/sections/{key}/all?type=2 (shows).
+type plexShowContainer struct {
+	XMLName xml.Name   `xml:"MediaContainer"`
+	Shows   []plexShow `xml:"Directory"`
+}
+
+type plexShow struct {
+	RatingKey string    `xml:"ratingKey,attr"`
+	Title     string    `xml:"title,attr"`
+	Year      int       `xml:"year,attr"`
+	GUID      string    `xml:"guid,attr"`
+	Guids     []plexGID `xml:"Guid"`
+}
+
+// plexEpisodeContainer is the XML response from
+// /library/sections/{key}/all?type=4 (episodes).
+type plexEpisodeContainer struct {
+	XMLName  xml.Name      `xml:"MediaContainer"`
+	Episodes []plexEpisode `xml:"Video"`
+}
+
+type plexEpisode struct {
+	ShowRatingKey string `xml:"grandparentRatingKey,attr"`
+	Season        int    `xml:"parentIndex,attr"`
+	Episode       int    `xml:"index,attr"`
+}
+
+// getXML fetches a path from the server and decodes its XML into out.
+func (s *Server) getXML(ctx context.Context, path string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.URL+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Plex-Token", s.cfg.Token)
+	req.Header.Set("Accept", "application/xml")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("returned %d: %s", resp.StatusCode, body)
+	}
+	return xml.NewDecoder(resp.Body).Decode(out)
+}
+
+// ListShowItems returns every series in every TV library on the server,
+// with the episodes it holds. It implements plugin.ShowLister. Each
+// library costs two requests: its shows, then all its episodes.
+func (s *Server) ListShowItems(ctx context.Context) ([]plugin.ShowItem, error) {
+	sections, err := s.getSections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var items []plugin.ShowItem
+	for _, sec := range sections.Directories {
+		if sec.Type != "show" {
+			continue
+		}
+		var shows plexShowContainer
+		if err := s.getXML(ctx, "/library/sections/"+sec.Key+"/all?type=2&includeGuids=1", &shows); err != nil {
+			return nil, fmt.Errorf("plex: listing shows in %q: %w", sec.Title, err)
+		}
+		var episodes plexEpisodeContainer
+		if err := s.getXML(ctx, "/library/sections/"+sec.Key+"/all?type=4", &episodes); err != nil {
+			return nil, fmt.Errorf("plex: listing episodes in %q: %w", sec.Title, err)
+		}
+		byShow := make(map[string][]plugin.EpisodeNumber, len(shows.Shows))
+		for _, e := range episodes.Episodes {
+			byShow[e.ShowRatingKey] = append(byShow[e.ShowRatingKey], plugin.EpisodeNumber{Season: e.Season, Episode: e.Episode})
+		}
+		for _, sh := range shows.Shows {
+			items = append(items, plugin.ShowItem{
+				TMDBID:   guidID(sh.Guids, sh.GUID, "tmdb://", "themoviedb://"),
+				TVDBID:   guidID(sh.Guids, sh.GUID, "tvdb://", "thetvdb://"),
+				Title:    sh.Title,
+				Year:     sh.Year,
+				Episodes: byShow[sh.RatingKey],
+			})
+		}
+	}
+	return items, nil
+}
+
+// guidID finds a numeric ID among a Plex item's guids. The current agent
+// lists them as child elements (<Guid id="tvdb://121361"/>); the legacy
+// agents put one in the guid attribute
+// (com.plexapp.agents.thetvdb://121361?lang=en).
+func guidID(guids []plexGID, legacy, prefix, legacyMarker string) int {
+	for _, g := range guids {
+		if rest, ok := strings.CutPrefix(g.ID, prefix); ok {
+			if id, err := strconv.Atoi(rest); err == nil {
+				return id
+			}
+		}
+	}
+	if _, rest, ok := strings.Cut(legacy, legacyMarker); ok {
+		idStr, _, _ := strings.Cut(rest, "?")
+		idStr, _, _ = strings.Cut(idStr, "/")
+		if id, err := strconv.Atoi(idStr); err == nil {
+			return id
+		}
+	}
+	return 0
+}
+
 // extractTmdbID tries to find a TMDB ID from the video's guid fields.
 // New Plex agent: <Guid id="tmdb://12345"/>
 // Legacy agent: guid="com.plexapp.agents.themoviedb://12345?lang=en"

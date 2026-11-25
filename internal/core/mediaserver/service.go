@@ -14,6 +14,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/core/dbutil"
 	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/internal/registry"
+	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
 // ErrNotFound is returned when a media server config does not exist.
@@ -161,6 +162,29 @@ func (s *Service) Test(ctx context.Context, id string) error {
 		return fmt.Errorf("instantiating media server plugin: %w", err)
 	}
 	return ms.Test(ctx)
+}
+
+// ShowListers returns every enabled media server that can list the
+// episodes it holds. A server whose plugin can't be built is skipped.
+func (s *Service) ShowListers(ctx context.Context) ([]plugin.ShowLister, error) {
+	configs, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []plugin.ShowLister
+	for _, cfg := range configs {
+		if !cfg.Enabled {
+			continue
+		}
+		ms, err := s.reg.NewMediaServer(cfg.Kind, cfg.Settings)
+		if err != nil {
+			continue
+		}
+		if lister, ok := ms.(plugin.ShowLister); ok {
+			out = append(out, lister)
+		}
+	}
+	return out, nil
 }
 
 // rowToConfig converts a DB row into the domain Config type.

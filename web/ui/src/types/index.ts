@@ -33,6 +33,9 @@ export interface Series {
   updated_at: string;
   episode_count: number;
   episode_file_count: number;
+  availability?: string;            // the most active state among its episodes
+  available_episode_count?: number; // episodes on the media server
+  download_progress?: number;       // 0..1 while downloading
   /** Alternate marketing/translated names from TMDB used for release-title matching. */
   alternate_titles?: string[];
 }
@@ -79,6 +82,8 @@ export interface Episode {
   overview: string;
   monitored: boolean;
   has_file: boolean;
+  availability?: string;      // available, downloaded, downloading, wanted, upcoming or unmonitored
+  download_progress?: number; // 0..1 while downloading
   still_path?: string;
   runtime_minutes?: number;
 }

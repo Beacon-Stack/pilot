@@ -53,6 +53,7 @@ import (
 	apiv1 "github.com/beacon-stack/pilot/internal/api/v1"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/appinfo"
+	"github.com/beacon-stack/pilot/internal/availability"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/activity"
 	"github.com/beacon-stack/pilot/internal/core/backup"
@@ -367,6 +368,14 @@ func run() error {
 	// Scheduler
 	sched := scheduler.New(logger)
 	sched.Add(jobs.QueuePoll(queueSvc, 30*time.Second, logger))
+	availabilitySvc := availability.NewService(mediaServerSvc, queueSvc, showSvc, logger)
+	sched.Add(jobs.AvailabilityRefresh(availabilitySvc, logger))
+	go func() {
+		// Read the media servers once at start so the first page load is right.
+		if err := availabilitySvc.Refresh(context.Background()); err != nil {
+			logger.Warn("availability: first refresh failed", "error", err)
+		}
+	}()
 	unmappedSvc := unmapped.New(queries, showSvc)
 	sched.Add(jobs.LibraryScan(librarySvc, showSvc, unmappedSvc, queries, logger))
 	sched.Add(jobs.RSSSync(indexerSvc, queries, downloaderSvc, blocklistSvc, qualitySvc, logger))
@@ -437,6 +446,7 @@ func run() error {
 		IndexerService:         indexerSvc,
 		DownloaderService:      downloaderSvc,
 		MediaServerService:     mediaServerSvc,
+		Availability:           availabilitySvc,
 		BlocklistService:       blocklistSvc,
 		MediaManagementService: mediaManagementSvc,
 		QualityDefService:      qualityDefSvc,

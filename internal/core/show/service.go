@@ -740,6 +740,20 @@ func (s *Service) GetSeasons(ctx context.Context, seriesID string) ([]Season, er
 	return seasons, nil
 }
 
+// EpisodesOfSeries returns every episode of a series, in season and
+// episode order.
+func (s *Service) EpisodesOfSeries(ctx context.Context, seriesID string) ([]Episode, error) {
+	rows, err := s.q.ListEpisodesBySeriesID(ctx, seriesID)
+	if err != nil {
+		return nil, fmt.Errorf("list episodes of series: %w", err)
+	}
+	episodes := make([]Episode, len(rows))
+	for i, r := range rows {
+		episodes[i] = rowToEpisode(r)
+	}
+	return episodes, nil
+}
+
 // GetEpisodes returns all episodes for the given season ID.
 func (s *Service) GetEpisodes(ctx context.Context, seasonID string) ([]Episode, error) {
 	rows, err := s.q.ListEpisodesBySeasonID(ctx, seasonID)

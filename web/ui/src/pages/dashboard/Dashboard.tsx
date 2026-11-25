@@ -1,3 +1,4 @@
+import { AVAILABILITY, asAvailability, availabilityLabel } from "@/lib/availability";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSeriesList } from "@/api/series";
@@ -23,7 +24,11 @@ function SeriesCard({
   onToggle?: () => void;
 }) {
   const navigate = useNavigate();
-  const hasAll = series.episode_count > 0 && series.episode_file_count >= series.episode_count;
+  // With a media server to check against, the count is episodes ready to
+  // watch there; without one, episodes on disk.
+  const state = asAvailability(series.availability);
+  const ready = state ? (series.available_episode_count ?? 0) : series.episode_file_count;
+  const hasAll = series.episode_count > 0 && ready >= series.episode_count;
 
   return (
     <div
@@ -76,8 +81,34 @@ function SeriesCard({
               color: hasAll ? "var(--color-success)" : "var(--color-text-secondary)",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
+            title={
+              state
+                ? `${ready} of ${series.episode_count} episodes on your media server; ${series.episode_file_count} downloaded`
+                : `${ready} of ${series.episode_count} episodes downloaded`
+            }
           >
-            {series.episode_file_count}/{series.episode_count}
+            {ready}/{series.episode_count}
+          </div>
+        )}
+        {/* Where the series stands */}
+        {state && series.monitored && (
+          <div
+            title={AVAILABILITY[state].hint}
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              background: "rgba(0,0,0,0.75)",
+              backdropFilter: "blur(4px)",
+              borderRadius: 4,
+              padding: "2px 6px",
+              fontSize: 10,
+              fontWeight: 600,
+              color: AVAILABILITY[state].color,
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
+          >
+            {availabilityLabel(state, series.download_progress)}
           </div>
         )}
         {/* Status indicator */}

@@ -182,3 +182,45 @@ func TestTest_RejectsAPageThatIsNotPlex(t *testing.T) {
 		t.Fatal("Test() = nil for an HTML page, want an error")
 	}
 }
+
+func TestListShowItems(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		switch {
+		case r.URL.Path == "/library/sections":
+			w.Write([]byte(testSectionsXML))
+		case r.URL.Path == "/library/sections/2/all" && r.URL.Query().Get("type") == "2":
+			w.Write([]byte(`<MediaContainer>
+  <Directory ratingKey="10" title="Rings" year="2022"><Guid id="imdb://tt7631058"/><Guid id="tmdb://84773"/><Guid id="tvdb://367506"/></Directory>
+  <Directory ratingKey="11" title="Old Show" year="1999" guid="com.plexapp.agents.thetvdb://72449?lang=en"/>
+</MediaContainer>`))
+		case r.URL.Path == "/library/sections/2/all" && r.URL.Query().Get("type") == "4":
+			w.Write([]byte(`<MediaContainer>
+  <Video grandparentRatingKey="10" parentIndex="3" index="5"/>
+  <Video grandparentRatingKey="10" parentIndex="3" index="6"/>
+  <Video grandparentRatingKey="11" parentIndex="1" index="1"/>
+</MediaContainer>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	s := &Server{cfg: Config{URL: srv.URL, Token: "test-token"}, client: srv.Client()}
+	items, err := s.ListShowItems(context.Background())
+	if err != nil {
+		t.Fatalf("ListShowItems: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("got %d shows, want 2 (the movie library is skipped): %+v", len(items), items)
+	}
+	if items[0].TMDBID != 84773 || items[0].TVDBID != 367506 || len(items[0].Episodes) != 2 {
+		t.Errorf("first show = %+v, want TMDB 84773, TVDB 367506, 2 episodes", items[0])
+	}
+	if items[0].Episodes[1].Season != 3 || items[0].Episodes[1].Episode != 6 {
+		t.Errorf("second episode = %+v, want S03E06", items[0].Episodes[1])
+	}
+	if items[1].TVDBID != 72449 || len(items[1].Episodes) != 1 {
+		t.Errorf("legacy-agent show = %+v, want TVDB 72449 and 1 episode", items[1])
+	}
+}
