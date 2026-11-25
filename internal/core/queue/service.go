@@ -20,6 +20,7 @@ type Item struct {
 	GrabID           string
 	SeriesID         string
 	EpisodeID        string // empty for season-pack grabs
+	SeasonNumber     int    // the season a pack covers; -1 when unknown or not a pack
 	ReleaseTitle     string
 	Protocol         string
 	Size             int64
@@ -281,6 +282,10 @@ func grabToItem(g db.GrabHistory) Item {
 	}
 	if g.EpisodeID != nil {
 		item.EpisodeID = *g.EpisodeID
+	}
+	item.SeasonNumber = -1
+	if g.SeasonNumber != nil {
+		item.SeasonNumber = int(*g.SeasonNumber)
 	}
 	if g.ClientItemID != nil {
 		item.ClientItemID = *g.ClientItemID

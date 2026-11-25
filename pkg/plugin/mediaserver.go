@@ -18,3 +18,25 @@ type MediaServer interface {
 	// are valid.
 	Test(ctx context.Context) error
 }
+
+// ShowItem is one series held by a media server, with the episodes of it
+// the server has.
+type ShowItem struct {
+	TMDBID   int // 0 when the server has no TMDB ID for it
+	TVDBID   int // 0 when the server has no TVDB ID for it
+	Title    string
+	Year     int
+	Episodes []EpisodeNumber
+}
+
+// EpisodeNumber names an episode by season and number within the season.
+type EpisodeNumber struct {
+	Season  int
+	Episode int
+}
+
+// ShowLister is implemented by media servers that can say which episodes
+// they hold, so the app can show what is ready to watch.
+type ShowLister interface {
+	ListShowItems(ctx context.Context) ([]ShowItem, error)
+}

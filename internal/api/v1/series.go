@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/beacon-stack/pilot/internal/availability"
 	"github.com/beacon-stack/pilot/internal/core/show"
 	"github.com/beacon-stack/pilot/internal/metadata/tmdbtv"
 )
@@ -38,6 +39,9 @@ type seriesBody struct {
 	Path                string     `json:"path,omitempty"                   doc:"Absolute path on disk"`
 	EpisodeCount        int64      `json:"episode_count"                    doc:"Total episode count"`
 	EpisodeFileCount    int64      `json:"episode_file_count"               doc:"Episodes with a file on disk"`
+	Availability        string     `json:"availability,omitempty"           doc:"Where the series stands: downloading, downloaded, wanted, available, upcoming or unmonitored (the most active state among its episodes)"`
+	AvailableCount      int        `json:"available_episode_count"          doc:"Episodes on the media server, ready to watch"`
+	DownloadProgress    float64    `json:"download_progress,omitempty"      doc:"0..1 for the furthest-along download while availability is downloading"`
 	AddedAt             time.Time  `json:"added_at"                         doc:"When the series was added"`
 	UpdatedAt           time.Time  `json:"updated_at"                       doc:"When the record was last changed"`
 	MetadataRefreshedAt *time.Time `json:"metadata_refreshed_at,omitempty"  doc:"When metadata was last refreshed"`
@@ -55,19 +59,21 @@ type seasonBody struct {
 }
 
 type episodeBody struct {
-	ID             string `json:"id"                         doc:"Episode UUID"`
-	SeriesID       string `json:"series_id"                  doc:"Parent series UUID"`
-	SeasonID       string `json:"season_id"                  doc:"Parent season UUID"`
-	SeasonNumber   int    `json:"season_number"              doc:"Season number"`
-	EpisodeNumber  int    `json:"episode_number"             doc:"Episode number"`
-	AbsoluteNumber *int   `json:"absolute_number,omitempty"  doc:"Absolute episode number (anime)"`
-	AirDate        string `json:"air_date,omitempty"         doc:"Air date (YYYY-MM-DD)"`
-	Title          string `json:"title"                      doc:"Episode title"`
-	Overview       string `json:"overview"                   doc:"Episode synopsis"`
-	Monitored      bool   `json:"monitored"                  doc:"Whether this episode is monitored"`
-	HasFile        bool   `json:"has_file"                   doc:"Whether a file is linked to this episode"`
-	StillPath      string `json:"still_path,omitempty"       doc:"TMDB still image path"`
-	RuntimeMinutes int    `json:"runtime_minutes,omitempty"  doc:"Episode runtime in minutes"`
+	ID               string  `json:"id"                         doc:"Episode UUID"`
+	SeriesID         string  `json:"series_id"                  doc:"Parent series UUID"`
+	SeasonID         string  `json:"season_id"                  doc:"Parent season UUID"`
+	SeasonNumber     int     `json:"season_number"              doc:"Season number"`
+	EpisodeNumber    int     `json:"episode_number"             doc:"Episode number"`
+	AbsoluteNumber   *int    `json:"absolute_number,omitempty"  doc:"Absolute episode number (anime)"`
+	AirDate          string  `json:"air_date,omitempty"         doc:"Air date (YYYY-MM-DD)"`
+	Title            string  `json:"title"                      doc:"Episode title"`
+	Overview         string  `json:"overview"                   doc:"Episode synopsis"`
+	Monitored        bool    `json:"monitored"                  doc:"Whether this episode is monitored"`
+	HasFile          bool    `json:"has_file"                   doc:"Whether a file is linked to this episode"`
+	Availability     string  `json:"availability,omitempty"     doc:"Where the episode stands: available (on the media server), downloaded, downloading, wanted, upcoming or unmonitored"`
+	DownloadProgress float64 `json:"download_progress,omitempty" doc:"0..1 while availability is downloading"`
+	StillPath        string  `json:"still_path,omitempty"       doc:"TMDB still image path"`
+	RuntimeMinutes   int     `json:"runtime_minutes,omitempty"  doc:"Episode runtime in minutes"`
 }
 
 type lookupResultBody struct {
@@ -340,7 +346,49 @@ func mapShowError(err error, entityName string) error {
 
 // RegisterSeriesRoutes registers all /api/v1/series, /api/v1/episodes, and
 // /api/v1/seasons endpoints.
-func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
+// seriesAvailability says where series and episodes stand: on the media
+// server, downloading, on disk and so on.
+type seriesAvailability interface {
+	ForSeries(ctx context.Context, series []show.Series) map[string]availability.SeriesInfo
+	ForEpisodes(ctx context.Context, series show.Series, episodes []show.Episode) map[string]availability.Info
+}
+
+// setSeriesAvailability fills in the availability fields of bodies, which
+// are the bodies of series in the same order. A nil source leaves them
+// empty.
+func setSeriesAvailability(ctx context.Context, src seriesAvailability, series []show.Series, bodies []*seriesBody) {
+	if src == nil {
+		return
+	}
+	info := src.ForSeries(ctx, series)
+	for i, sr := range series {
+		if in, ok := info[sr.ID]; ok {
+			bodies[i].Availability = string(in.State)
+			bodies[i].AvailableCount = in.Available
+			bodies[i].DownloadProgress = in.Progress
+			// These counts follow the display settings (specials in or
+			// out), so the card's numbers and its state agree.
+			bodies[i].EpisodeCount = int64(in.Total)
+			bodies[i].EpisodeFileCount = int64(in.WithFile)
+		}
+	}
+}
+
+// setEpisodeAvailability does the same for the episodes of one series.
+func setEpisodeAvailability(ctx context.Context, src seriesAvailability, sr show.Series, episodes []show.Episode, bodies []*episodeBody) {
+	if src == nil {
+		return
+	}
+	info := src.ForEpisodes(ctx, sr, episodes)
+	for i, e := range episodes {
+		if in, ok := info[e.ID]; ok {
+			bodies[i].Availability = string(in.State)
+			bodies[i].DownloadProgress = in.Progress
+		}
+	}
+}
+
+func RegisterSeriesRoutes(api huma.API, showSvc *show.Service, avail seriesAvailability) {
 	// POST /api/v1/series/lookup
 	huma.Register(api, huma.Operation{
 		OperationID:   "lookup-series",
@@ -385,7 +433,9 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 		if err != nil {
 			return nil, mapShowError(err, "series")
 		}
-		return &seriesOutput{Body: seriesToBody(s)}, nil
+		b := seriesToBody(s)
+		setSeriesAvailability(ctx, avail, []show.Series{s}, []*seriesBody{b})
+		return &seriesOutput{Body: b}, nil
 	})
 
 	// GET /api/v1/series/tmdb-ids — lightweight list for "already added" detection
@@ -426,6 +476,7 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 		for i, s := range result.Series {
 			bodies[i] = seriesToBody(s)
 		}
+		setSeriesAvailability(ctx, avail, result.Series, bodies)
 		return &seriesListOutput{Body: &seriesListBody{
 			Series:  bodies,
 			Total:   result.Total,
@@ -446,7 +497,9 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 		if err != nil {
 			return nil, mapShowError(err, "series")
 		}
-		return &seriesOutput{Body: seriesToBody(s)}, nil
+		b := seriesToBody(s)
+		setSeriesAvailability(ctx, avail, []show.Series{s}, []*seriesBody{b})
+		return &seriesOutput{Body: b}, nil
 	})
 
 	// PUT /api/v1/series/{id}
@@ -468,7 +521,9 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 		if err != nil {
 			return nil, mapShowError(err, "series")
 		}
-		return &seriesOutput{Body: seriesToBody(s)}, nil
+		b := seriesToBody(s)
+		setSeriesAvailability(ctx, avail, []show.Series{s}, []*seriesBody{b})
+		return &seriesOutput{Body: b}, nil
 	})
 
 	// POST /api/v1/series/{id}/refresh — re-fetch series-level metadata
@@ -487,7 +542,9 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 		if err != nil {
 			return nil, mapShowError(err, "series")
 		}
-		return &seriesOutput{Body: seriesToBody(s)}, nil
+		b := seriesToBody(s)
+		setSeriesAvailability(ctx, avail, []show.Series{s}, []*seriesBody{b})
+		return &seriesOutput{Body: b}, nil
 	})
 
 	// DELETE /api/v1/series/{id}
@@ -556,6 +613,9 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 		for i, e := range episodes {
 			bodies[i] = episodeToBody(e)
 		}
+		if sr, err := showSvc.Get(ctx, input.ID); err == nil {
+			setEpisodeAvailability(ctx, avail, sr, episodes, bodies)
+		}
 		return &episodeListOutput{Body: bodies}, nil
 	})
 
@@ -574,7 +634,11 @@ func RegisterSeriesRoutes(api huma.API, showSvc *show.Service) {
 			}
 			return nil, huma.NewError(http.StatusInternalServerError, "failed to get episode", err)
 		}
-		return &episodeOutput{Body: episodeToBody(ep)}, nil
+		b := episodeToBody(ep)
+		if sr, err := showSvc.Get(ctx, ep.SeriesID); err == nil {
+			setEpisodeAvailability(ctx, avail, sr, []show.Episode{ep}, []*episodeBody{b})
+		}
+		return &episodeOutput{Body: b}, nil
 	})
 
 	// PUT /api/v1/episodes/{id}

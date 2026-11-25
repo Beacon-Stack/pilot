@@ -1,3 +1,4 @@
+import { AVAILABILITY, asAvailability } from "@/lib/availability";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, Search, Trash2, CheckCircle2, Circle, Zap, Info } from "lucide-react";
@@ -471,17 +472,31 @@ function StatusBadge({ episode, file, aired }: { episode: Episode; file?: Episod
   // Downloaded — green pill with just the resolution. State (downloaded) is
   // conveyed by color (legend at top of list); codec + size live in the
   // expanded detail row to keep the at-a-glance view clean.
+  // With a media server to check against, an episode it holds is
+  // "Available" (green) and one that is only on disk is "Downloaded"
+  // (accent). Without one, a file on disk is green, as before.
+  const state = asAvailability(episode.availability);
+  const onServer = state === "available";
+  const waiting = state === "downloaded";
+  const color = waiting ? AVAILABILITY.downloaded.color : "var(--color-success)";
+  const word = onServer ? "Available" : waiting ? "Downloaded" : "";
+  const hint = onServer ? AVAILABILITY.available.hint : waiting ? AVAILABILITY.downloaded.hint : "";
+
   if (episode.has_file && file) {
-    const label = file.quality.resolution || "Downloaded";
-    const tooltip = `${[file.quality.source, file.quality.resolution, file.quality.codec].filter(Boolean).join(" · ") || "Downloaded"} · ${formatBytes(file.size_bytes)}`;
+    const quality = file.quality.resolution || (word ? "" : "Downloaded");
+    const label = [word, quality].filter(Boolean).join(" · ");
+    const tooltip = [
+      hint,
+      `${[file.quality.source, file.quality.resolution, file.quality.codec].filter(Boolean).join(" · ") || "Downloaded"} · ${formatBytes(file.size_bytes)}`,
+    ].filter(Boolean).join("\n");
     return (
       <span
         title={tooltip}
         style={{
           display: "inline-flex", alignItems: "center", gap: 4,
           padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-          background: "color-mix(in srgb, var(--color-success) 12%, transparent)",
-          color: "var(--color-success)",
+          background: `color-mix(in srgb, ${color} 12%, transparent)`,
+          color,
         }}
       >
         {label}
@@ -489,10 +504,11 @@ function StatusBadge({ episode, file, aired }: { episode: Episode; file?: Episod
     );
   }
 
-  // Has file but no file info
-  if (episode.has_file) {
+  // Has file but no file info, or on the media server from a folder Pilot
+  // can't see.
+  if (episode.has_file || onServer) {
     return (
-      <span style={{ fontSize: 11, color: "var(--color-success)", fontWeight: 500 }}>Downloaded</span>
+      <span title={hint || undefined} style={{ fontSize: 11, color, fontWeight: 500 }}>{word || "Downloaded"}</span>
     );
   }
 

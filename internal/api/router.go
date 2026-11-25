@@ -23,6 +23,7 @@ import (
 	v1 "github.com/beacon-stack/pilot/internal/api/v1"
 	"github.com/beacon-stack/pilot/internal/api/ws"
 	"github.com/beacon-stack/pilot/internal/appinfo"
+	"github.com/beacon-stack/pilot/internal/availability"
 	"github.com/beacon-stack/pilot/internal/config"
 	"github.com/beacon-stack/pilot/internal/core/activity"
 	"github.com/beacon-stack/pilot/internal/core/backup"
@@ -74,6 +75,7 @@ type RouterConfig struct {
 	DockerLogs             *beaconlog.DockerLogsReader
 	Queries                db.Querier
 	ShowService            *show.Service
+	Availability           *availability.Service // nil: series carry no availability
 	QualityService         *quality.Service
 	LibraryService         *library.Service
 	IndexerService         *indexer.Service
@@ -197,7 +199,13 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 
 	if cfg.ShowService != nil {
-		v1.RegisterSeriesRoutes(humaAPI, cfg.ShowService)
+		// A nil *availability.Service must reach the routes as a nil
+		// interface, not a non-nil one holding a nil pointer.
+		if cfg.Availability != nil {
+			v1.RegisterSeriesRoutes(humaAPI, cfg.ShowService, cfg.Availability)
+		} else {
+			v1.RegisterSeriesRoutes(humaAPI, cfg.ShowService, nil)
+		}
 		v1.RegisterDiscoverRoutes(humaAPI, cfg.ShowService)
 		v1.RegisterPeopleRoutes(humaAPI, cfg.ShowService)
 		v1.RegisterEpisodeFileRoutes(humaAPI, cfg.ShowService, cfg.MediaManagementService)
@@ -295,6 +303,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		}
 		v1.RegisterHistoryRoutes(humaAPI, cfg.Queries)
 		v1.RegisterDelayRoutes(humaAPI, cfg.Queries)
+		v1.RegisterDisplaySettingsRoutes(humaAPI, availability.NewDisplaySettings(cfg.Queries))
 		v1.RegisterLanguageRoutes(humaAPI, cfg.Queries)
 	}
 
