@@ -1,3 +1,4 @@
+import { useDisplaySettings, useSaveDisplaySettings } from "@/api/displaySettings";
 import { useState, useEffect } from "react";
 import { useEmptyRecycleBin, useMediaManagement, useUpdateMediaManagement } from "@/api/media-management";
 import { useConfirm } from "@beacon-shared/ConfirmDialog";
@@ -167,6 +168,8 @@ function FormatField({
 // Main page
 
 export default function MediaManagementPage() {
+  const { data: display } = useDisplaySettings();
+  const saveDisplay = useSaveDisplaySettings();
   const { data, isLoading } = useMediaManagement();
   const update = useUpdateMediaManagement();
   const emptyBin = useEmptyRecycleBin();
@@ -378,6 +381,17 @@ export default function MediaManagementPage() {
             </div>
           </div>
         </div>
+      </SectionCard>
+
+      {/* Series progress: saved as soon as it's switched, separately from
+          the form above. */}
+      <SectionCard title="Series Progress">
+        <ToggleRow
+          label="Count Specials"
+          description="Include specials (season 0) in a series' episode count and status. Off, a show with every regular episode reads as complete."
+          checked={display?.count_specials ?? false}
+          onChange={(v) => saveDisplay.mutate({ count_specials: v })}
+        />
       </SectionCard>
 
       {/* File Management */}

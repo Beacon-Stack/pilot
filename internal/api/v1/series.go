@@ -366,6 +366,10 @@ func setSeriesAvailability(ctx context.Context, src seriesAvailability, series [
 			bodies[i].Availability = string(in.State)
 			bodies[i].AvailableCount = in.Available
 			bodies[i].DownloadProgress = in.Progress
+			// These counts follow the display settings (specials in or
+			// out), so the card's numbers and its state agree.
+			bodies[i].EpisodeCount = int64(in.Total)
+			bodies[i].EpisodeFileCount = int64(in.WithFile)
 		}
 	}
 }

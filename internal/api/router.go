@@ -303,6 +303,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		}
 		v1.RegisterHistoryRoutes(humaAPI, cfg.Queries)
 		v1.RegisterDelayRoutes(humaAPI, cfg.Queries)
+		v1.RegisterDisplaySettingsRoutes(humaAPI, availability.NewDisplaySettings(cfg.Queries))
 		v1.RegisterLanguageRoutes(humaAPI, cfg.Queries)
 	}
 

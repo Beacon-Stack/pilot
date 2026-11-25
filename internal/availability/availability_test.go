@@ -2,12 +2,14 @@ package availability
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/beacon-stack/pilot/internal/core/queue"
 	"github.com/beacon-stack/pilot/internal/core/show"
+	db "github.com/beacon-stack/pilot/internal/db/generated"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
@@ -181,5 +183,64 @@ func TestNilService(t *testing.T) {
 	}
 	if got := svc.ForEpisodes(context.Background(), show.Series{}, []show.Episode{{ID: "a"}}); len(got) != 0 {
 		t.Errorf("ForEpisodes on a nil Service = %v, want nothing", got)
+	}
+}
+
+type memSettings map[string]string
+
+func (m memSettings) GetSetting(_ context.Context, key string) (string, error) {
+	v, ok := m[key]
+	if !ok {
+		return "", sql.ErrNoRows
+	}
+	return v, nil
+}
+
+func (m memSettings) SetSetting(_ context.Context, arg db.SetSettingParams) error {
+	m[arg.Key] = arg.Value
+	return nil
+}
+
+// Specials are left out of a series' counts and state unless the setting
+// says to count them: a show with every regular episode shouldn't look
+// unfinished because of a behind-the-scenes special.
+func TestSpecialsAreLeftOutUnlessAskedFor(t *testing.T) {
+	plex := &fakeLister{items: []plugin.ShowItem{{TMDBID: 7, Episodes: []plugin.EpisodeNumber{{Season: 1, Episode: 1}, {Season: 1, Episode: 2}}}}}
+	episodes := []show.Episode{
+		ep("s1", "sp1", 0, 1, "2020-01-01", false), // a special nobody downloaded
+		ep("s1", "a", 1, 1, "2020-01-01", true),
+		ep("s1", "b", 1, 2, "2020-01-08", true),
+	}
+	svc := newTestService(plex, nil, fakeEpisodes{"s1": episodes})
+	if err := svc.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	settings := NewDisplaySettings(memSettings{})
+	svc.UseDisplaySettings(settings)
+	series := []show.Series{{ID: "s1", TMDBID: 7}}
+
+	got := svc.ForSeries(context.Background(), series)["s1"]
+	if got.State != Available || got.Total != 2 || got.WithFile != 2 || got.Available != 2 {
+		t.Errorf("without specials = %+v, want available, 2 of 2", got)
+	}
+
+	if err := settings.Set(context.Background(), Display{CountSpecials: true}); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	got = svc.ForSeries(context.Background(), series)["s1"]
+	if got.State != Wanted || got.Total != 3 || got.WithFile != 2 || got.Available != 2 {
+		t.Errorf("with specials = %+v, want wanted, 2 of 3", got)
+	}
+
+	// The special itself still reports its own state either way.
+	if st := svc.ForEpisodes(context.Background(), series[0], episodes)["sp1"].State; st != Wanted {
+		t.Errorf("special's own state = %q, want wanted", st)
+	}
+}
+
+func TestDisplaySettings_DefaultsWhenNothingSaved(t *testing.T) {
+	got, err := NewDisplaySettings(memSettings{}).Get(context.Background())
+	if err != nil || got.CountSpecials {
+		t.Errorf("Get = %+v, %v; want specials not counted", got, err)
 	}
 }

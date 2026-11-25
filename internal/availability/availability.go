@@ -93,7 +93,13 @@ type Info struct {
 // SeriesInfo is a series' state and how many of its episodes can be
 // watched.
 type SeriesInfo struct {
-	State     State
+	State State
+	// Total, WithFile and Available count the series' episodes, the ones
+	// with a file, and the ones on the media server. Specials (season 0)
+	// are left out of all three, and of State, unless the display
+	// settings say to count them.
+	Total     int
+	WithFile  int
 	Available int
 	// Progress is the furthest-along download, while State is Downloading.
 	Progress float64
@@ -125,6 +131,7 @@ type Service struct {
 	episodes EpisodeSource
 	logger   *slog.Logger
 	now      func() time.Time
+	display  *DisplaySettings // nil: defaults
 
 	mu      sync.RWMutex
 	byTMDB  map[int]episodeSet
@@ -136,6 +143,24 @@ type Service struct {
 // media server contents, so nothing is reported as available.
 func NewService(servers ListerSource, q QueueSource, episodes EpisodeSource, logger *slog.Logger) *Service {
 	return &Service{servers: servers, queue: q, episodes: episodes, logger: logger, now: time.Now}
+}
+
+// UseDisplaySettings makes series summaries follow the saved display
+// settings. Without it they use the defaults.
+func (s *Service) UseDisplaySettings(d *DisplaySettings) {
+	s.display = d
+}
+
+// countSpecials reports whether season 0 counts toward a series.
+func (s *Service) countSpecials(ctx context.Context) bool {
+	if s.display == nil {
+		return false
+	}
+	d, err := s.display.Get(ctx)
+	if err != nil && s.logger != nil {
+		s.logger.Warn("availability: reading display settings", "error", err)
+	}
+	return d.CountSpecials
 }
 
 // Refresh re-reads what every media server holds. If a server can't be
@@ -307,6 +332,7 @@ func (s *Service) ForSeries(ctx context.Context, series []show.Series) map[strin
 	}
 	d := s.downloads(ctx)
 	today := s.now().Format("2006-01-02")
+	specials := s.countSpecials(ctx)
 	out := make(map[string]SeriesInfo, len(series))
 	for _, sr := range series {
 		episodes, err := s.episodes.EpisodesOfSeries(ctx, sr.ID)
@@ -319,12 +345,20 @@ func (s *Service) ForSeries(ctx context.Context, series []show.Series) map[strin
 		held := s.held(sr)
 		counts := make(map[State]int)
 		progress := 0.0
+		total, withFile := 0, 0
 		for _, e := range episodes {
+			if e.SeasonNumber == 0 && !specials {
+				continue
+			}
 			info := s.decide(e, held, d, today)
 			counts[info.State]++
 			progress = max(progress, info.Progress)
+			total++
+			if e.HasFile {
+				withFile++
+			}
 		}
-		info := SeriesInfo{State: Summarise(counts), Available: counts[Available]}
+		info := SeriesInfo{State: Summarise(counts), Total: total, WithFile: withFile, Available: counts[Available]}
 		if info.State == Downloading {
 			info.Progress = progress
 		}

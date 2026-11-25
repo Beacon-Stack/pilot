@@ -369,6 +369,7 @@ func run() error {
 	sched := scheduler.New(logger)
 	sched.Add(jobs.QueuePoll(queueSvc, 30*time.Second, logger))
 	availabilitySvc := availability.NewService(mediaServerSvc, queueSvc, showSvc, logger)
+	availabilitySvc.UseDisplaySettings(availability.NewDisplaySettings(queries))
 	sched.Add(jobs.AvailabilityRefresh(availabilitySvc, logger))
 	go func() {
 		// Read the media servers once at start so the first page load is right.
