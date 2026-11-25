@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/beacon-stack/pilot/internal/serveraddr"
 	"io"
 	"net/http"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"github.com/beacon-stack/pilot/internal/redact"
 	"github.com/beacon-stack/pilot/internal/registry"
 	"github.com/beacon-stack/pilot/internal/safedialer"
+	"github.com/beacon-stack/pilot/internal/serveraddr"
 	"github.com/beacon-stack/pilot/pkg/plugin"
 )
 
