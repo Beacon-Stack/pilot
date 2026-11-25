@@ -18,7 +18,7 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 		switch r.URL.Path {
 		case "/System/Info":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"ServerName":"Emby"}`))
+			w.Write([]byte(`{"ServerName":"Emby","Version":"10.9.0","Id":"0123456789abcdef"}`))
 		case "/Library/Refresh":
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -71,5 +71,24 @@ func TestNew_TrimsTrailingSlash(t *testing.T) {
 	s := New(Config{URL: "http://emby.local/", APIKey: "key"})
 	if s.cfg.URL != "http://emby.local" {
 		t.Errorf("URL = %q, want no trailing slash", s.cfg.URL)
+	}
+}
+
+// A page that answers 200 but isn't the server (its web app, a login
+// page, some other service) must not pass the test.
+func TestTest_RejectsAPageThatIsNotTheServer(t *testing.T) {
+	for name, reply := range map[string]string{
+		"web page":      "<!doctype html><html><body>web</body></html>",
+		"other service": `{"status":"ok"}`,
+		"empty":         "",
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(reply))
+		}))
+		s := &Server{cfg: Config{URL: srv.URL, APIKey: "key"}, client: srv.Client()}
+		if err := s.Test(context.Background()); err == nil {
+			t.Errorf("%s: Test() = nil, want an error", name)
+		}
+		srv.Close()
 	}
 }
